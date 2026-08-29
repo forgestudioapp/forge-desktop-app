@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<title>Forge — Comptes</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E; --char2:#1C1712; --char3:#221C15;
+    --border:#2C2419; --border-light:#3A3024;
+    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
+    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
+    --success:#5FBE7A; --success-dim:#233327;
+    --error:#E35B5B;
+  }
+  html.light-theme{
+    --char:#F5F2ED; --char2:#EDEAE4; --char3:#E5E1DA; --char4:#DDD9D1;
+    --border:#D5D0C8; --border-light:#C8C2B8; --border-hover:#B8B2A8;
+    --bone:#1A1612; --smoke:#6B6255; --smoke-dim:#948B7C;
+    --ember:#2563EB; --ember-light:#60A5FA; --ember-dim:#DBEAFE;
+    --success:#3A9A55; --success-dim:#D4F0DC;
+    --error:#CC3333;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
+    height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; padding-top:80px;
+    opacity:0; animation:pageIn 0.35s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.05), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(96,165,250,0.03), transparent);
+    animation:aurora 20s ease-in-out infinite alternate;
+  }
+  @keyframes aurora {
+    0%{transform:translate(0,0) scale(1);} 33%{transform:translate(2%,-1%) scale(1.02);}
+    66%{transform:translate(-1%,2%) scale(0.98);} 100%{transform:translate(1%,-2%) scale(1.01);}
+  }
+  body::after {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:0.02;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat:repeat; background-size:256px 256px;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .top-bar{position:absolute; top:26px; right:30px; display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--smoke-dim); z-index:2;}
+  .top-bar b{color:var(--bone);}
+  .dots{display:flex; gap:6px; position:absolute; top:30px; left:50%; transform:translateX(-50%); z-index:2;}
+  .dots i{width:20px; height:3px; border-radius:2px; background:var(--border-light); display:block;}
+  .dots i.on{background:var(--ember);}
+  .step-name{position:absolute; top:52px; left:50%; transform:translateX(-50%); font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  h1{font-family:'Space Grotesk',sans-serif; font-size:30px; text-align:center; margin-bottom:12px; position:relative; z-index:2; animation:fadeInUp 0.5s ease forwards;}
+  p.sub{color:var(--smoke); font-size:14.5px; text-align:center; max-width:480px; line-height:1.6; margin-bottom:34px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.08s ease forwards; opacity:0;}
+
+  .acc-card{
+    width:460px; max-width:90vw; border-radius:14px; padding:20px; margin-bottom:16px;
+    background:rgba(28,23,18,0.55); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4);
+    border:1px solid rgba(59,130,246,0.1); box-shadow:0 8px 32px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.02);
+    position:relative; overflow:hidden; z-index:2;
+    transition:all 0.3s cubic-bezier(.4,0,.2,1);
+    animation:fadeInUp 0.5s ease forwards; opacity:0;
+  }
+  .acc-card:nth-child(1){animation-delay:0.12s;}
+  .acc-card:nth-child(2){animation-delay:0.20s;}
+  .acc-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(59,130,246,0.15),transparent);
+  }
+  .acc-card:hover{
+    border-color:rgba(59,130,246,0.2);
+    box-shadow:0 12px 40px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.03);
+    transform:translateY(-2px);
+  }
+  .acc-card.dim{border-color:rgba(255,255,255,0.04); background:rgba(28,23,18,0.4);}
+  .acc-card.dim:hover{border-color:rgba(255,255,255,0.08);}
+  .acc-top{display:flex; align-items:center; gap:12px; margin-bottom:10px; position:relative; z-index:1;}
+  .acc-icon{width:38px;height:38px;border-radius:9px; background:var(--ember-dim); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;}
+  .acc-icon.gh{background:var(--char3);}
+  .acc-name{font-weight:700; font-size:15px;}
+  .acc-badge{
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ember-light);
+    border:1px solid var(--ember); padding:3px 9px; border-radius:100px; margin-left:8px;
+  }
+  .acc-badge.opt{color:var(--smoke); border-color:var(--border-light);}
+  .acc-desc{font-size:12.5px; color:var(--smoke); margin-bottom:14px; margin-left:50px; position:relative; z-index:1;}
+  .acc-btn{
+    width:100%; padding:12px; border-radius:9px; border:none; cursor:pointer;
+    font-weight:600; font-size:14px; font-family:'Inter',sans-serif;
+    transition:all 0.25s cubic-bezier(.4,0,.2,1); position:relative; overflow:hidden;
+  }
+  .acc-btn.primary{
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char);
+    box-shadow:0 4px 16px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .acc-btn.primary:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 8px 24px rgba(59,130,246,0.3);}
+  .acc-btn.primary::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent 40%,rgba(255,255,255,0.1),transparent 60%);
+    transform:translateX(-100%); transition:transform 0.6s ease;
+  }
+  .acc-btn.primary:hover::after{transform:translateX(100%);}
+  .acc-btn.secondary{background:var(--char3); color:var(--bone); border:1px solid var(--border-light);}
+  .acc-btn.secondary:hover{border-color:var(--ember); transform:translateY(-1px);}
+  .acc-btn.connected{background:var(--success-dim); color:var(--success); border:1px solid var(--success); cursor:default;}
+  .acc-btn.error{background:var(--error); color:var(--char); cursor:pointer;}
+  .acc-btn.error:hover{filter:brightness(1.1); transform:translateY(-1px);}
+  .acc-note{text-align:center; font-size:11px; color:var(--smoke-dim); margin-top:8px; position:relative; z-index:1;}
+
+  .continue-btn{
+    margin-top:20px; padding:12px 26px; border-radius:10px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char); font-weight:700; font-size:14px; font-family:'Inter',sans-serif;
+    position:relative; overflow:hidden; z-index:2;
+    box-shadow:0 4px 16px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.15);
+    transition:all 0.25s cubic-bezier(.4,0,.2,1); animation:fadeInUp 0.5s 0.28s ease forwards; opacity:0;
+  }
+  .continue-btn:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 8px 28px rgba(59,130,246,0.35);}
+  .continue-btn::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent 40%,rgba(255,255,255,0.1),transparent 60%);
+    transform:translateX(-100%); transition:transform 0.6s ease;
+  }
+  .continue-btn:hover::after{transform:translateX(100%);}
+  .skip-link{
+    margin-top:20px; color:var(--smoke-dim); font-size:13px; cursor:pointer;
+    text-decoration:underline; background:none; border:none; font-family:'Inter',sans-serif;
+    transition:color 0.15s ease; position:relative; z-index:2; animation:fadeInUp 0.5s 0.32s ease forwards; opacity:0;
+  }
+  .skip-link:hover{color:var(--smoke);}
+
+  .step-footer{position:absolute; bottom:26px; left:30px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes pageIn{from{opacity:0;}to{opacity:1;}}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;} ::-webkit-scrollbar-thumb:hover{background:var(--ember-dim);}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+  <div class="dots" id="dots"></div>
+  <div class="step-name mono" data-i18n="accounts">Comptes</div>
+  <div class="top-bar">
+    SYSTEM ·
+    <b>FR</b> ·
+    <a href="settings.html?from=accounts.html" target="_self" title="Paramètres" style="cursor:pointer;padding:4px;border-radius:5px;display:inline-flex;align-items:center;color:var(--smoke-dim);text-decoration:none;transition:color .15s ease,background .15s ease;" onmouseover="this.style.color='var(--ember-light)';this.style.background='var(--char3)'" onmouseout="this.style.color='var(--smoke-dim)';this.style.background='transparent'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    </a>
+  </div>
+
+  <h1 data-i18n="accounts_title">Connecte tes comptes</h1>
+  <p class="sub" data-i18n="accounts_sub">Lie ton compte Roblox pour publier tes creations directement depuis Forge. Tu peux aussi le faire plus tard depuis les reglages.</p>
+
+  <div class="acc-card" id="cardRoblox">
+    <div class="acc-top">
+      <div class="acc-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" transform="rotate(45 12 12)"/><path d="M9 8h3.5c1.5 0 2.5 1 2.5 2.5S14 13 12.5 13H11l2.5 3.5"/></svg>
+      </div>
+      <div class="acc-name">Roblox <span class="acc-badge" data-i18n="recommended">RECOMMANDE</span></div>
+    </div>
+    <div class="acc-desc" data-i18n="roblox_desc">Publie tes modeles 3D, images et sons generes directement sur Roblox. Le compte connecte est aussi utilise par les IA (gamepasses, APIs Roblox).</div>
+    <button class="acc-btn primary" id="robloxBtn" data-i18n="connect_roblox">Connecter Roblox</button>
+    <div style="text-align:center;margin-top:6px;"><button class="skip-link" id="robloxDiscBtn" style="display:none;" data-i18n="disconnect_roblox">Deconnecter mon compte Roblox</button></div>
+  </div>
+
+  <div class="acc-card dim" id="cardGithub">
+    <div class="acc-top">
+      <div class="acc-icon gh">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      </div>
+      <div class="acc-name">GitHub <span class="acc-badge opt" data-i18n="optional">OPTIONNEL</span></div>
+    </div>
+    <div class="acc-desc" data-i18n="github_desc">Versionne tes projets Roblox dans un depot, directement depuis Forge.</div>
+    <button class="acc-btn secondary" id="githubBtn" data-i18n="connect_github">Connecter GitHub</button>
+    <div id="githubCodeBox" style="display:none; margin-top:12px; text-align:center; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; position:relative; z-index:1;">
+      <div style="font-size:11px; color:var(--smoke-dim); margin-bottom:6px;"><span data-i18n="github_code_info">Va sur le site et entre ce code :</span> <b id="ghUrl"></b></div>
+      <div id="ghCode" style="font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; letter-spacing:2px; color:var(--ember-light);"></div>
+    </div>
+  </div>
+
+  <button class="continue-btn" id="continueBtn" data-i18n="continue_btn">Continuer →</button>
+  <button class="skip-link" id="skipBtn" data-i18n="skip">Passer pour l'instant</button>
+
+  <div class="step-footer mono" data-i18n="step_4_6">Étape 4 sur 6</div>
+
+<script src="./lib/i18n.js"></script>
+<script src="./lib/ux.js"></script>
+<script>
+  (function(){ try { var s = JSON.parse(localStorage.getItem('forge_settings') || '{}'); if (s.theme === 'light') document.documentElement.classList.add('light-theme'); } catch(e){} })();
+  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
+  initLang();
+  const dotsEl = document.getElementById('dots');
+  for(let i=0;i<6;i++){ const d=document.createElement('i'); if(i===3)d.className='on'; dotsEl.appendChild(d); }
+
+  document.querySelectorAll('.acc-card').forEach(card => {
+    card.addEventListener('mousemove', e => {
+      const rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      card.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(59,130,246,0.07), transparent 40%)`;
+    });
+    card.addEventListener('mouseleave', () => {
+      card.style.background = '';
+    });
+  });
+
+  function fadeNavigate(href){
+    document.body.style.opacity = '0';
+    document.body.style.transition = 'opacity 0.2s ease';
+    setTimeout(() => window.location.href = href, 200);
+  }
+
+  function setRobloxConnected(){
+    const btn = document.getElementById('robloxBtn');
+    btn.textContent = 'Connecté';
+    btn.classList.remove('primary');
+    btn.classList.add('connected');
+    btn.disabled = true;
+    document.getElementById('robloxDiscBtn').style.display = 'inline';
+  }
+
+  function setRobloxDisconnected(){
+    const btn = document.getElementById('robloxBtn');
+    btn.textContent = 'Connecter Roblox';
+    btn.classList.remove('connected');
+    btn.classList.add('primary');
+    btn.disabled = false;
+    document.getElementById('robloxDiscBtn').style.display = 'none';
+  }
+
+  function setGithubConnected(){
+    const btn = document.getElementById('githubBtn');
+    btn.textContent = 'Connecte';
+    btn.classList.remove('secondary');
+    btn.classList.add('connected');
+    btn.disabled = true;
+    document.getElementById('githubCodeBox').style.display = 'none';
+  }
+
+  function setGithubError(msg){
+    const btn = document.getElementById('githubBtn');
+    btn.textContent = 'Echec — ' + msg;
+    btn.classList.remove('secondary', 'connected');
+    btn.classList.add('error');
+    btn.disabled = false;
+    document.getElementById('githubCodeBox').style.display = 'none';
+  }
+
+  function setGithubWaiting(){
+    const btn = document.getElementById('githubBtn');
+    btn.textContent = 'En attente de validation…';
+    btn.disabled = true;
+  }
+
+  async function checkRobloxConnection(){
+    if(window.forgeAPI && window.forgeAPI.isRobloxConnected){
+      const result = await window.forgeAPI.isRobloxConnected();
+      if(result.connected) setRobloxConnected();
+    }
+  }
+  checkRobloxConnection();
+
+  async function checkGithubConnection(){
+    if(!window.forgeAPI) return;
+    const connected = await window.forgeAPI.isGithubConnected();
+    if(connected.connected){ setGithubConnected(); return; }
+    const status = await window.forgeAPI.getGithubDeviceStatus();
+    if(status.hasDeviceFlow){
+      setGithubWaiting();
+      if(status.userCode){
+        var ghCodeEl = document.getElementById('ghCode');
+        if(ghCodeEl) ghCodeEl.textContent = status.userCode;
+        var ghUrlEl = document.getElementById('ghUrl');
+        if(ghUrlEl) ghUrlEl.textContent = status.verificationUri || 'https://github.com/login/device';
+        var ghBox = document.getElementById('githubCodeBox');
+        if(ghBox) ghBox.style.display = 'block';
+      }
+      const result = await window.forgeAPI.githubPoll();
+      if(result.success) setGithubConnected();
+      else if(result.error) setGithubError('reessayer');
+    }
+  }
+  checkGithubConnection();
+
+  if(window.forgeAPI && window.forgeAPI.onGithubAuthSuccess){
+    window.forgeAPI.onGithubAuthSuccess(() => setGithubConnected());
+  }
+  if(window.forgeAPI && window.forgeAPI.onGithubAuthError){
+    window.forgeAPI.onGithubAuthError((event, msg) => setGithubError(msg || 'reessayer'));
+  }
+
+  document.getElementById('robloxBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('robloxBtn');
+    btn.textContent = 'Connexion en cours…';
+    btn.disabled = true;
+    if(window.forgeAPI && window.forgeAPI.connectRoblox){
+      const result = await window.forgeAPI.connectRoblox();
+      if(result.error){
+        btn.textContent = 'Echec — reessayer';
+        btn.disabled = false;
+        console.error('Erreur connexion Roblox:', result.error);
+        return;
+      }
+    }
+    setRobloxConnected();
+  });
+
+  document.getElementById('robloxDiscBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('robloxDiscBtn');
+    btn.disabled = true;
+    if(window.forgeAPI && window.forgeAPI.disconnectRoblox){
+      await window.forgeAPI.disconnectRoblox();
+    }
+    setRobloxDisconnected();
+    btn.disabled = false;
+  });
+
+  document.getElementById('githubBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('githubBtn');
+    btn.disabled = true;
+    if(!window.forgeAPI || !window.forgeAPI.githubStart){
+      btn.textContent = 'Echec — reessayer';
+      btn.disabled = false;
+      return;
+    }
+    let startResult;
+    try {
+      startResult = await window.forgeAPI.githubStart();
+    } catch (err) {
+      btn.textContent = 'Echec — voir console';
+      btn.disabled = false;
+      console.error('[GH-start] exception:', err);
+      return;
+    }
+    console.log('[GH-start] resultat:', startResult);
+    var ghCodeEl = document.getElementById('ghCode');
+    if(ghCodeEl) ghCodeEl.textContent = (startResult && startResult.userCode) ? startResult.userCode : '(code vide)';
+    var ghUrlEl = document.getElementById('ghUrl');
+    if(startResult && startResult.verificationUri && ghUrlEl) ghUrlEl.textContent = startResult.verificationUri;
+    var ghBox = document.getElementById('githubCodeBox');
+    if(ghBox) ghBox.style.display = 'block';
+    btn.textContent = 'En attente de validation…';
+    const pollResult = await window.forgeAPI.githubPoll();
+    if(pollResult.error){ setGithubError('reessayer'); return; }
+    setGithubConnected();
+  });
+
+  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('agents.html'));
+  document.getElementById('skipBtn').addEventListener('click', () => fadeNavigate('agents.html'));
+</script>
+
+</body>
+</html>

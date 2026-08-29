@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<title>Forge — Atelier IA</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E;--char2:#1C1712;--char3:#221C15;--char4:#2A2318;
+    --border:#2C2419;--border-light:#3A3024;--border-hover:#4A3E30;
+    --bone:#F3EDE3;--smoke:#948B7C;--smoke-dim:#6B6255;
+    --ember:#3B82F6;--ember-light:#60A5FA;--ember-dim:#1E3A5F;
+    --success:#5FBE7A;--success-dim:#233327;
+    --error:#E35B5B;--error-dim:#2A1515;
+    --info:#5B9BE3;
+    --cyan:#4FD1C5;--cyan-dim:#1A3A35;
+    --amber:#D4A843;--amber-dim:#3A3020;
+    --purple:#9B6BE3;--purple-dim:#2A1E40;
+  }
+  html.light-theme{
+    --char:#F5F2ED;--char2:#EDEAE4;--char3:#E5E1DA;--char4:#DDD9D1;
+    --border:#D5D0C8;--border-light:#C8C2B8;--border-hover:#B8B2A8;
+    --bone:#1A1612;--smoke:#6B6255;--smoke-dim:#948B7C;
+    --ember:#2563EB;--ember-light:#60A5FA;--ember-dim:#DBEAFE;
+    --success:#3A9A55;--success-dim:#D4F0DC;
+    --error:#CC3333;--error-dim:#F5D4D4;
+    --info:#3A7ACC;
+    --cyan:#3AAFA9;--cyan-dim:#D4F0EE;
+    --amber:#B8960F;--amber-dim:#F5EED4;
+    --purple:#7B4FCF;--purple-dim:#E8DDF5;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;overflow:hidden;}
+  body{background:var(--char);color:var(--bone);font-family:'Inter',sans-serif;display:flex;flex-direction:column;opacity:0;animation:pageIn .35s cubic-bezier(.4,0,.2,1) forwards;}
+  body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:radial-gradient(ellipse 80% 50% at 20% 40%,rgba(59,130,246,.03),transparent),
+               radial-gradient(ellipse 60% 40% at 80% 60%,rgba(96,165,250,.015),transparent);}
+
+  /* ── Top Bar ── */
+  .topbar{height:52px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid var(--border);z-index:10;}
+  .back-arrow{width:32px;height:32px;border-radius:8px;border:1px solid var(--border-light);background:transparent;color:var(--smoke);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
+  .back-arrow:hover{border-color:var(--ember);color:var(--ember-light);}
+  .topbar .page-title{font-family:'Space Grotesk';font-size:18px;font-weight:700;color:var(--bone);}
+  .spacer{flex:1;}
+  .topbar .proj-pill{font-size:11.5px;color:var(--smoke-dim);font-family:'JetBrains Mono',monospace;background:var(--char3);padding:4px 10px;border-radius:6px;border:1px solid var(--border-light);}
+  .topbar .proj-pill b{color:var(--ember);}
+
+  /* ── Layout ── */
+  .layout{flex:1;display:flex;min-height:0;overflow:hidden;}
+
+  /* ── Sidebar ── */
+  .sidebar{width:180px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 0;background:rgba(28,23,18,.3);}
+  .sidebar-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--smoke-dim);padding:0 16px 12px;text-transform:uppercase;}
+  .sidebar-item{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;transition:all .15s;border-left:3px solid transparent;font-size:13.5px;color:var(--smoke);font-weight:500;}
+  .sidebar-item:hover{background:var(--char3);color:var(--bone);}
+  .sidebar-item.active{background:var(--char3);border-left-color:var(--cyan);color:var(--bone);}
+  .sidebar-item .si-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+  .sidebar-item .si-icon.cyan{background:var(--cyan-dim);color:var(--cyan);}
+  .sidebar-item .si-icon.amber{background:var(--amber-dim);color:var(--amber);}
+  .sidebar-item .si-icon.purple{background:var(--purple-dim);color:var(--purple);}
+
+  /* ── Main area ── */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;position:relative;}
+
+  /* ── Selection toolbar ── */
+  .sel-bar{display:none;align-items:center;gap:12px;padding:8px 20px;background:var(--char2);border-bottom:1px solid var(--border);flex-shrink:0;}
+  .sel-bar.show{display:flex;}
+  .sel-bar .sel-count{font-size:13px;color:var(--bone);font-weight:600;}
+  .sel-bar .sel-count b{color:var(--ember);}
+  .sel-bar .spacer{flex:1;}
+  .sel-btn{padding:6px 14px;border-radius:7px;border:1px solid var(--border-light);background:transparent;color:var(--smoke);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;}
+  .sel-btn:hover{border-color:var(--border-hover);color:var(--bone);}
+  .sel-btn.danger{color:var(--error);border-color:rgba(227,91,91,.3);}
+  .sel-btn.danger:hover{background:var(--error);color:var(--bone);border-color:var(--error);}
+  .sel-btn.x{font-size:16px;padding:4px 8px;border:none;color:var(--smoke);}
+  .sel-btn.x:hover{color:var(--bone);}
+
+  /* ── Section: Visuels (tree view) ── */
+  .section-visuels{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+  .tree-canvas{flex:1;overflow:auto;position:relative;}
+  .tree-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--smoke-dim);gap:14px;text-align:center;}
+  .tree-empty svg{color:var(--border-hover);opacity:.6;}
+  .tree-empty .te-title{font-family:'Space Grotesk';font-size:16px;font-weight:600;color:var(--smoke);}
+  .tree-empty .te-sub{font-size:13px;max-width:340px;line-height:1.6;}
+
+  .tree-group{padding:20px 24px;position:relative;}
+  .tree-row{display:flex;align-items:flex-start;gap:20px;justify-content:center;margin-bottom:0;position:relative;}
+  .tree-card{position:relative;cursor:pointer;transition:transform .15s;border-radius:10px;overflow:hidden;border:2px solid transparent;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+  .tree-card:hover{transform:scale(1.04);}
+  .tree-card.selected{border-color:var(--ember);box-shadow:0 0 0 2px var(--ember),0 4px 20px rgba(59,130,246,.3);}
+  .tree-card img,.tree-card canvas{display:block;width:150px;height:100px;object-fit:cover;background:var(--char3);}
+  .tree-card .tc-badge{position:absolute;top:4px;left:4px;font-size:9px;font-family:'JetBrains Mono';padding:2px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:var(--smoke);}
+  .tree-card .tc-badge.base{color:var(--amber);background:rgba(50,40,10,.7);}
+
+  .tree-connectors{position:relative;height:30px;}
+  .tree-connectors .line-v{position:absolute;width:2px;background:var(--info);opacity:.5;top:0;bottom:0;}
+
+  /* ── Bottom generation bar (Visuels) ── */
+  .gen-bar{flex-shrink:0;border-top:1px solid var(--border);padding:12px 20px;background:rgba(28,23,18,.6);backdrop-filter:blur(12px);display:flex;flex-direction:column;gap:8px;}
+  .gen-tabs{display:flex;align-items:center;gap:4px;}
+  .gen-tab{padding:6px 16px;border-radius:20px;border:none;background:transparent;color:var(--smoke-dim);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Inter';}
+  .gen-tab:hover{color:var(--bone);}
+  .gen-tab.active{color:var(--ember-light);font-weight:600;}
+  .gen-ai-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;background:var(--char3);border:1px solid var(--border-light);color:var(--ember-light);font-size:11.5px;font-weight:600;letter-spacing:.5px;font-family:'JetBrains Mono',monospace;cursor:default;}
+  .gen-ai-badge svg{color:var(--ember);}
+  .gen-row{display:flex;align-items:center;gap:10px;}
+  .gen-input{flex:1;background:var(--char3);border:1px solid var(--border-light);border-radius:10px;color:var(--bone);font-size:14px;padding:10px 14px;outline:none;transition:border .2s;font-family:'Inter';}
+  .gen-input::placeholder{color:var(--smoke-dim);}
+  .gen-input:focus{border-color:var(--ember);}
+  .gen-count{display:flex;align-items:center;gap:6px;}
+  .gen-count button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border-light);background:var(--char3);color:var(--smoke);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+  .gen-count button:hover{border-color:var(--ember);color:var(--ember-light);}
+  .gen-count .count-val{font-size:14px;font-weight:600;color:var(--bone);min-width:20px;text-align:center;font-family:'JetBrains Mono';}
+  .gen-send{width:40px;height:40px;border-radius:10px;border:none;background:var(--ember);color:var(--char);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
+  .gen-send:hover{background:var(--ember-light);transform:scale(1.05);}
+  .gen-send:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+
+  /* ── Section: Conversion (Asset browser) ── */
+  .section-conversion{flex:1;display:none;flex-direction:column;overflow:hidden;}
+  .section-conversion.active{display:flex;}
+  .conv-header{padding:20px 24px 0;flex-shrink:0;}
+  .conv-header h2{font-family:'Space Grotesk';font-size:22px;font-weight:700;color:var(--bone);margin-bottom:4px;}
+  .conv-header p{font-size:13px;color:var(--smoke);line-height:1.5;}
+  .conv-status{display:flex;align-items:center;gap:16px;padding:12px 24px;flex-shrink:0;flex-wrap:wrap;}
+  .conv-badge{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:6px;background:var(--char3);border:1px solid var(--border-light);font-size:11.5px;color:var(--smoke);font-family:'JetBrains Mono',monospace;}
+  .conv-badge .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .conv-badge .dot.red{background:var(--error);}
+  .conv-badge .dot.green{background:var(--success);}
+  .conv-badge a{color:var(--ember);text-decoration:none;font-weight:500;}
+  .conv-badge a:hover{text-decoration:underline;}
+  .conv-badge b{color:var(--bone);font-weight:600;}
+  .conv-search{padding:8px 24px 12px;flex-shrink:0;}
+  .conv-search input{width:100%;background:var(--char3);border:1px solid var(--border-light);border-radius:9px;color:var(--bone);font-size:13px;padding:10px 14px 10px 36px;outline:none;transition:border .2s;font-family:'Inter';background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B6255' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:12px center;}
+  .conv-search input::placeholder{color:var(--smoke-dim);}
+  .conv-search input:focus{border-color:var(--ember);}
+  .conv-grid{flex:1;overflow:auto;padding:0 24px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;align-content:start;}
+  .conv-card{position:relative;cursor:pointer;border-radius:10px;overflow:hidden;border:2px solid transparent;background:var(--char3);transition:all .15s;box-shadow:0 2px 12px rgba(0,0,0,.3);}
+  .conv-card:hover{border-color:var(--border-hover);transform:translateY(-2px);}
+  .conv-card.selected{border-color:var(--ember);box-shadow:0 0 0 2px var(--ember),0 4px 16px rgba(59,130,246,.25);}
+  .conv-card .cc-img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--char4);}
+  .conv-card .cc-img.model-placeholder{display:flex;align-items:center;justify-content:center;color:var(--smoke-dim);}
+  .conv-card .cc-info{padding:8px 10px;}
+  .conv-card .cc-name{font-size:12px;font-weight:500;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conv-card .cc-actions{position:absolute;top:6px;right:6px;display:flex;gap:4px;opacity:0;transition:opacity .15s;}
+  .conv-card:hover .cc-actions{opacity:1;}
+  .conv-card .cc-actions button{width:26px;height:26px;border-radius:6px;border:none;background:rgba(0,0,0,.6);color:var(--smoke);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);transition:all .12s;}
+  .conv-card .cc-actions button:hover{background:var(--ember);color:var(--char);}
+  .conv-card .cc-actions button.liked{color:var(--error);}
+
+  /* ── Preview overlay ── */
+  .preview-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:none;flex-direction:column;}
+  .preview-overlay.open{display:flex;}
+  .preview-top{flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0;}
+  .preview-top img{max-width:90%;max-height:80vh;object-fit:contain;border-radius:8px;}
+  .preview-top .close-btn{position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.5);color:var(--bone);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+  .preview-top .close-btn:hover{background:var(--error);border-color:var(--error);}
+  .preview-actions{display:flex;align-items:center;gap:10px;padding:12px 24px;border-top:1px solid rgba(255,255,255,.08);flex-shrink:0;}
+  .preview-actions .pa-count{display:flex;align-items:center;gap:4px;}
+  .preview-actions .pa-count button{width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:transparent;color:var(--smoke);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+  .preview-actions .pa-count button:hover{border-color:var(--ember);color:var(--ember-light);}
+  .preview-actions .pa-count .val{font-size:14px;font-weight:600;color:var(--bone);min-width:18px;text-align:center;}
+  .pa-btn{padding:7px 16px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:var(--smoke);font-size:12.5px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;font-family:'Inter';}
+  .pa-btn:hover{border-color:var(--ember);color:var(--bone);}
+  .pa-btn.danger{color:var(--error);border-color:rgba(227,91,91,.3);}
+  .pa-btn.danger:hover{background:var(--error);color:var(--bone);border-color:var(--error);}
+  .pa-btn.heart{font-size:16px;padding:7px 10px;}
+  .pa-btn.heart.liked{color:var(--error);}
+  .pa-btn.dl{margin-left:auto;}
+
+  /* ── Edit modal ── */
+  .edit-modal{position:absolute;bottom:0;left:0;right:0;background:var(--char2);border-top:1px solid var(--border);padding:18px 24px;display:none;z-index:55;animation:slideUp .3s ease forwards;}
+  .edit-modal.open{display:block;}
+  .edit-modal .em-label{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--smoke-dim);margin-bottom:8px;}
+  .edit-modal textarea{width:100%;background:var(--char3);border:1px solid var(--border-light);border-radius:9px;color:var(--bone);font-family:'Inter';font-size:13px;padding:10px 12px;resize:vertical;min-height:60px;outline:none;transition:border .2s;}
+  .edit-modal textarea:focus{border-color:var(--ember);}
+  .edit-modal textarea::placeholder{color:var(--smoke-dim);}
+  .edit-ref{margin-top:10px;padding:10px;border:1px dashed var(--border-light);border-radius:9px;color:var(--smoke-dim);font-size:12px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;}
+  .edit-ref:hover{border-color:var(--ember);color:var(--smoke);}
+  .edit-bottom{display:flex;align-items:center;gap:12px;margin-top:12px;}
+  .edit-bottom .eb-count{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--smoke);}
+  .edit-bottom .eb-count button{width:24px;height:24px;border-radius:6px;border:1px solid var(--border-light);background:transparent;color:var(--smoke);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .edit-bottom .eb-count button:hover{border-color:var(--ember);color:var(--ember-light);}
+  .edit-bottom .eb-count .v{font-weight:600;color:var(--bone);min-width:16px;text-align:center;}
+  .edit-bottom .spacer{flex:1;}
+  .edit-bottom .cancel-btn{padding:8px 18px;border-radius:8px;border:1px solid var(--border-light);background:transparent;color:var(--smoke);font-size:13px;cursor:pointer;transition:all .15s;}
+  .edit-bottom .cancel-btn:hover{border-color:var(--border-hover);color:var(--bone);}
+  .edit-bottom .apply-btn{padding:8px 18px;border-radius:8px;border:none;background:var(--ember);color:var(--char);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;}
+  .edit-bottom .apply-btn:hover{background:var(--ember-light);}
+
+  /* ── Conversion modal ── */
+  .conv-modal{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:60;display:none;align-items:center;justify-content:center;padding:24px;}
+
+  .conv-modal.open{display:flex;}
+  .conv-modal-card{background:var(--char2);border:1px solid var(--border-light);border-radius:14px;width:480px;max-width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:slideUp .25s ease;}
+  .cm-head{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--border);}
+  .cm-head .cm-title{font-family:'Space Grotesk';font-size:15px;font-weight:700;color:var(--bone);flex:1;}
+  .cm-close{width:28px;height:28px;border-radius:7px;border:1px solid var(--border-light);background:transparent;color:var(--smoke);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
+  .cm-close:hover{border-color:var(--error);color:var(--error);}
+  .cm-body{padding:18px;}
+  .cm-thumb{width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--char4);display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
+  .cm-thumb img{width:100%;height:100%;object-fit:contain;}
+  .cm-thumb .model-placeholder{color:var(--smoke-dim);}
+  .cm-sub{font-size:12.5px;color:var(--smoke);line-height:1.5;margin-bottom:14px;}
+  .cm-label{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--smoke-dim);margin-bottom:6px;display:block;}
+  .cm-body textarea{width:100%;background:var(--char3);border:1px solid var(--border-light);border-radius:9px;color:var(--bone);font-family:'Inter';font-size:13px;padding:10px 12px;resize:vertical;min-height:58px;outline:none;transition:border .2s;}
+  .cm-body textarea:focus{border-color:var(--ember);}
+  .cm-row{display:flex;align-items:center;gap:10px;margin:14px 0;}
+  .cm-count{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--smoke);}
+  .cm-count button{width:26px;height:26px;border-radius:7px;border:1px solid var(--border-light);background:var(--char3);color:var(--smoke);font-size:14px;cursor:pointer;}
+  .cm-count button:hover{border-color:var(--ember);color:var(--ember-light);}
+  .cm-count .v{font-weight:600;color:var(--bone);min-width:16px;text-align:center;font-family:'JetBrains Mono';}
+  .cm-run{width:100%;padding:11px;border:none;border-radius:9px;background:var(--ember);color:var(--char);font-size:13.5px;font-weight:700;cursor:pointer;font-family:'Inter';transition:all .15s;}
+  .cm-run:hover{background:var(--ember-light);transform:translateY(-1px);}
+  .cm-run:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .cm-hint{font-size:11.5px;color:var(--smoke-dim);line-height:1.5;margin-top:12px;border-top:1px dashed var(--border-light);padding-top:10px;}
+
+  @keyframes pageIn{from{opacity:0;}to{opacity:1;}}
+  @keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-thumb{background:var(--char4);border-radius:6px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--border-hover);}
+</style>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <button class="back-arrow" onclick="window.location.href='workspace.html'">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+    </button>
+    <div class="page-title" id="pageTitle">Visuels</div>
+    <div class="spacer"></div>
+    <div class="proj-pill" id="projBadge">— <b id="projName">Aucun projet</b></div>
+  </div>
+
+  <div class="layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-label" data-i18n="atelier_title">ATELIER IA</div>
+      <div class="sidebar-item active" onclick="switchSection('visuels')" id="secVisuels">
+        <div class="si-icon cyan">🎨</div>
+        <span data-i18n="visuels">Visuels</span>
+      </div>
+      <div class="sidebar-item" onclick="switchSection('img2model')" id="secImg2Model">
+        <div class="si-icon amber">🧊</div>
+        <span data-i18n="image_to_3d">Image → 3D</span>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main">
+
+      <!-- Selection bar (Visuels) -->
+      <div class="sel-bar" id="selBar">
+        <span class="sel-count" id="selCount"><b>0</b> sélectionné(s)</span>
+        <div class="spacer"></div>
+        <button class="sel-btn" onclick="downloadSelected()">⭳</button>
+        <button class="sel-btn danger" onclick="deleteSelected()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          <span data-i18n="del_selection">Supprimer la sélection</span>
+        </button>
+        <button class="sel-btn x" onclick="clearSelection()">✕ <span data-i18n="cancel_sel">Annuler la sélection</span></button>
+      </div>
+
+      <!-- ═══════════ SECTION: VISUELS ═══════════ -->
+      <div class="section-visuels" id="secViewVisuels">
+        <div class="tree-canvas" id="treeCanvas">
+          <div class="tree-empty" id="treeEmpty">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <div class="te-title" data-i18n="no_generation">Aucune génération encore</div>
+            <div class="te-sub" data-i18n="no_generation_sub">Lance ta première génération pour commencer à remplir ton historique.</div>
+          </div>
+          <div id="treeContent" style="display:none;"></div>
+        </div>
+        <!-- Bottom gen bar -->
+        <div class="gen-bar">
+          <div class="gen-tabs">
+            <span class="gen-ai-badge" id="tabCodex" title="IA utilisée pour la génération : Codex">
+              <svg width="12" height="12" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"><path d="M50 10 L50 90" stroke-linecap="round"/><path d="M50 10 L20 75" stroke-linecap="round"/><path d="M50 10 L80 75" stroke-linecap="round"/></svg>
+              Codex
+            </span>
+            <button class="gen-tab active" id="tabMini" onclick="toggleMiniIcone()">Miniature</button>
+          </div>
+          <div class="gen-row">
+            <input class="gen-input" id="genPrompt" data-i18n-placeholder="placeholder_prompt" placeholder="Un samouraï dans une forêt enneigée…">
+            <div class="gen-count">
+              <button onclick="genCount(-1)">−</button>
+              <span class="count-val" id="genCountVal">3</span>
+              <button onclick="genCount(1)">+</button>
+            </div>
+            <button class="gen-send" id="genSend" onclick="doGenerate()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ SECTION: IMAGE → 3D ═══════════ -->
+      <div class="section-conversion" id="secViewImg2Model">
+        <div class="conv-header">
+          <h2 data-i18n="image_to_3d">Image → 3D</h2>
+          <p data-i18n="img2model_desc">Convertis n'importe quelle image en modèle 3D via Tripo3D. Choisis une image de la toolbox (assets/) pour démarrer.</p>
+        </div>
+        <div class="conv-status">
+          <div class="conv-badge">
+            <span class="dot red" id="tripoDot"></span>
+            <span data-i18n="tripo_key">Clé Tripo3D</span>
+            <span id="tripoKeyStatus" style="color:var(--error);" data-i18n="detection_in_progress">Vérification de la clé…</span>
+            <a href="api-keys.html" onclick="window.location.href='api-keys.html';return false;" data-i18n="open_settings">Ouvrir les réglages</a>
+          </div>
+          <div class="conv-badge">
+            <span class="dot green"></span>
+            <span data-i18n="toolbox_images">Images de la toolbox</span>
+            <b id="img2modelCount">—</b>
+          </div>
+          <div class="conv-badge" data-i18n="tripo_engine_3d">Moteur 3D : Tripo3D (PNG/JPG → FBX)</div>
+        </div>
+        <div class="conv-search">
+          <input type="text" id="img2modelSearch" placeholder="Rechercher une image (en anglais)…" oninput="filterConversion('img2model')" data-i18n-placeholder="search_image">
+        </div>
+        <div class="conv-grid" id="img2modelGrid"></div>
+      </div>
+
+      <!-- Edit modal -->
+      <div class="edit-modal" id="editModal">
+        <div class="em-label" data-i18n="describe_edit">DÉCRIS LA MODIFICATION À APPLIQUER (OBLIGATOIRE)</div>
+        <textarea id="editText" data-i18n-placeholder="edit_placeholder" placeholder="Ex : remplace le ciel par un coucher de soleil dans la zone entourée…"></textarea>
+        <div class="edit-ref" onclick="document.getElementById('refInput').click()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <span data-i18n="attach_ref">Joindre des images de référence (coller, déposer ou cliquer)</span>
+          <input type="file" id="refInput" accept="image/*" multiple style="display:none;" onchange="handleRefFiles(this.files)">
+        </div>
+        <div id="refPreview" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"></div>
+        <div class="edit-bottom">
+          <div class="eb-count">
+            <span data-i18n="num_images">NOMBRE D'IMAGES</span>
+            <button onclick="editCount(-1)">−</button>
+            <span class="v" id="editCountVal">5</span>
+            <button onclick="editCount(1)">+</button>
+          </div>
+          <div class="spacer"></div>
+          <button class="cancel-btn" onclick="closeEditModal()" data-i18n="cancel">Annuler</button>
+          <button class="apply-btn" onclick="applyEdit()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <span data-i18n="apply_edit">Appliquer la modification</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Conversion modal -->
+      <div class="conv-modal" id="convModal">
+        <div class="conv-modal-card">
+          <div class="cm-head">
+            <div class="cm-title" id="cmTitle">Conversion</div>
+            <button class="cm-close" onclick="closeConvModal()">×</button>
+          </div>
+          <div class="cm-body">
+            <div class="cm-thumb" id="cmThumb">
+              <canvas id="cmViewCanvas" style="display:none;width:100%;height:100%;"></canvas>
+            </div>
+            <div class="cm-sub" id="cmSub"></div>
+            <label class="cm-label">Description (optionnelle)</label>
+            <textarea id="cmPrompt" placeholder="Ex : une voiture de sport rouge dans un hangar…"></textarea>
+            <div class="cm-row">
+              <div class="cm-count">
+                <button onclick="convCount(-1)">−</button>
+                <span class="v" id="cmCountVal">1</span>
+                <button onclick="convCount(1)">+</button>
+              </div>
+              <span style="font-size:12px;color:var(--smoke-dim);">résultat(s)</span>
+              <div class="spacer"></div>
+            </div>
+            <button class="cm-run" id="cmRunBtn" onclick="runConversion()">Lancer la conversion</button>
+            <div class="cm-hint" id="cmHint"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /layout -->
+
+  <!-- PREVIEW OVERLAY -->
+  <div class="preview-overlay" id="previewOverlay">
+    <div class="preview-top">
+      <img id="previewImg" src="">
+      <button class="close-btn" onclick="closePreview()">×</button>
+    </div>
+    <div class="preview-actions">
+      <div class="pa-count">
+        <button onclick="previewCount(-1)">−</button>
+        <span class="val" id="previewCountVal">3</span>
+        <button onclick="previewCount(1)">+</button>
+      </div>
+      <button class="pa-btn" onclick="openVariantsFromPreview()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span data-i18n="media_variants">Variantes</span>
+      </button>
+      <button class="pa-btn" onclick="openEditFromPreview()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span data-i18n="media_edit">Éditer</span>
+      </button>
+      <button class="pa-btn heart" id="favBtn" onclick="toggleFav()">♡</button>
+      <button class="pa-btn dl" onclick="downloadPreview()">⭳ <span data-i18n="media_download">Télécharger</span></button>
+      <button class="pa-btn danger" onclick="deletePreview()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+      </button>
+    </div>
+  </div>
+
+<script src="./lib/i18n.js"></script>
+<script src="./lib/three.min.js"></script>
+<script src="./lib/OrbitControls.js"></script>
+<script src="./lib/GLTFLoader.js"></script>
+<script src="./lib/FBXLoader.js"></script>
+<script>
+  // ── Session guard ──
+  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
+  // ── Theme ──
+  (function(){ try { var s = JSON.parse(localStorage.getItem('forge_settings') || '{}'); if (s.theme === 'light') document.documentElement.classList.add('light-theme'); } catch(e){} })();
+
+  // ── State ──
+  const KIND_META = {
+    thumb:     { label: 'Miniature', labelEN: 'Thumbnail' },
+    icon:      { label: 'Icône',     labelEN: 'Icon' },
+    img2model: { label: '2D → modèle 3D', labelEN: '2D → 3D' }
+  };
+  let state = {
+    projectPath: null,
+    section: 'visuels',       // visuels | img2model
+    tab: 'codex',             // codex | icone  (Miniature/Icône toggle)
+    kind: 'thumb',            // thumb | icon  (active kind for Visuels)
+    genCount: 3,
+    editCount: 5,
+    previewCount: 3,
+    data: { folders: {}, categories: {} },
+    selected: [],
+    previewItem: null,
+    polling: null,
+    agentSession: null,
+    refFiles: [],
+    // Conversion asset caches
+    img2modelAssets: [],
+    img2modelFiltered: []
+  };
+
+  // ── Init ──
+  async function init(){
+    if(window.forgeAPI && window.forgeAPI.getActiveProject){
+      try{
+        const res = await window.forgeAPI.getActiveProject();
+        if(res && res.project && res.project.path){
+          state.projectPath = res.project.path;
+          document.getElementById('projName').textContent = res.project.name || '—';
+          await refresh();
+        }
+      }catch(e){}
+    }
+    await loadTripoKey();
+    await loadConversionAssets();
+  }
+
+  async function refresh(){
+    if(!state.projectPath || !window.forgeAPI.mediaListFiles) return;
+    const data = await window.forgeAPI.mediaListFiles(state.projectPath);
+    state.data = data || { folders: {}, categories: {} };
+    renderTree();
+  }
+
+  // ── Section switching ──
+  function switchSection(sec){
+    state.section = sec;
+    document.querySelectorAll('.sidebar-item').forEach(x=>x.classList.remove('active'));
+    const map = { visuels: 'secVisuels', img2model: 'secImg2Model' };
+    const el = document.getElementById(map[sec]);
+    if(el) el.classList.add('active');
+    // Show/hide views
+    document.getElementById('secViewVisuels').style.display = sec==='visuels'?'flex':'none';
+    document.getElementById('secViewImg2Model').classList.toggle('active', sec==='img2model');
+    // Page title
+    const titles = { visuels:'Visuels', img2model:'Image → 3D' };
+    document.getElementById('pageTitle').textContent = titles[sec] || 'Visuels';
+    clearSelection();
+    closePreview();
+    closeEditModal();
+    if(sec==='visuels') renderTree();
+  }
+
+  // ── Tab: Miniature ↔ Icône (Codex est un indicateur, pas un onglet) ──
+  function toggleMiniIcone(){
+    if(state.kind==='thumb'){
+      state.kind = 'icon';
+      state.tab = 'icone';
+      document.getElementById('tabMini').textContent = 'Icône';
+      document.getElementById('tabMini').classList.add('active');
+    } else {
+      state.kind = 'thumb';
+      state.tab = 'codex';
+      document.getElementById('tabMini').textContent = 'Miniature';
+      document.getElementById('tabMini').classList.remove('active');
+    }
+  }
+
+  // ── Count controls ──
+  function genCount(d){ state.genCount=Math.max(1,Math.min(8,state.genCount+d)); document.getElementById('genCountVal').textContent=state.genCount; }
+  function editCount(d){ state.editCount=Math.max(1,Math.min(8,state.editCount+d)); document.getElementById('editCountVal').textContent=state.editCount; }
+  function previewCount(d){ state.previewCount=Math.max(1,Math.min(8,state.previewCount+d)); document.getElementById('previewCountVal').textContent=state.previewCount; }
+
+  // ── Render tree (Visuels) ──
+  function renderTree(){
+    const content = document.getElementById('treeContent');
+    const empty = document.getElementById('treeEmpty');
+    const categories = state.data.categories || {};
+    const allItems = [];
+    for(const kind of ['thumb','icon']){
+      const cat = categories[kind];
+      if(!cat || !cat.items) continue;
+      for(const item of cat.items){
+        allItems.push({kind, item});
+      }
+    }
+    if(!allItems.length){
+      empty.style.display='flex';
+      content.style.display='none';
+      return;
+    }
+    empty.style.display='none';
+    content.style.display='block';
+    content.innerHTML = '';
+    for(const {kind, item} of allItems){
+      const group = document.createElement('div');
+      group.className = 'tree-group';
+      const baseRow = document.createElement('div');
+      baseRow.className = 'tree-row';
+      baseRow.appendChild(buildCard(kind, item, null));
+      group.appendChild(baseRow);
+      if(item.variants && item.variants.length){
+        const conn = document.createElement('div');
+        conn.className = 'tree-connectors';
+        conn.innerHTML = '<div class="line-v" style="left:50%;"></div>';
+        group.appendChild(conn);
+        const vRow = document.createElement('div');
+        vRow.className = 'tree-row';
+        for(const v of item.variants) vRow.appendChild(buildCard(kind, item, v));
+        group.appendChild(vRow);
+      }
+      content.appendChild(group);
+    }
+  }
+
+  function buildCard(kind, item, variant){
+    const entry = variant || item;
+    const sel = state.selected.find(s=>s.kind===kind && s.itemId===item.id && (variant ? s.variantId===variant.id : !s.variantId));
+    const card = document.createElement('div');
+    card.className = 'tree-card' + (sel ? ' selected':'');
+    const files = entry.files || [];
+    const imgFile = files.find(f=>/\.(png|jpe?g|webp|svg)$/i.test(f));
+    if(imgFile){
+      const img = document.createElement('img');
+      img.alt = entry.name || '';
+      card.appendChild(img);
+      if(window.forgeAPI.mediaPreview && state.projectPath){
+        window.forgeAPI.mediaPreview(state.projectPath, imgFile).then(r=>{
+          if(r && r.dataUrl) img.src = r.dataUrl;
+        });
+      }
+    } else {
+      const ph = document.createElement('div');
+      ph.style.cssText='width:150px;height:100px;display:flex;align-items:center;justify-content:center;color:var(--smoke-dim);font-size:12px;background:var(--char3);';
+      card.appendChild(ph);
+    }
+    if(!variant){
+      const badge = document.createElement('div');
+      badge.className = 'tc-badge base';
+      badge.textContent = 'Base';
+      card.appendChild(badge);
+    }
+    card.onclick = (e)=>{
+      if(e.shiftKey || e.ctrlKey) toggleSelect(kind, item.id, variant ? variant.id : null);
+      else openPreview(kind, item, variant);
+    };
+    card.oncontextmenu = (e)=>{ e.preventDefault(); toggleSelect(kind, item.id, variant ? variant.id : null); };
+    return card;
+  }
+
+  // ── Selection ──
+  function toggleSelect(kind, itemId, variantId){
+    const idx = state.selected.findIndex(s=>s.kind===kind && s.itemId===itemId && s.variantId===variantId);
+    if(idx>=0) state.selected.splice(idx,1);
+    else state.selected.push({kind, itemId, variantId});
+    updateSelBar();
+    renderTree();
+  }
+  function clearSelection(){ state.selected=[]; updateSelBar(); renderTree(); }
+  function updateSelBar(){
+    const bar = document.getElementById('selBar');
+    const n = state.selected.length;
+    bar.classList.toggle('show', n>0);
+    document.getElementById('selCount').innerHTML = '<b>'+n+'</b> '+(n===1?'sélectionné':'sélectionné(s)');
+  }
+  async function deleteSelected(){
+    if(!state.projectPath || !state.selected.length) return;
+    if(!confirm('Supprimer les éléments sélectionnés ?')) return;
+    for(const s of state.selected) await window.forgeAPI.mediaDelete(state.projectPath, s.kind, s.itemId, s.variantId, null);
+    clearSelection();
+    await refresh();
+  }
+  async function downloadSelected(){
+    if(!state.selected.length) return;
+    const s = state.selected[0];
+    const cat = (state.data.categories[s.kind]||{});
+    const item = (cat.items||[]).find(i=>i.id===s.itemId);
+    if(item && item.files && item.files.length) await window.forgeAPI.mediaDownload(state.projectPath, item.files[0]);
+  }
+
+  // ── Preview overlay ──
+  function openPreview(kind, item, variant){
+    state.previewItem = { kind, itemId: item.id, variantId: variant ? variant.id : null };
+    const entry = variant || item;
+    const files = entry.files || [];
+    const imgFile = files.find(f=>/\.(png|jpe?g|webp|svg)$/i.test(f));
+    const img = document.getElementById('previewImg');
+    if(imgFile && window.forgeAPI.mediaPreview){
+      window.forgeAPI.mediaPreview(state.projectPath, imgFile).then(r=>{ if(r && r.dataUrl) img.src = r.dataUrl; });
+    } else { img.src = ''; }
+    document.getElementById('previewOverlay').classList.add('open');
+  }
+  function closePreview(){ document.getElementById('previewOverlay').classList.remove('open'); state.previewItem = null; }
+  function toggleFav(){ const b=document.getElementById('favBtn'); b.classList.toggle('liked'); b.textContent=b.classList.contains('liked')?'♥':'♡'; }
+  async function downloadPreview(){
+    if(!state.previewItem || !state.projectPath) return;
+    const entry = getEntry(state.previewItem);
+    if(entry && entry.files && entry.files.length) await window.forgeAPI.mediaDownload(state.projectPath, entry.files[0]);
+  }
+  async function deletePreview(){
+    if(!state.previewItem || !state.projectPath) return;
+    if(!confirm('Supprimer cet élément ?')) return;
+    await window.forgeAPI.mediaDelete(state.projectPath, state.previewItem.kind, state.previewItem.itemId, state.previewItem.variantId, null);
+    closePreview();
+    await refresh();
+  }
+
+  // ── Edit modal ──
+  function openEditModal(){ document.getElementById('editModal').classList.add('open'); }
+  function closeEditModal(){ document.getElementById('editModal').classList.remove('open'); state.refFiles=[]; document.getElementById('editText').value=''; document.getElementById('refPreview').innerHTML=''; }
+  function handleRefFiles(files){
+    state.refFiles = Array.from(files);
+    const prev = document.getElementById('refPreview');
+    prev.innerHTML = '';
+    for(const f of files){
+      const thumb = document.createElement('div');
+      thumb.style.cssText='width:48px;height:48px;border-radius:6px;overflow:hidden;border:1px solid var(--border-light);';
+      const img = document.createElement('img');
+      img.style.cssText='width:100%;height:100%;object-fit:cover;';
+      img.src = URL.createObjectURL(f);
+      thumb.appendChild(img);
+      prev.appendChild(thumb);
+    }
+  }
+  function openVariantsFromPreview(){ closePreview(); openEditModal(); document.getElementById('editText').focus(); }
+  function openEditFromPreview(){ closePreview(); openEditModal(); document.getElementById('editText').focus(); }
+  async function applyEdit(){
+    const prompt = document.getElementById('editText').value.trim();
+    if(!prompt){ alert('Décris la modification à appliquer.'); return; }
+    if(!state.previewItem || !state.projectPath) return;
+    closeEditModal();
+    const opts = { projectPath:state.projectPath, kind:state.previewItem.kind, itemId:state.previewItem.itemId, variantId:state.previewItem.variantId, prompt, count:state.editCount };
+    const res = await window.forgeAPI.mediaVariants(opts);
+    if(res && res.error){ alert(res.error); return; }
+    if(res && res.sessionId){ state.agentSession=res.sessionId; startAgentScan(state.previewItem.itemId, state.previewItem.kind, state.previewItem.variantId); }
+    else startPolling();
+    await refresh();
+  }
+
+  // ── Agent scan ──
+  function startAgentScan(itemId, kind, variantId){
+    const scan = async () => {
+      try{
+        const st = await window.forgeAPI.getAgentStatus(state.agentSession);
+        if(st && (st.done || st.status==='done' || st.status==='exited')){
+          const raw = (await window.forgeAPI.mediaListFiles(state.projectPath)).folders[kind]||[];
+          await window.forgeAPI.mediaAttachFiles(state.projectPath, kind, itemId, variantId||null, raw.map(f=>f.name));
+          await refresh(); return;
+        }
+        if(st && st.status==='failed') return;
+        setTimeout(scan, 2500);
+      }catch(e){ console.error(e); }
+    };
+    scan();
+  }
+
+  // ── Polling (Tripo) ──
+  let pollTimer = null;
+  function startPolling(){
+    if(state.polling) return;
+    state.polling=true;
+    pollTimer && clearInterval(pollTimer);
+    pollTimer = setInterval(async ()=>{
+      if(!state.projectPath) return;
+      try{ const r = await window.forgeAPI.mediaPoll(state.projectPath); if(r && r.done){ clearInterval(pollTimer); state.polling=false; } await refresh(); }catch(e){}
+    }, 4000);
+  }
+
+  // ── Generate ──
+  async function doGenerate(){
+    const prompt = document.getElementById('genPrompt').value.trim();
+    if(!prompt) return;
+    if(!state.projectPath){ alert('Aucun projet actif.'); return; }
+    const kind = state.kind; // thumb or icon
+    const name = prompt.slice(0,40);
+    const created = await window.forgeAPI.mediaCreateItem(state.projectPath, kind, name);
+    if(!created || created.error){ alert(created.error||'Erreur'); return; }
+    const opts = { projectPath:state.projectPath, kind, prompt, count:state.genCount, itemId:created.item.id };
+    const res = await window.forgeAPI.mediaGenerate(opts);
+    if(res && res.error){ alert(res.error); return; }
+    if(res && res.sessionId){ state.agentSession=res.sessionId; startAgentScan(created.item.id, kind, null); }
+    else startPolling();
+    await refresh();
+  }
+
+  // ── Conversion: clé Tripo3D + assets de la toolbox ──
+  async function loadTripoKey(){
+    if(!window.forgeAPI.getApiKeys) return;
+    try{
+      const keys = await window.forgeAPI.getApiKeys();
+      const key = keys && keys.tripo;
+      const dot = document.getElementById('tripoDot');
+      const status = document.getElementById('tripoKeyStatus');
+      if(key){
+        dot.className = 'dot green';
+        status.textContent = 'Clé configurée ✓';
+        status.style.color = 'var(--success)';
+      } else {
+        dot.className = 'dot red';
+        status.textContent = 'Aucune clé Tripo3D. Configure-la dans les réglages.';
+        status.style.color = 'var(--error)';
+      }
+    }catch(e){}
+  }
+
+  function flattenTree(tree){
+    const files=[];
+    (tree||[]).forEach(function(n){
+      if(n.type==='file') files.push(n.path||n.name);
+      else if(n.children) files.push.apply(files, flattenTree(n.children));
+    });
+    return files;
+  }
+
+  async function loadConversionAssets(){
+    if(!state.projectPath || !window.forgeAPI.listProjectFiles) return;
+
+    const IMG_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+
+    let localImages = [];
+
+    try{
+      const res = await window.forgeAPI.listProjectFiles(state.projectPath, 'assets');
+      localImages = (res.files||[]).concat(flattenTree(res.tree||[])).filter(f=>IMG_RE.test(f));
+    }catch(e){ console.log('Toolbox images load error:', e); }
+
+    let libImages = [];
+    if(window.forgeAPI.libraryList){
+      try{
+        const libRes = await window.forgeAPI.libraryList();
+        const items = libRes.items || [];
+        libImages = items.filter(it=> it.asset_type==='image' && IMG_RE.test(it.file_name||''));
+      }catch(e){ console.log('Library load error:', e); }
+    }
+
+    state.img2modelAssets = localImages.map(function(f){
+      const rel = 'assets/' + f;
+      return { id: rel, name: String(f).split('/').pop(), path: rel, url: '', favorite: false, source: 'local' };
+    }).concat(libImages.map(function(it){
+      return { id: 'lib-'+it.file_name, name: it.file_name, path: it.public_url, url: it.public_url, favorite: false, source: 'library' };
+    }));
+    state.img2modelFiltered = [...state.img2modelAssets];
+    const elImg = document.getElementById('img2modelCount');
+    if(elImg) elImg.textContent = state.img2modelAssets.length + ' image(s)';
+    renderConversionGrid('img2model');
+  }
+
+  function filterConversion(){
+    const q = document.getElementById('img2modelSearch').value.toLowerCase();
+    state.img2modelFiltered = q ? state.img2modelAssets.filter(a=>a.name.toLowerCase().includes(q)) : [...state.img2modelAssets];
+    renderConversionGrid();
+  }
+
+  const MODEL_THUMB_SVG = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.7"><path d="M12 2l9 4.9V17L12 22l-9-5.1V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>';
+
+  function renderConversionGrid(){
+    const grid = document.getElementById('img2modelGrid');
+    const items = state.img2modelFiltered;
+    grid.innerHTML = '';
+    if(!items.length){
+      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--smoke-dim);padding:40px 0;font-size:13px;">Aucun asset trouvé.</div>';
+      return;
+    }
+    for(const asset of items){
+      const card = document.createElement('div');
+      card.className = 'conv-card';
+      card.innerHTML = '<img class="cc-img" alt="'+escHtml(asset.name)+'" style="display:none">';
+      const info = document.createElement('div');
+      info.className = 'cc-info';
+      const name = document.createElement('div');
+      name.className = 'cc-name';
+      name.textContent = asset.name || 'Asset';
+      info.appendChild(name);
+      card.appendChild(info);
+      card.onclick = () => openConversion('img2model', asset);
+      grid.appendChild(card);
+      const img = card.querySelector('img.cc-img');
+      if(img){
+        if(asset.source==='library' && asset.url){
+          img.src = asset.url; img.style.display = '';
+        } else if(window.forgeAPI.mediaPreview && state.projectPath){
+          window.forgeAPI.mediaPreview(state.projectPath, asset.path).then(r=>{
+            if(r && r.dataUrl){ img.src = r.dataUrl; img.style.display = ''; }
+            else img.parentNode.removeChild(img);
+          }).catch(()=>{ if(img.parentNode) img.parentNode.removeChild(img); });
+        } else { img.parentNode.removeChild(img); }
+      }
+    }
+  }
+
+  // ── Conversion modal ──
+  let convPending = null;
+  let convCountVal = 1;
+
+  function openConversion(section, asset){
+    if(!state.projectPath){ alert('Aucun projet actif.'); return; }
+    convPending = { section, asset };
+    convCountVal = 1;
+    document.getElementById('cmCountVal').textContent = convCountVal;
+    const isImg = section==='img2model';
+    const modal = document.getElementById('convModal');
+    document.getElementById('cmTitle').textContent = isImg ? 'Image → Modèle 3D' : 'Modèle 3D → Image 2D';
+    document.getElementById('cmSub').innerHTML = isImg
+      ? 'Tripo3D analyse <b>' + escHtml(asset.name||'cette image') + '</b> et génère un modèle 3D à partir d\'elle.'
+      : 'Tripo3D rend <b>' + escHtml(asset.name||'ce modèle') + '</b> en image(s) 2D (plusieurs angles).';
+    document.getElementById('cmPrompt').placeholder = isImg
+      ? 'Ex : une voiture de sport rouge, vu de 3/4…'
+      : 'Ex : fond studio noir, légèrement de dessus…';
+    document.getElementById('cmRunBtn').textContent = isImg ? 'Convertir en 3D' : 'Lancer le rendu en 2D';
+    document.getElementById('cmHint').textContent = isImg
+      ? 'Le modèle 3D généré sera enregistré au format FBX dans conversions/ puis détecté par Forge (notification envoyée).'
+      : 'Le modèle est envoyé à Tripo3D qui produit une image 2D mise en scène. Enregistrée dans conversions/ puis détectée par Forge (notification envoyée).';
+    const thumb = document.getElementById('cmThumb');
+    const canvas = document.getElementById('cmViewCanvas');
+    cmStopModelPreview();
+    thumb.querySelectorAll('img, .model-placeholder').forEach(el=>el.remove());
+    canvas.style.display = 'none';
+    if(isImg){
+      const im = document.createElement('img');
+      thumb.appendChild(im);
+      if(asset.source==='library' && asset.url){
+        im.src = asset.url;
+      } else if(window.forgeAPI.mediaPreview && state.projectPath){
+        window.forgeAPI.mediaPreview(state.projectPath, asset.path).then(r=>{
+          if(r && r.dataUrl) im.src = r.dataUrl;
+          else im.remove();
+        }).catch(()=>im.remove());
+      } else im.remove();
+    } else {
+      const ext = String(asset.name||'').split('.').pop().toLowerCase();
+      if((ext==='fbx' || ext==='glb' || ext==='obj') && typeof THREE !== 'undefined'){
+        canvas.style.display = 'block';
+        cmShowModelPreview(canvas, asset);
+      } else {
+        cmModelPlaceholder(asset, 'Aucun aperçu pour ce format (' + ext + ').');
+      }
+    }
+    modal.classList.add('open');
+  }
+
+  function closeConvModal(){
+    cmStopModelPreview();
+    document.getElementById('convModal').classList.remove('open');
+    convPending = null;
+  }
+
+  // ── Aperçu 3D du modèle (FBX/GLB) dans le modal ──
+  let cmViewer = null;
+  function cmStopModelPreview(){
+    if(cmViewer){ try{ cmViewer.stop(); }catch(e){} cmViewer = null; }
+  }
+
+  function cmModelPlaceholder(asset, sub){
+    const canvas = document.getElementById('cmViewCanvas');
+    if(canvas) canvas.style.display = 'none';
+    const thumb = document.getElementById('cmThumb');
+    thumb.querySelectorAll('.model-placeholder').forEach(el=>el.remove());
+    const ph = document.createElement('div');
+    ph.className = 'model-placeholder';
+    ph.innerHTML = MODEL_THUMB_SVG
+      + '<div style="margin-top:6px">' + escHtml(asset.name||'') + '</div>'
+      + (sub ? '<div style="margin-top:4px;font-size:11px;color:var(--smoke-dim);">' + escHtml(sub) + '</div>' : '');
+    thumb.appendChild(ph);
+  }
+
+  function b64ToArrayBuffer(b64){
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+    return buf.buffer;
+  }
+  function b64ToText(b64){
+    const s = atob(b64);
+    try{ return decodeURIComponent(escape(s)); }catch(e){ return s; }
+  }
+
+  // Parser OBJ minimaliste (positions + faces, triplets v/vt/vn, indices positifs ou négatifs).
+  function parseOBJToGroup(text){
+    const P = [];
+    const positions = [];
+    const lines = text.split(/\r?\n/);
+    for(let i=0;i<lines.length;i++){
+      const s = lines[i].trim();
+      if(!s || s[0]==='#') continue;
+      const p = s.split(/\s+/);
+      const c = p[0];
+      if(c === 'v'){
+        P.push(parseFloat(p[1])||0, parseFloat(p[2])||0, parseFloat(p[3])||0);
+      } else if(c === 'f'){
+        const ids = [];
+        let ok = true;
+        for(let k=1;k<p.length;k++){
+          const vi = parseInt(p[k].split('/')[0], 10);
+          if(isNaN(vi)){ ok = false; break; }
+          ids.push(vi < 0 ? Math.floor(P.length/3) + vi : vi - 1);
+        }
+        if(!ok || ids.length < 3) continue;
+        for(let k=2;k<ids.length;k++){
+          for(const id of [ids[0], ids[k-1], ids[k]]){
+            positions.push(P[id*3]||0, P[id*3+1]||0, P[id*3+2]||0);
+          }
+        }
+      }
+    }
+    const group = new THREE.Group();
+    if(positions.length >= 9){
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      g.computeVertexNormals();
+      group.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+        color: 0xB18AE0, roughness: 0.6, metalness: 0.1, side: THREE.DoubleSide
+      })));
+    }
+    return group;
+  }
+
+  function cmShowModelPreview(canvas, asset){
+    const W = 480, H = 360;
+    canvas.width = W; canvas.height = H;
+    const exts = /\.(glb|gltf|fbx|obj)$/i;
+    const ext = String(asset.name||'').split('.').pop().toLowerCase();
+    if(!exts.test(asset.name||'') || typeof THREE === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x14110E);
+    const camera = new THREE.PerspectiveCamera(45, W/H, 0.1, 500);
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.0); dl.position.set(5,10,7); scene.add(dl);
+    const fl = new THREE.DirectionalLight(0xddeeff, 0.4); fl.position.set(-4,3,-3); scene.add(fl);
+    const controls = new THREE.OrbitControls(camera, canvas);
+    controls.enableDamping = true; controls.dampingFactor = 0.08;
+    controls.autoRotate = true; controls.autoRotateSpeed = 1.6;
+    let animId = null;
+    cmViewer = { stop(){ if(animId) cancelAnimationFrame(animId); try{ controls.dispose(); renderer.dispose(); }catch(e){} } };
+
+    function onModel(model){
+      try{
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const s = 2.4 / maxDim;
+        model.scale.setScalar(s);
+        model.position.sub(center.multiplyScalar(s));
+        if(ext === 'obj'){
+          model.traverse(function(child){ if(child.isMesh){ child.material = child.material || new THREE.MeshStandardMaterial({ color: 0xB18AE0, roughness: 0.6, metalness: 0.1 }); } });
+        } else {
+          model.traverse(function(child){
+            if(child.isMesh){
+              if(!child.material){
+                child.material = new THREE.MeshStandardMaterial({ color: 0xB18AE0, roughness: 0.6, metalness: 0.1 });
+              } else if(child.material.type && child.material.type !== 'MeshStandardMaterial'){
+                const col = child.material.color ? child.material.color.getHex() : 0xB18AE0;
+                child.material = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, metalness: 0.1, map: child.material.map || undefined });
+              }
+            }
+          });
+        }
+        scene.add(model);
+        camera.position.set(1.6, 1.2, 2.6);
+        controls.target.set(0, 0, 0);
+        function animate(){ animId = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+        animate();
+      }catch(e){ onErr(e); }
+    }
+
+    function onErr(e){
+      console.error('[Conv preview]', e);
+      cmStopModelPreview();
+      cmModelPlaceholder(asset, 'Chargement du modèle impossible.');
+    }
+
+    if(asset.source==='library' && asset.url){
+      fetch(asset.url).then(r=>r.arrayBuffer()).then(buf=>{
+        try{
+          if(ext === 'obj'){
+            const group = parseOBJToGroup(new TextDecoder().decode(buf));
+            onModel(group);
+          } else if(ext === 'glb' || ext === 'gltf'){
+            if(typeof THREE.GLTFLoader === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
+            new THREE.GLTFLoader().parse(buf, '', gltf=>onModel(gltf.scene), onErr);
+          } else {
+            if(typeof THREE.FBXLoader === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
+            const group = new THREE.FBXLoader().parse(buf, '');
+            onModel(group);
+          }
+        }catch(e){ onErr(e); }
+      }).catch(onErr);
+    } else if(!window.forgeAPI.mediaPreview || !state.projectPath){ cmModelPlaceholder(asset, ''); return; }
+    else {
+    window.forgeAPI.mediaPreview(state.projectPath, asset.path).then(r=>{
+      if(!r || !r.dataUrl){ onErr('no data'); return; }
+      const b64 = (r.dataUrl.split(',')[1] || '').trim();
+      if(!b64){ onErr('empty'); return; }
+      try{
+        if(ext === 'obj'){
+          const group = parseOBJToGroup(b64ToText(b64));
+          onModel(group);
+        } else if(ext === 'glb' || ext === 'gltf'){
+          if(typeof THREE.GLTFLoader === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
+          new THREE.GLTFLoader().parse(b64ToArrayBuffer(b64), '', gltf=>onModel(gltf.scene), onErr);
+        } else {
+          if(typeof THREE.FBXLoader === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
+          const group = new THREE.FBXLoader().parse(b64ToArrayBuffer(b64), '');
+          onModel(group);
+        }
+      }catch(e){ onErr(e); }
+    }).catch(onErr);
+    }
+  }
+
+  function convCount(d){
+    convCountVal = Math.min(8, Math.max(1, convCountVal + d));
+    document.getElementById('cmCountVal').textContent = convCountVal;
+  }
+
+  async function runConversion(){
+    if(!convPending){ return; }
+    const { asset } = convPending;
+    if(!state.projectPath){ alert('Aucun projet actif.'); return; }
+    const kind = 'img2model';
+    const prompt = document.getElementById('cmPrompt').value.trim()
+      || "Reproduire ce modèle à partir de l'image source";
+    document.getElementById('cmRunBtn').disabled = true;
+    const name = (asset.name||'asset').replace(/\.[^.]+$/,'');
+    const created = await window.forgeAPI.mediaCreateItem(state.projectPath, kind, name);
+    if(!created || created.error){
+      alert(created.error||'Erreur'); document.getElementById('cmRunBtn').disabled = false; return;
+    }
+    const opts = {
+      projectPath: state.projectPath,
+      kind: kind,
+      prompt: prompt,
+      count: convCountVal,
+      itemId: created.item.id,
+      baseImage: asset.path
+    };
+    const res = await window.forgeAPI.mediaGenerate(opts);
+    if(res && res.error){ alert(res.error); document.getElementById('cmRunBtn').disabled = false; return; }
+    closeConvModal();
+    startPolling();
+    await refresh();
+  }
+
+  // ── Helpers ──
+  function getEntry(p){
+    if(!p) return null;
+    const cat = (state.data.categories[p.kind]||{});
+    const item = (cat.items||[]).find(i=>i.id===p.itemId);
+    if(!item) return null;
+    if(p.variantId) return item.variants.find(v=>v.id===p.variantId) || null;
+    return item;
+  }
+  function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ── Keyboard ──
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Escape'){
+      if(document.getElementById('convModal').classList.contains('open')) closeConvModal();
+      else if(document.getElementById('previewOverlay').classList.contains('open')) closePreview();
+      else if(document.getElementById('editModal').classList.contains('open')) closeEditModal();
+    }
+  });
+
+  // ── Notifications (fin de génération médias) ──
+  // main.js diffuse 'agent-notification' sur toutes les fenêtres ; sur cette
+  // page on affiche un toast léger car la cloche vit dans workspace.html.
+  function showToast(msg, color){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--char3);border:1px solid '+(color||'var(--ember)')+';border-radius:8px;padding:8px 16px;font-size:12px;color:var(--bone);z-index:9999;pointer-events:none;animation:slideUp .2s ease;box-shadow:0 8px 24px rgba(0,0,0,.4);';
+    t.innerHTML=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},4200);
+  }
+  if(window.forgeAPI&&window.forgeAPI.onNotification){
+    window.forgeAPI.onNotification(function(data){
+      try{
+        const m=(data&&data.aiMessage)||'';
+        const plain=m.replace(/<[^>]+>/g,'').slice(0,120);
+        const c=(data&&data.agentColor)||'var(--ember)';
+        showToast('<span style="color:'+(data&&data.agentColor||'var(--ember-light)')+';font-weight:700;">● '+(data&&data.agentName||'Agent')+'</span> · '+plain, c);
+      }catch(e){}
+    });
+  }
+
+  initLang();
+  init();
+</script>
+</body>
+</html>

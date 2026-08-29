@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forge — Connexion</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E; --char2:#1C1712; --char3:#221C15;
+    --border:#2C2419; --border-light:#3A3024;
+    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
+    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
+    --ok:#5FBE7A; --warn:#E8B65E; --danger:#E9776B;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; padding:40px 16px;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.07), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(96,165,250,0.04), transparent);
+    animation:aurora 20s ease-in-out infinite alternate;
+  }
+  @keyframes aurora {
+    0%{transform:translate(0,0) scale(1);} 33%{transform:translate(2%,-1%) scale(1.02);}
+    66%{transform:translate(-1%,2%) scale(0.98);} 100%{transform:translate(1%,-2%) scale(1.01);}
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .back-link{
+    position:fixed; top:24px; left:28px; z-index:5;
+    font-size:13px; color:var(--smoke-dim); text-decoration:none; cursor:pointer;
+    display:flex; align-items:center; gap:7px; font-family:'Inter',sans-serif;
+  }
+  .back-link:hover{color:var(--ember-light);}
+  .logo-mark{
+    width:56px;height:56px;border-radius:14px; margin:0 auto 20px;
+    display:block;object-fit:contain;
+    box-shadow:0 0 40px -5px rgba(59,130,246,0.3);
+    animation:fadeInUp 0.5s ease forwards;
+  }
+  h1{font-family:'Space Grotesk',sans-serif; font-size:26px; text-align:center; margin-bottom:8px; animation:fadeInUp 0.5s 0.08s ease forwards; opacity:0;}
+  p.sub{color:var(--smoke); font-size:13.5px; text-align:center; margin-bottom:28px; max-width:340px; animation:fadeInUp 0.5s 0.15s ease forwards; opacity:0;}
+
+  .form-box{
+    width:400px; max-width:100%;
+    background:rgba(28,23,18,0.6); backdrop-filter:blur(24px) saturate(1.3); -webkit-backdrop-filter:blur(24px) saturate(1.3);
+    border:1px solid rgba(59,130,246,0.08); border-radius:18px;
+    padding:32px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.02);
+    animation:fadeInUp 0.5s 0.22s ease forwards; opacity:0;
+  }
+  .field{margin-bottom:14px;}
+  .field label{font-size:12px; color:var(--smoke-dim); display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;}
+  .field label .mono{font-size:10.5px; color:var(--ember-light);}
+  .field input{
+    width:100%; background:var(--char3); border:1px solid var(--border-light); border-radius:10px;
+    padding:11px 13px; color:var(--bone); font-family:'Inter',sans-serif; font-size:14px;
+    transition:all 0.2s ease;
+  }
+  .field input::placeholder{color:var(--smoke-dim);}
+  .field input:focus{outline:none; border-color:var(--ember); box-shadow:0 0 0 3px rgba(59,130,246,0.1), 0 4px 12px rgba(59,130,246,0.05); background:var(--char2);}
+
+  .submit-btn{
+    width:100%; padding:12px; border-radius:10px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char); font-weight:700; font-size:14px; font-family:'Inter',sans-serif;
+    margin-top:6px; position:relative; overflow:hidden;
+    box-shadow:0 4px 16px rgba(59,130,246,0.25); transition:all 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  .submit-btn:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 8px 28px rgba(59,130,246,0.35);}
+  .submit-btn:active{transform:translateY(0) scale(0.98);}
+  .submit-btn:disabled{opacity:0.5; cursor:not-allowed; transform:none !important;}
+
+  .divider{display:flex; align-items:center; gap:12px; margin:20px 0; color:var(--smoke-dim); font-size:11.5px;}
+  .divider::before,.divider::after{content:''; flex:1; height:1px; background:var(--border);}
+
+  .buy-btn{
+    width:100%; padding:12px; border-radius:10px; border:1px solid var(--ember-dim); cursor:pointer;
+    background:rgba(59,130,246,0.06); color:var(--ember-light); font-weight:600; font-size:13.5px; font-family:'Inter',sans-serif;
+    text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px;
+    transition:all .2s ease;
+  }
+  .buy-btn:hover{background:rgba(59,130,246,0.12); border-color:var(--ember);}
+
+  .switch-mode{text-align:center; margin-top:16px; font-size:13px; color:var(--smoke-dim);}
+  .switch-mode a{color:var(--ember-light); cursor:pointer; text-decoration:underline;}
+
+  .err-box{
+    background:rgba(233,119,107,0.08); border:1px solid rgba(233,119,107,0.3); color:var(--danger);
+    border-radius:10px; padding:10px 12px; font-size:12.5px; margin-bottom:14px; display:none;
+  }
+  .err-box.show{display:block; animation:shake 0.4s ease;}
+  @keyframes shake{0%,100%{transform:translateX(0);} 25%{transform:translateX(-4px);} 75%{transform:translateX(4px);}}
+
+  .ok-box{
+    background:rgba(95,190,122,0.08); border:1px solid rgba(95,190,122,0.3); color:var(--ok);
+    border-radius:10px; padding:10px 12px; font-size:12.5px; margin-bottom:14px; display:none;
+  }
+  .ok-box.show{display:block;}
+
+  .hint{font-size:12px; color:var(--smoke-dim); margin-top:10px; text-align:center;}
+  .hint a{color:var(--ember-light);}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body>
+
+  <a class="back-link" href="index.html">← Retour à l'accueil</a>
+
+  <img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">
+  <h1 id="formTitle">Connexion à ton compte</h1>
+  <p class="sub" id="formSub">Retrouve tes projets, tes clés API et ton historique de création.</p>
+
+  <div class="form-box">
+    <div class="err-box" id="errBox"></div>
+    <div class="ok-box" id="okBox"></div>
+
+    <form id="authForm" autocomplete="on">
+      <div class="field" id="licenseField">
+        <label>Clé de licence <span class="mono">reçue par email</span></label>
+        <input type="text" id="licenseKey" placeholder="Saisis ta clé de licence — ex. XXXXXXXX-..." autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="ton@email.com" autocomplete="email" required>
+      </div>
+
+      <div class="field">
+        <label>Mot de passe</label>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">Se connecter</button>
+    </form>
+
+    <div class="divider">Pas encore de licence ?</div>
+    <a class="buy-btn" href="https://forgestudioapp.lemonsqueezy.com/checkout/buy/1115fdef-6647-4d87-9f22-db0753096b5c" target="_blank" rel="noopener">Acheter Forge — 49 €</a>
+
+    <div class="switch-mode">
+      <span id="switchPrompt">Pas de compte ?</span> <a id="switchLink">Créer un compte</a>
+    </div>
+    <p class="hint">Tu téléchargeras Forge après avoir payé — <a href="install.html">voir l'installation</a></p>
+  </div>
+
+<script>
+  // ============================================
+  // Connexion Forge — côté navigateur (site web).
+  // Réplique le flux de l'app : licence Lemon
+  // Squeezy + compte Supabase, via fetch direct.
+  // ============================================
+  var SUPABASE_URL = 'https://quzbsdcjtkmdeuiyyhnv.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1emJzZGNqdGttZGV1aXl5aG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjAwNTksImV4cCI6MjEwMTU5NjA1OX0.ToM71JAeMxTQNFatqcnSPK2xLQIye8vRU1nDmoyyMbE';
+  var LICENSE_API = 'https://api.lemonsqueezy.com/v1/licenses';
+  var INSTANCE_NAME = 'forge-web';
+  var MODE = 'signin'; // 'signin' | 'signup'
+
+  var titleEl = document.getElementById('formTitle');
+  var subEl = document.getElementById('formSub');
+  var submitBtn = document.getElementById('submitBtn');
+  var licenseField = document.getElementById('licenseField');
+  var licenseKeyInput = document.getElementById('licenseKey');
+  var errBox = document.getElementById('errBox');
+  var okBox = document.getElementById('okBox');
+  var switchLink = document.getElementById('switchLink');
+  var switchPrompt = document.getElementById('switchPrompt');
+
+  function setMode(mode) {
+    MODE = mode;
+    licenseField.style.display = mode === 'signup' ? 'block' : 'none';
+    if (mode === 'signup') {
+      titleEl.textContent = 'Crée ton compte Forge';
+      subEl.textContent = 'Il te faut une licence achetée. Toutes les mises à jour sont incluses.';
+      submitBtn.textContent = 'Créer mon compte';
+      switchPrompt.textContent = 'Déjà un compte ?';
+      switchLink.textContent = 'Se connecter';
+    } else {
+      titleEl.textContent = 'Connexion à ton compte';
+      subEl.textContent = 'Retrouve tes projets, tes clés API et ton historique de création.';
+      submitBtn.textContent = 'Se connecter';
+      switchPrompt.textContent = 'Pas de compte ?';
+      switchLink.textContent = 'Créer un compte';
+    }
+  }
+  switchLink.addEventListener('click', function (e) {
+    e.preventDefault();
+    hideErr(); hideOk();
+    setMode(MODE === 'signin' ? 'signup' : 'signin');
+  });
+
+  function showErr(msg) { okBox.classList.remove('show'); errBox.textContent = msg; errBox.classList.add('show'); }
+  function hideErr() { errBox.classList.remove('show'); }
+  function showOk(msg) { errBox.classList.remove('show'); okBox.textContent = msg; okBox.classList.add('show'); }
+  function hideOk() { okBox.classList.remove('show'); }
+
+  // Activation de la licence sans atteindre supabase si invalide.
+  async function validateLicense(licenseKey) {
+    var res = await fetch(LICENSE_API + '/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ license_key: licenseKey, instance_name: INSTANCE_NAME })
+    });
+    var data = await res.json().catch(function () { return {}; });
+    return { ok: res.ok, data: data };
+  }
+
+  function licenseIsActive(data) {
+    return !!(data && data.activated === true && data.license_key && data.license_key.status === 'active');
+  }
+
+  function licenseError(data) {
+    var raw = data && (data.error || data.message);
+    if (typeof raw === 'string') return raw;
+    if (raw && typeof raw === 'object') return raw.message || raw.key || 'Clé de licence invalide.';
+    return 'Clé de licence invalide.';
+  }
+
+  document.getElementById('authForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    hideErr(); hideOk();
+
+    var email = document.getElementById('email').value.trim();
+    var password = document.getElementById('password').value;
+    if (!email || !password) { showErr('Renseigne ton email et ton mot de passe.'); return; }
+
+    var licenseKey = MODE === 'signup' ? document.getElementById('licenseKey').value.trim() : '';
+
+    // Mode signup : valide d'abord la licence Lemon Squeezy.
+    if (MODE === 'signup') {
+      if (!licenseKey) { showErr('Une licence doit être achetée pour créer un compte.'); return; }
+      try {
+        var lic = await validateLicense(licenseKey);
+        if (!(lic.ok && licenseIsActive(lic.data))) {
+          showErr('Clé de licence invalide ou déjà utilisée sur une autre machine : ' + licenseError(lic.data));
+          return;
+        }
+      } catch (ex) {
+        showErr('Impossible de valider la licence (hors-ligne ?) : ' + ex.message);
+        return;
+      }
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = MODE === 'signup' ? 'Création…' : 'Connexion…';
+
+    try {
+      var endpoint = MODE === 'signup'
+        ? SUPABASE_URL + '/auth/v1/signup'
+        : SUPABASE_URL + '/auth/v1/token?grant_type=password';
+      var response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, password: password })
+      });
+      var data = await response.json();
+      if (!response.ok) {
+        showErr(data.error_description || data.msg || 'Erreur de connexion.');
+        return;
+      }
+      if (MODE === 'signup') {
+        if (data.identities && data.identities.length === 0) {
+          showErr('Ce compte existe déjà avec cet email — connecte-toi.');
+          setMode('signin');
+          return;
+        }
+        showOk('Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi.');
+        setMode('signin');
+      } else {
+        // Connexion réussie : l'utilisateur est redirigé vers l'installation locale.
+        showOk('Bienvenue ' + (data.user && data.user.email ? data.user.email : email) + ' — redirection dans un instant…');
+        setTimeout(function () { window.location.href = 'install.html'; }, 1600);
+      }
+    } catch (ex) {
+      showErr('Erreur réseau : ' + ex.message);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = MODE === 'signup' ? 'Créer mon compte' : 'Se connecter';
+    }
+  });
+</script>
+</body>
+</html>

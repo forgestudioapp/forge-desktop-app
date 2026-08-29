@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<title>Forge — Cles API Medias</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E; --char2:#1C1712; --char3:#221C15;
+    --border:#2C2419; --border-light:#3A3024;
+    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
+    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
+    --success:#5FBE7A; --success-dim:#233327;
+    --error:#E35B5B; --error-dim:#2A1515; --error-border:#3A1E1E;
+    --info:#5B9BE3; --info-dim:#151E2A;
+  }
+  html.light-theme{
+    --char:#F5F2ED; --char2:#EDEAE4; --char3:#E5E1DA; --char4:#DDD9D1;
+    --border:#D5D0C8; --border-light:#C8C2B8; --border-hover:#B8B2A8;
+    --bone:#1A1612; --smoke:#6B6255; --smoke-dim:#948B7C;
+    --ember:#2563EB; --ember-light:#60A5FA; --ember-dim:#DBEAFE;
+    --success:#3A9A55; --success-dim:#D4F0DC;
+    --error:#CC3333; --error-dim:#F5D4D4; --error-border:#E8C0C0;
+    --info:#3A7ACC; --info-dim:#D8E8F8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    justify-content:flex-start; padding-top:80px; padding-bottom:60px;
+    position:relative; opacity:0; animation:pageIn 0.35s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.04), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(96,165,250,0.02), transparent);
+    animation:aurora 20s ease-in-out infinite alternate;
+  }
+  @keyframes aurora {
+    0%{transform:translate(0,0) scale(1);} 33%{transform:translate(2%,-1%) scale(1.02);}
+    66%{transform:translate(-1%,2%) scale(0.98);} 100%{transform:translate(1%,-2%) scale(1.01);}
+  }
+  body::after {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:0.015;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat:repeat; background-size:256px 256px;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .top-bar{position:absolute; top:26px; right:30px; display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--smoke-dim); z-index:2;}
+  .top-bar b{color:var(--bone);}
+  .dots{display:flex; gap:6px; position:absolute; top:30px; left:50%; transform:translateX(-50%); z-index:2;}
+  .dots i{width:20px; height:3px; border-radius:2px; background:var(--border-light); display:block;}
+  .dots i.on{background:var(--ember);}
+  .step-name{position:absolute; top:52px; left:50%; transform:translateX(-50%); font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  .key-icon{
+    width:56px;height:56px;border-radius:50%; margin:0 auto 18px; display:flex; align-items:center; justify-content:center;
+    background:var(--char2); border:1px solid var(--border-light); color:var(--ember-light); font-size:22px;
+    position:relative; z-index:2; animation:fadeInUp 0.5s ease forwards;
+  }
+  h1{font-family:'Space Grotesk',sans-serif; font-size:28px; text-align:center; margin-bottom:8px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.06s ease forwards; opacity:0;}
+  p.sub{color:var(--smoke); font-size:14px; text-align:center; max-width:520px; line-height:1.6; margin-bottom:10px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.12s ease forwards; opacity:0;}
+  .info-text{
+    font-size:11.5px; color:var(--smoke-dim); text-align:center; max-width:480px;
+    margin-bottom:24px; line-height:1.5; position:relative; z-index:2; animation:fadeInUp 0.5s 0.18s ease forwards; opacity:0;
+  }
+  .info-text a{color:var(--ember-light); text-decoration:underline; transition:opacity 0.15s ease;}
+  .info-text a:hover{opacity:0.8;}
+
+  .api-card{
+    width:460px; max-width:90vw; background:rgba(28,23,18,0.5); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    border:1px solid rgba(59,130,246,0.05); border-radius:12px;
+    padding:16px 18px; margin-bottom:10px;
+    transition:all 0.3s cubic-bezier(.4,0,.2,1); position:relative; overflow:hidden; z-index:2;
+    box-shadow:0 4px 20px rgba(0,0,0,0.06);
+    animation:fadeInUp 0.5s ease forwards; opacity:0;
+  }
+  .api-card:nth-child(1){animation-delay:0.22s;}
+  .api-card:nth-child(2){animation-delay:0.30s;}
+  .api-card:nth-child(3){animation-delay:0.38s;}
+  .api-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(59,130,246,0.08),transparent);
+    opacity:0; transition:opacity 0.3s ease;
+  }
+  .api-card:hover::before{opacity:1;}
+  .api-card:hover{
+    border-color:rgba(59,130,246,0.1);
+    box-shadow:0 8px 28px rgba(0,0,0,0.12);
+    transform:translateY(-2px);
+  }
+  .api-top{display:flex; justify-content:space-between; align-items:flex-start; cursor:pointer;}
+  .api-name{font-weight:700; font-size:14.5px;}
+  .api-desc{font-size:12px; color:var(--smoke-dim); margin-top:2px;}
+  .api-right{display:flex; align-items:center; gap:8px;}
+  .api-set{
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--success);
+    border:1px solid var(--success-dim); background:var(--success-dim); padding:3px 10px; border-radius:100px;
+    transition: all .2s ease;
+  }
+  .api-set.unset{color:var(--smoke-dim); border-color:var(--border-light); background:transparent;}
+  .api-set.checking{color:var(--ember-light); border-color:var(--ember-dim); background:var(--ember-dim); animation:pulse-badge 2s infinite;}
+  .api-set.invalid{color:var(--error); border-color:var(--error-border); background:var(--error-dim);}
+  .api-set.info{color:var(--info); border-color:var(--info-dim); background:var(--info-dim);}
+  .chevron{color:var(--smoke-dim); font-size:12px; transition:transform .2s ease;}
+  .chevron.open{transform:rotate(90deg);}
+
+  .api-body{max-height:0; overflow:hidden; transition:max-height .25s ease;}
+  .api-body.open{max-height:200px; margin-top:14px;}
+  .api-body label{font-size:11.5px; color:var(--smoke-dim); display:block; margin-bottom:6px;}
+  .api-input-row{display:flex; gap:8px;}
+  .api-body input{
+    flex:1; background:var(--char3); border:1px solid var(--border-light); border-radius:8px;
+    padding:9px 11px; color:var(--bone); font-family:'JetBrains Mono',monospace; font-size:13px;
+    transition:all 0.2s ease;
+  }
+  .api-body input:focus{outline:none; border-color:var(--ember); box-shadow:0 0 0 3px rgba(59,130,246,0.1), 0 4px 12px rgba(59,130,246,0.05); background:var(--char2);}
+  .api-body input.invalid{border-color:var(--error); animation:shake 0.4s ease;}
+  .eye-btn{background:none; border:none; color:var(--smoke-dim); cursor:pointer; font-size:16px; padding:0 4px; transition:color 0.15s ease;}
+  .eye-btn:hover{color:var(--ember-light);}
+  .save-btn{
+    margin-top:10px; padding:8px 16px; border-radius:8px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char); font-weight:600; font-size:12.5px; font-family:'Inter',sans-serif;
+    position:relative; overflow:hidden;
+    box-shadow:0 4px 12px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.15);
+    transition:all 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  .save-btn:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(59,130,246,0.3);}
+  .save-btn:disabled{opacity:0.5; cursor:not-allowed; transform:none !important;}
+
+  .continue-btn{
+    margin-top:22px; padding:12px 26px; border-radius:10px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char); font-weight:700; font-size:14px; font-family:'Inter',sans-serif;
+    position:relative; overflow:hidden; z-index:2;
+    box-shadow:0 4px 16px rgba(59,130,246,0.2), inset 0 1px 0 rgba(255,255,255,0.15);
+    transition:all 0.25s cubic-bezier(.4,0,.2,1); animation:fadeInUp 0.5s 0.46s ease forwards; opacity:0;
+  }
+  .continue-btn:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 8px 28px rgba(59,130,246,0.35);}
+  .continue-btn::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent 40%,rgba(255,255,255,0.1),transparent 60%);
+    transform:translateX(-100%); transition:transform 0.6s ease;
+  }
+  .continue-btn:hover::after{transform:translateX(100%);}
+  .skip-link{
+    margin-top:14px; color:var(--smoke-dim); font-size:13px; cursor:pointer;
+    text-decoration:underline; background:none; border:none; font-family:'Inter',sans-serif;
+    transition:color 0.15s ease; position:relative; z-index:2; animation:fadeInUp 0.5s 0.50s ease forwards; opacity:0;
+  }
+  .skip-link:hover{color:var(--smoke);}
+
+  .step-footer{position:absolute; bottom:26px; left:30px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes pageIn{from{opacity:0;}to{opacity:1;}}
+  @keyframes pulse-badge{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.2);} 50%{box-shadow:0 0 0 6px rgba(59,130,246,0);}}
+  @keyframes shake{0%,100%{transform:translateX(0);} 25%{transform:translateX(-4px);} 75%{transform:translateX(4px);}}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;} ::-webkit-scrollbar-thumb:hover{background:var(--ember-dim);}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+  <div class="dots" id="dots"></div>
+  <div class="step-name mono" data-i18n="api_keys_title">Cles API Medias</div>
+  <div class="top-bar">
+    SYSTEM ·
+    <b>FR</b> ·
+    <a href="settings.html?from=api-keys.html" target="_self" title="Paramètres" style="cursor:pointer;padding:4px;border-radius:5px;display:inline-flex;align-items:center;color:var(--smoke-dim);text-decoration:none;transition:color .15s ease,background .15s ease;" onmouseover="this.style.color='var(--ember-light)';this.style.background='var(--char3)'" onmouseout="this.style.color='var(--smoke-dim)';this.style.background='transparent'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    </a>
+  </div>
+
+  <div class="key-icon">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.5 9.5"/><path d="M15.5 7.5l3 3L22 7l-3-3-3.5 3.5z"/></svg>
+  </div>
+  <h1 data-i18n="api_keys_title">Cles API des services medias</h1>
+  <p class="sub" data-i18n="api_keys_sub">Configure les cles pour la generation d'images, de modeles 3D et de sons.</p>
+  <p class="info-text" data-i18n-html="api_keys_info_html">
+    Les agents de code (Claude, Codex, Antigravity) utilisent tes comptes locaux.<br>
+    Seuls les services medias necessitent une cle API.
+    <a href="#" onclick="window.forgeAPI?.openExternal?.('https://aistudio.google.com/app/apikey')">Gemini</a> · 
+    <a href="#" onclick="window.forgeAPI?.openExternal?.('https://platform.tripo3d.ai')">Tripo3D</a> · 
+    <a href="#" onclick="window.forgeAPI?.openExternal?.('https://elevenlabs.io/app/settings/api-keys')">ElevenLabs</a>
+  </p>
+
+  <!-- Gemini -->
+  <div class="api-card" data-service="gemini">
+    <div class="api-top" onclick="toggleCard(this)">
+      <div>
+        <div class="api-name" data-i18n="gemini_key">Gemini</div>
+        <div class="api-desc" data-i18n="gemini_desc">Google Gemini — generation d'images</div>
+      </div>
+      <div class="api-right">
+        <span class="api-set unset" data-i18n="api_key_required">Non configure</span>
+        <span class="chevron">▸</span>
+      </div>
+    </div>
+    <div class="api-body">
+      <label data-i18n="api_key_label">Cle API</label>
+      <div class="api-input-row">
+        <input type="password" placeholder="Cle API Gemini" data-key-input data-i18n-placeholder="api_key_placeholder">
+        <button class="eye-btn" onclick="toggleEye(this)">Voir</button>
+      </div>
+      <button class="save-btn" onclick="saveKey(this, 'gemini')" data-i18n="save_key">Enregistrer</button>
+    </div>
+  </div>
+
+  <!-- Tripo3D -->
+  <div class="api-card" data-service="tripo">
+    <div class="api-top" onclick="toggleCard(this)">
+      <div>
+        <div class="api-name" data-i18n="tripo_key">Tripo3D</div>
+        <div class="api-desc" data-i18n="tripo_desc">Tripo3D AI — generation de modeles 3D</div>
+      </div>
+      <div class="api-right">
+        <span class="api-set unset" data-i18n="api_key_required">Non configure</span>
+        <span class="chevron">▸</span>
+      </div>
+    </div>
+    <div class="api-body">
+      <label data-i18n="api_key_label">Cle API</label>
+      <div class="api-input-row">
+        <input type="password" placeholder="Cle API Tripo3D" data-key-input data-i18n-placeholder="api_key_placeholder">
+        <button class="eye-btn" onclick="toggleEye(this)">Voir</button>
+      </div>
+      <button class="save-btn" onclick="saveKey(this, 'tripo')" data-i18n="save_key">Enregistrer</button>
+    </div>
+  </div>
+
+  <!-- ElevenLabs -->
+  <div class="api-card" data-service="elevenlabs">
+    <div class="api-top" onclick="toggleCard(this)">
+      <div>
+        <div class="api-name" data-i18n="elevenlabs_key">ElevenLabs</div>
+        <div class="api-desc" data-i18n="elevenlabs_desc">ElevenLabs — generation de sons et voix</div>
+      </div>
+      <div class="api-right">
+        <span class="api-set unset" data-i18n="api_key_required">Non configure</span>
+        <span class="chevron">▸</span>
+      </div>
+    </div>
+    <div class="api-body">
+      <label data-i18n="api_key_label">Cle API</label>
+      <div class="api-input-row">
+        <input type="password" placeholder="Cle API ElevenLabs" data-key-input data-i18n-placeholder="api_key_placeholder">
+        <button class="eye-btn" onclick="toggleEye(this)">Voir</button>
+      </div>
+      <button class="save-btn" onclick="saveKey(this, 'elevenlabs')" data-i18n="save_key">Enregistrer</button>
+    </div>
+  </div>
+
+  <button class="continue-btn" id="continueBtn" data-i18n="continue_btn">Continuer →</button>
+  <button class="skip-link" id="skipBtn" data-i18n="skip">Passer pour l'instant</button>
+
+  <div class="step-footer mono" data-i18n="step_6_6">Étape 6 sur 6</div>
+
+<script src="./lib/i18n.js"></script>
+<script src="./lib/ux.js"></script>
+<script>
+  (function(){ try { var s = JSON.parse(localStorage.getItem('forge_settings') || '{}'); if (s.theme === 'light') document.documentElement.classList.add('light-theme'); } catch(e){} })();
+  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
+  initLang();
+  const dotsEl = document.getElementById('dots');
+  for(let i=0;i<6;i++){ const d=document.createElement('i'); if(i===5)d.className='on'; dotsEl.appendChild(d); }
+
+  function fadeNavigate(href){
+    document.body.style.opacity = '0';
+    document.body.style.transition = 'opacity 0.2s ease';
+    setTimeout(() => window.location.href = href, 200);
+  }
+
+  function toggleCard(topEl){
+    const card = topEl.closest('.api-card');
+    const body = card.querySelector('.api-body');
+    const chevron = card.querySelector('.chevron');
+    body.classList.toggle('open');
+    chevron.classList.toggle('open');
+  }
+
+  function toggleEye(btn){
+    const input = btn.previousElementSibling;
+    input.type = input.type === 'password' ? 'text' : 'password';
+    btn.textContent = input.type === 'password' ? 'Voir' : 'Cacher';
+  }
+
+  async function saveKey(btn, service){
+    const card = btn.closest('.api-card');
+    const input = card.querySelector('[data-key-input]');
+    const badge = card.querySelector('.api-set');
+    const value = input.value.trim();
+
+    if(!value){
+      badge.textContent = 'Vide';
+      badge.className = 'api-set invalid';
+      input.classList.add('invalid');
+      setTimeout(() => input.classList.remove('invalid'), 1500);
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Verification...';
+    badge.textContent = 'Verification...';
+    badge.className = 'api-set checking';
+    input.classList.remove('invalid');
+
+    try {
+      if(!window.forgeAPI || !window.forgeAPI.verifyApiKey){
+        throw new Error('Fonction de verification indisponible');
+      }
+
+      const result = await window.forgeAPI.verifyApiKey(service, value);
+
+      if(result.valid){
+        await window.forgeAPI.saveApiKey(service, value);
+        badge.textContent = 'Configure';
+        badge.className = 'api-set';
+        btn.textContent = 'Enregistrer';
+      } else {
+        badge.textContent = result.error || 'Cle invalide';
+        badge.className = 'api-set invalid';
+        input.value = '';
+        input.classList.add('invalid');
+        btn.textContent = 'Enregistrer';
+        setTimeout(() => input.classList.remove('invalid'), 2000);
+      }
+    } catch(err) {
+      badge.textContent = 'Erreur reseau';
+      badge.className = 'api-set invalid';
+      btn.textContent = 'Enregistrer';
+      console.error(err);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function loadKeyStatus(){
+    if(!window.forgeAPI || !window.forgeAPI.getApiKeys) return;
+
+    try {
+      const keys = await window.forgeAPI.getApiKeys();
+
+      document.querySelectorAll('.api-card').forEach(card => {
+        const service = card.dataset.service;
+        const badge = card.querySelector('.api-set');
+        const input = card.querySelector('[data-key-input]');
+
+        if(keys[service]){
+          badge.textContent = 'Configure';
+          badge.className = 'api-set';
+          input.value = keys[service];
+        }
+      });
+    } catch(err) {
+      console.error('Erreur chargement cles :', err);
+    }
+  }
+
+  loadKeyStatus();
+
+  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('projects.html'));
+  document.getElementById('skipBtn').addEventListener('click', () => fadeNavigate('projects.html'));
+</script>
+
+</body>
+</html>

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+out/
+forge-users/
+active-project.json
+projects-registry.json

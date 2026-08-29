@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<title>Forge — Vérification</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E; --char2:#1C1712; --char3:#221C15;
+    --border:#2C2419; --border-light:#3A3024;
+    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
+    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
+    --ok:#3FB97F; --ko:#E0414F; --warn:#E0A13F;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
+    height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; padding-top:80px;
+    opacity:0; animation:pageIn 0.35s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+
+  /* Aurora */
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.06), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(96,165,250,0.04), transparent),
+      radial-gradient(ellipse 50% 50% at 50% 0%, rgba(59,130,246,0.02), transparent);
+    animation:aurora 20s ease-in-out infinite alternate;
+  }
+  @keyframes aurora {
+    0%{transform:translate(0,0) scale(1);} 33%{transform:translate(2%,-1%) scale(1.02);}
+    66%{transform:translate(-1%,2%) scale(0.98);} 100%{transform:translate(1%,-2%) scale(1.01);}
+  }
+  /* Noise */
+  body::after {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:0.02;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat:repeat; background-size:256px 256px;
+  }
+
+  .top-bar{position:absolute; top:26px; right:30px; display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--smoke-dim); z-index:2;}
+  .top-bar b{color:var(--bone);}
+  .dots{display:flex; gap:6px; position:absolute; top:30px; left:50%; transform:translateX(-50%); z-index:2;}
+  .dots i{width:20px; height:3px; border-radius:2px; background:var(--border-light); display:block;}
+  .dots i.on{background:var(--ember);}
+  .step-name{position:absolute; top:52px; left:50%; transform:translateX(-50%); font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  .logo-mark{
+    width:64px;height:64px;border-radius:16px; margin-bottom:20px;
+    display:block;object-fit:contain;
+    box-shadow:0 0 60px -10px rgba(59,130,246,0.35);
+    animation:fadeInUp 0.6s ease forwards, pulse-glow 3s ease-in-out infinite;
+    position:relative; z-index:2;
+  }
+  @keyframes pulse-glow {
+    0%,100%{box-shadow:0 0 60px -10px rgba(59,130,246,0.35);}
+    50%{box-shadow:0 0 80px -5px rgba(59,130,246,0.5);}
+  }
+  h1{font-family:'Space Grotesk',sans-serif; font-size:30px; text-align:center; margin-bottom:8px; position:relative; z-index:2; animation:fadeInUp 0.6s 0.1s ease forwards; opacity:0;}
+  h1 em{font-style:normal; color:var(--ember-light);}
+  p.sub{color:var(--smoke); font-size:14px; text-align:center; max-width:480px; line-height:1.6; margin-bottom:22px; position:relative; z-index:2; animation:fadeInUp 0.6s 0.2s ease forwards; opacity:0;}
+
+  .check-card{
+    width:580px; max-width:92vw; max-height:52vh; overflow-y:auto;
+    background:rgba(28,23,18,0.55); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4);
+    border:1px solid rgba(59,130,246,0.1); border-radius:14px;
+    padding:18px 18px 12px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.02);
+    position:relative; z-index:2; animation:fadeInUp 0.6s 0.35s ease forwards; opacity:0;
+  }
+  .check-card::after{
+    content:''; position:sticky; bottom:-12px; left:0; right:0; height:24px; pointer-events:none;
+    background:linear-gradient(transparent, rgba(28,23,18,0.7));
+  }
+  .check-card::-webkit-scrollbar{width:6px;}
+  .check-card::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;}
+
+  .check-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding:0 2px;}
+  .check-title{font-family:'Space Grotesk',sans-serif; font-size:15px; font-weight:700;}
+  .check-count{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--smoke); background:var(--char3); border:1px solid var(--border); border-radius:100px; padding:4px 10px;}
+  .check-count.ok b{color:var(--ok);}
+  .check-count.ko b{color:var(--ko);}
+  .check-log{
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke);
+    background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; min-height:34px; max-height:72px; overflow-y:auto; margin-top:8px; display:none; white-space:pre-wrap; word-break:break-word;
+  }
+
+  .check-row{
+    display:flex; align-items:center; gap:12px;
+    border:1px solid var(--border); border-radius:10px; background:rgba(0,0,0,0.12);
+    padding:10px 12px; margin-bottom:8px;
+    transition:all 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  .check-row.installing{border-color:var(--ember-dim);}
+  .check-row.ok{border-color:rgba(63,185,127,0.25);}
+  .check-row.ko{border-color:rgba(224,65,79,0.3);}
+
+  .check-dot{
+    width:22px; height:22px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; font-family:'JetBrains Mono',monospace;
+    background:var(--border-light); color:var(--char2);
+    transition:all 0.25s ease;
+  }
+  .check-row.pending .check-dot{animation:spin 1s linear infinite; background:conic-gradient(var(--ember), transparent); }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .check-row.ok .check-dot{background:var(--ok);}
+  .check-row.ko .check-dot{background:var(--ko);}
+  .check-row.alt .check-dot{background:var(--warn);}
+
+  .check-body{flex:1; min-width:0;}
+  .check-name{font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px;}
+  .check-name .tag{
+    font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:500;
+    border-radius:100px; padding:2px 7px; letter-spacing:0.3px;
+    background:var(--warn); color:var(--char);
+  }
+  .check-name .tag.req{background:var(--ko);}
+  .check-name .tag.ok{background:var(--ok);}
+  .check-desc{font-size:11.5px; color:var(--smoke); margin-top:2px; font-family:'JetBrains Mono',monospace; line-height:1.45; word-break:break-word;}
+  .check-desc.err{color:var(--ko);}
+
+  .check-install{
+    flex-shrink:0; padding:6px 12px; border-radius:8px; border:1px solid var(--ember);
+    background:transparent; color:var(--ember-light); font-size:12px; font-weight:600; font-family:'Inter',sans-serif;
+    cursor:pointer; transition:all 0.2s ease; display:none;
+  }
+  .check-install:hover{background:rgba(59,130,246,0.12);}
+  .check-install:disabled{opacity:0.5; cursor:wait;}
+  .check-row.ko .check-install{display:inline-block;}
+  .check-row.installing .check-install{display:inline-block; border-color:var(--border-light); color:var(--smoke);}
+
+  .check-actions{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px;}
+  .fix-all-btn{
+    padding:8px 14px; border-radius:8px; border:1px solid var(--border-light);
+    background:rgba(0,0,0,0.2); color:var(--bone); font-size:12px; font-weight:600; font-family:'Inter',sans-serif;
+    cursor:pointer; transition:all 0.2s ease; display:none;
+  }
+  .fix-all-btn:hover{background:var(--char3); border-color:var(--ember-dim);}
+  .fix-all-btn:disabled{opacity:0.5; cursor:wait;}
+  .retry-btn{
+    padding:8px 12px; border-radius:8px; border:1px solid var(--border-light);
+    background:transparent; color:var(--smoke); font-family:'JetBrains Mono',monospace; font-size:11px;
+    cursor:pointer; transition:all 0.2s ease;
+  }
+  .retry-btn:hover{color:var(--bone); border-color:var(--smoke-dim);}
+  .retry-btn:disabled{opacity:0.4; cursor:progress;}
+
+  .step-footer{position:absolute; bottom:26px; left:30px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  .continue-btn{
+    margin-top:24px; padding:12px 26px; border-radius:10px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char); font-weight:700; font-size:14px; font-family:'Inter',sans-serif;
+    opacity:0; pointer-events:none; transition:all 0.25s cubic-bezier(.4,0,.2,1);
+    box-shadow:0 4px 16px rgba(59,130,246,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+    position:relative; overflow:hidden; z-index:2;
+  }
+  .continue-btn.ready{opacity:1; pointer-events:auto; animation:fadeInUp 0.5s ease forwards;}
+  .continue-btn:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 8px 28px rgba(59,130,246,0.35);}
+  .continue-btn:active{transform:translateY(0) scale(0.98);}
+  .continue-btn::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent 40%,rgba(255,255,255,0.1),transparent 60%);
+    transform:translateX(-100%); transition:transform 0.6s ease;
+  }
+  .continue-btn:hover::after{transform:translateX(100%);}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes pageIn{from{opacity:0;}to{opacity:1;}}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;} ::-webkit-scrollbar-thumb:hover{background:var(--ember-dim);}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+  <div class="dots" id="dots"></div>
+  <div class="step-name mono" data-i18n="onboarding_check_title">Vérification de l'appareil</div>
+  <div class="top-bar">🖥 SYSTEM · <b style="padding:2px 6px;border-radius:4px;">FR</b></div>
+
+  <img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">
+  <h1 data-i18n-html="onboarding_welcome">Bienvenue sur <em>Forge</em></h1>
+  <p class="sub" data-i18n-html="onboarding_welcome_sub">On vérifie que tout est prêt sur ton PC. Clique sur <b>Installer</b> pour les éléments manquants : ils s'installent tout seuls.</p>
+
+  <div class="check-card" id="checkCard">
+    <div class="check-head">
+      <div class="check-title" data-i18n="onboarding_checks">Vérifications</div>
+      <div class="check-count" id="checkCount"><span>0</span>/6</div>
+    </div>
+    <div id="checkList"></div>
+    <div class="check-log" id="checkLog"></div>
+    <div class="check-actions">
+      <button class="fix-all-btn" id="fixAllBtn" data-i18n="onboarding_fix_all">Installer ce qui manque</button>
+      <button class="retry-btn" id="retryBtn" data-i18n="onboarding_retry">↻ Réanalyser</button>
+    </div>
+  </div>
+
+  <button class="continue-btn" id="continueBtn" data-i18n="continue_btn">Continuer →</button>
+
+  <div class="step-footer mono" data-i18n="step_1_6">Étape 1 sur 6</div>
+
+<script src="./lib/i18n.js"></script>
+<script>
+  const dotsEl = document.getElementById('dots');
+  for(let i=0;i<6;i++){
+    const d = document.createElement('i');
+    if(i===0) d.className='on';
+    dotsEl.appendChild(d);
+  }
+
+  const checkListEl = document.getElementById('checkList');
+  const checkCountEl = document.getElementById('checkCount');
+  const checkLogEl = document.getElementById('checkLog');
+  const fixAllBtn = document.getElementById('fixAllBtn');
+  const retryBtn = document.getElementById('retryBtn');
+  const continueBtn = document.getElementById('continueBtn');
+
+  // Définition des pré-requis affichés par l'onboarding.
+  // check(result) -> { ok, status: 'ok'|'ko'|'alt', desc, tag? }
+  const REQUIREMENTS = [
+    {
+      id: 'internet', labelKey: 'req_internet', tagKey: 'req_internet_tag', required: false,
+      install: null,
+      check: (r) => ({
+        ok: !!navigator.onLine && !!(r && r.ping),
+        status: (navigator.onLine && r) ? 'ok' : 'pending',
+        desc: navigator.onLine ? t('req_internet_ok') : t('req_internet_pending')
+      })
+    },
+    {
+      id: 'roblox', labelKey: 'req_roblox', tagKey: 'req_roblox_tag', required: true, install: 'roblox',
+      check: (r) => ({
+        ok: !!(r && r.robloxInstalled),
+        status: (r && r.robloxInstalled) ? 'ok' : (r ? 'ko' : 'pending'),
+        desc: (r && r.robloxInstalled) ? t('req_roblox_ok_prefix') + '%LOCALAPPDATA%\\Roblox' : t('req_roblox_ko')
+      })
+    },
+    {
+      id: 'plugin', labelKey: 'req_plugin', tagKey: 'req_plugin_tag', required: true, install: null,
+      check: (r) => ({
+        ok: !!(r && r.pluginInstalled),
+        status: (r && r.pluginInstalled) ? 'ok' : (r ? 'ko' : 'pending'),
+        desc: (r && r.pluginInstalled) ? t('req_plugin_ok') : t('req_plugin_ko')
+      })
+    },
+    {
+      id: 'node', labelKey: 'req_node', tagKey: 'req_node_tag', required: true, install: 'node',
+      check: (r) => ({
+        ok: !!(r && r.nodeInstalled && r.nodeOk),
+        status: (r && r.nodeInstalled) ? (r.nodeOk ? 'ok' : 'ko') : (r ? 'ko' : 'pending'),
+        desc: (r && r.nodeInstalled) ? (r.nodeVersion + (r.nodeOk ? '' : t('req_node_ok_suffix'))) : t('req_node_ko')
+      })
+    },
+    {
+      id: 'python', labelKey: 'req_python', tagKey: 'req_python_tag', required: false, install: 'python',
+      check: (r) => ({
+        ok: !!(r && r.pythonInstalled),
+        status: (r && r.pythonInstalled) ? 'ok' : (r ? 'alt' : 'pending'),
+        desc: (r && r.pythonInstalled) ? (r.pythonVersion + t('req_python_ok_suffix')) : t('req_python_ko')
+      })
+    },
+    {
+      id: 'agents', labelKey: 'req_agents', tagKey: 'req_agents_tag', required: true, install: 'agents',
+      check: (r) => {
+        const has = !!(r && r.agents && r.agents.codex && r.agents.codex.installed) ||
+                    !!(r && r.agents && r.agents.claude && r.agents.claude.installed);
+        const list = r && r.agents
+          ? [r.agents.codex, r.agents.claude].filter(a => a && a.installed).map(a => a.version).join(' · ')
+          : '';
+        return {
+          ok: has,
+          status: (r && r.agents) ? (has ? 'ok' : 'ko') : 'pending',
+          desc: r && r.agents ? (has ? t('req_agents_ok_prefix') + list : t('req_agents_ko')) : t('req_internet_pending')
+        };
+      }
+    },
+  ];
+
+  const rows = new Map();
+
+  function renderRows(){
+    checkListEl.innerHTML = '';
+    for(const req of REQUIREMENTS){
+      const row = document.createElement('div');
+      row.className = 'check-row pending';
+      row.dataset.id = req.id;
+      row.innerHTML =
+        '<span class="check-dot"></span>' +
+        '<div class="check-body">' +
+          '<div class="check-name">' + t(req.labelKey) + '<span class="tag ' + (req.tagKey === 'req_internet_tag' || req.tagKey === 'req_roblox_tag' || req.tagKey === 'req_plugin_tag' || req.tagKey === 'req_node_tag' || req.tagKey === 'req_agents_tag' ? 'req' : '') + '">' + t(req.tagKey) + '</span></div>' +
+          '<div class="check-desc">' + t('req_internet_pending') + '</div>' +
+        '</div>' +
+        (req.install ? '<button class="check-install" data-req="' + req.install + '">' + t('onboarding_install') + '</button>' : '');
+      checkListEl.appendChild(row);
+      rows.set(req.id, {
+        el: row, dot: row.querySelector('.check-dot'),
+        desc: row.querySelector('.check-desc'), btn: row.querySelector('.check-install'),
+        req: req
+      });
+    }
+  }
+
+  function statusLabel(status){
+    if(status === 'ok') return '✓';
+    if(status === 'ko') return '!';
+    if(status === 'alt') return '·';
+    return '';
+  }
+
+  function applyRow(id, res){
+    const r = rows.get(id);
+    if(!r) return;
+    r.el.className = 'check-row ' + res.status;
+    r.dot.textContent = statusLabel(res.status);
+    r.desc.textContent = res.desc || '';
+    r.desc.classList.toggle('err', res.status === 'ko');
+    if(r.btn){
+      r.btn.disabled = false;
+      r.btn.textContent = t('onboarding_install');
+    }
+  }
+
+  function setInstalling(id, busy){
+    const r = rows.get(id);
+    if(!r) return;
+    r.el.classList.toggle('installing', busy);
+    r.el.classList.toggle('pending', busy);
+    if(!busy && r.dot.textContent === ''){
+      r.dot.textContent = '';
+    }
+    if(r.btn) r.btn.disabled = busy;
+  }
+
+  function updateCount(report){
+    const okCount = REQUIREMENTS.filter(req => {
+      const res = req.check(report);
+      return res.status === 'ok';
+    }).length;
+    checkCountEl.innerHTML = '<b>' + okCount + '</b>/' + REQUIREMENTS.length;
+    checkCountEl.className = 'check-count ' + (okCount === REQUIREMENTS.length ? 'ok' : 'ko');
+    return okCount;
+  }
+
+  function allRequiredOk(report){
+    return REQUIREMENTS.every(req => {
+      if(!req.required) return true;
+      const prev = rows.get(req.id);
+      if(!prev) return true;
+      return prev.el.classList.contains('ok');
+    });
+  }
+
+  function anyMissing(report){
+    return REQUIREMENTS.some(req => {
+      if(!req.install) return false;
+      const res = req.check(report);
+      return res.status !== 'ok';
+    });
+  }
+
+  function logLine(text){
+    if(!text) return;
+    checkLogEl.style.display = 'block';
+    checkLogEl.scrollTop = checkLogEl.scrollHeight;
+    checkLogEl.textContent = text;
+  }
+
+  async function runCheck(){
+    retryBtn.disabled = true;
+    for(const id of rows.keys()) applyRow(id, { status: 'pending', desc: t('req_internet_pending') });
+    let report = null;
+    if(window.forgeAPI && window.forgeAPI.checkSystem){
+      try { report = await window.forgeAPI.checkSystem(); }
+      catch(err){ report = null; }
+    }
+    report = report || {};
+    report.ping = true;
+    for(const req of REQUIREMENTS){
+      try { applyRow(req.id, req.check(report)); } catch(e){ applyRow(req.id, { status: 'ko', desc: t('onboarding_err_prefix') + e.message }); }
+    }
+    updateCount(report);
+    fixAllBtn.style.display = anyMissing(report) && window.forgeAPI && window.forgeAPI.installRequirement ? 'inline-block' : 'none';
+    if(allRequiredOk(report)){
+      continueBtn.classList.add('ready');
+    } else {
+      continueBtn.classList.remove('ready');
+    }
+    retryBtn.disabled = false;
+  }
+
+  async function installOne(reqId, rowId){
+    const r = rows.get(rowId);
+    if(!r || !r.btn) return;
+    setInstalling(rowId, true);
+    if(r.btn) r.btn.textContent = t('onboarding_installing');
+    logLine(r.req.labelKey ? t(r.req.labelKey) : r.req.label + ' — démarrage…');
+    try {
+      const result = await window.forgeAPI.installRequirement(reqId);
+      if(result && result.error){
+        logLine('Échec: ' + result.error.slice(-220));
+        r.desc.textContent = t('onboarding_install_failed') + ' ' + (result.error || '').split('\n')[0];
+        r.desc.classList.add('err');
+      }
+    } catch(err){
+      logLine(t('onboarding_err_prefix') + err.message);
+      r.desc.textContent = t('onboarding_err_prefix') + err.message;
+      r.desc.classList.add('err');
+    }
+    setInstalling(rowId, false);
+    await runCheck();
+  }
+
+  renderRows();
+  runCheck();
+
+  checkListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.check-install');
+    if(!btn) return;
+    const reqId = btn.dataset.req;
+    const rowId = btn.closest('.check-row').dataset.id;
+    installOne(reqId, rowId);
+  });
+
+  fixAllBtn.addEventListener('click', async () => {
+    if(!fixAllBtn.disabled){
+      fixAllBtn.disabled = true;
+      logLine(t('onboarding_fix_all_log'));
+      const order = ['node', 'python', 'roblox', 'agents'];
+      for(const reqId of order){
+        const rowId = REQUIREMENTS.find(r => r.install === reqId);
+        if(!rowId) continue;
+        const r = rows.get(rowId.id);
+        if(!r || r.el.classList.contains('ok')) continue;
+        await installOne(reqId, rowId.id);
+      }
+      logLine('');
+      fixAllBtn.disabled = false;
+    }
+  });
+
+  retryBtn.addEventListener('click', runCheck);
+
+  if(window.forgeAPI && window.forgeAPI.onInstallProgress){
+    window.forgeAPI.onInstallProgress((data) => {
+      if(!data || !data.line) return;
+      logLine(data.line);
+    });
+  }
+
+  continueBtn.addEventListener('click', () => {
+    document.body.style.opacity = '0';
+    document.body.style.transition = 'opacity 0.2s ease';
+    setTimeout(() => window.location.href = 'roblox-studio.html', 200);
+  });
+</script>
+<script>initLang();</script>
+
+</body>
+</html>

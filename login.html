@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<title>Forge — Connexion</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E; --char2:#1C1712; --char3:#221C15;
+    --border:#2C2419; --border-light:#3A3024;
+    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
+    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
+    height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; padding-top:80px;
+    opacity:0; animation:pageIn 0.35s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.06), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(96,165,250,0.04), transparent);
+    animation:aurora 20s ease-in-out infinite alternate;
+  }
+  @keyframes aurora {
+    0%{transform:translate(0,0) scale(1);} 33%{transform:translate(2%,-1%) scale(1.02);}
+    66%{transform:translate(-1%,2%) scale(0.98);} 100%{transform:translate(1%,-2%) scale(1.01);}
+  }
+  body::after {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:0.02;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat:repeat; background-size:256px 256px;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .top-bar{position:absolute; top:26px; right:30px; display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--smoke-dim); z-index:2;}
+  .top-bar b{color:var(--bone);}
+  .dots{display:flex; gap:6px; position:absolute; top:30px; left:50%; transform:translateX(-50%); z-index:2;}
+  .dots i{width:20px; height:3px; border-radius:2px; background:var(--border-light); display:block;}
+  .dots i.on{background:var(--ember);}
+  .step-name{position:absolute; top:52px; left:50%; transform:translateX(-50%); font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  .logo-mark{
+    width:56px;height:56px;border-radius:14px; margin:0 auto 20px;
+    display:block;object-fit:contain;
+    box-shadow:0 0 40px -5px rgba(59,130,246,0.3);
+    animation:fadeInUp 0.5s ease forwards; position:relative; z-index:2;
+  }
+  h1{font-family:'Space Grotesk',sans-serif; font-size:26px; text-align:center; margin-bottom:8px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.08s ease forwards; opacity:0;}
+  p.sub{color:var(--smoke); font-size:13.5px; text-align:center; margin-bottom:28px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.15s ease forwards; opacity:0;}
+
+  .form-box{
+    width:400px; max-width:90vw;
+    background:rgba(28,23,18,0.6); backdrop-filter:blur(24px) saturate(1.3); -webkit-backdrop-filter:blur(24px) saturate(1.3);
+    border:1px solid rgba(59,130,246,0.08); border-radius:18px;
+    padding:32px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.02);
+    position:relative; z-index:2; animation:fadeInUp 0.5s 0.22s ease forwards; opacity:0;
+  }
+  .field{margin-bottom:14px;}
+  .field label{font-size:12px; color:var(--smoke-dim); display:block; margin-bottom:6px;}
+  .field input{
+    width:100%; background:var(--char3); border:1px solid var(--border-light); border-radius:10px;
+    padding:11px 13px; color:var(--bone); font-family:'Inter',sans-serif; font-size:14px;
+    transition:all 0.2s ease;
+  }
+  .field input:focus{outline:none; border-color:var(--ember); box-shadow:0 0 0 3px rgba(59,130,246,0.1), 0 4px 12px rgba(59,130,246,0.05); background:var(--char2);}
+
+  .submit-btn{
+    width:100%; padding:12px; border-radius:10px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char); font-weight:700; font-size:14px; font-family:'Inter',sans-serif;
+    margin-top:6px; position:relative; overflow:hidden;
+    box-shadow:0 4px 16px rgba(59,130,246,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+    transition:all 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  .submit-btn:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 8px 28px rgba(59,130,246,0.35);}
+  .submit-btn:active{transform:translateY(0) scale(0.98);}
+  .submit-btn::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent 40%,rgba(255,255,255,0.1),transparent 60%);
+    transform:translateX(-100%); transition:transform 0.6s ease;
+  }
+  .submit-btn:hover::after{transform:translateX(100%);}
+  .submit-btn:disabled{opacity:0.5; cursor:not-allowed; transform:none !important;}
+  .submit-btn:disabled::after{display:none;}
+
+  .switch-mode{text-align:center; margin-top:16px; font-size:13px; color:var(--smoke-dim); position:relative; z-index:2; animation:fadeInUp 0.5s 0.3s ease forwards; opacity:0;}
+  .switch-mode a{color:var(--ember-light); cursor:pointer; text-decoration:underline;}
+
+  .err-box{
+    background:rgba(233,119,107,0.08); border:1px solid rgba(233,119,107,0.3); color:#E9776B;
+    border-radius:10px; padding:10px 12px; font-size:12.5px; margin-bottom:14px; display:none;
+    backdrop-filter:blur(8px);
+  }
+  .err-box.show{display:block; animation:shake 0.4s ease;}
+  @keyframes shake{0%,100%{transform:translateX(0);} 25%{transform:translateX(-4px);} 75%{transform:translateX(4px);}}
+
+  .step-footer{position:absolute; bottom:26px; left:30px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes pageIn{from{opacity:0;}to{opacity:1;}}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;} ::-webkit-scrollbar-thumb:hover{background:var(--ember-dim);}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+  <div class="dots" id="dots"></div>
+  <div class="step-name mono" id="stepName" data-i18n="login_step_name">Compte</div>
+  <div class="top-bar">🖥 SYSTEM · <b style="padding:2px 6px;border-radius:4px;">FR</b></div>
+
+  <img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">
+  <h1 id="formTitle" data-i18n="login_signup_title">Crée ton compte Forge</h1>
+  <p class="sub" id="formSub" data-i18n="login_signup_sub">Un seul compte pour retrouver tes projets partout.</p>
+
+  <div class="form-box">
+    <div class="err-box" id="errBox"></div>
+    <div class="field">
+      <label data-i18n="login_email">Email</label>
+      <input type="email" id="emailInput" placeholder="toi@exemple.com" autocomplete="email" autofocus data-i18n-placeholder="login_email_ph">
+    </div>
+    <div class="field">
+      <label data-i18n="login_password">Mot de passe</label>
+      <div style="display:flex; gap:8px;">
+        <input type="password" id="passwordInput" placeholder="Au moins 6 caractères" autocomplete="current-password" style="flex:1;" data-i18n-placeholder="login_password_ph">
+        <button type="button" id="toggleEyeBtn" style="background:var(--char3); border:1px solid var(--border-light); border-radius:10px; padding:0 12px; color:var(--smoke-dim); cursor:pointer; font-size:16px; transition:all 0.15s ease;">👁</button>
+      </div>
+    </div>
+    <div class="field" id="licenseField" style="display:none;">
+      <label data-i18n="login_license_key">Clé de licence</label>
+      <input type="text" id="licenseInput" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" data-i18n-placeholder="login_license_ph">
+      <div style="margin-top:6px; font-size:12px; color:var(--smoke-dim);">
+        <span data-i18n="login_license_store">Achetée sur le store ? — </span><a id="buyLink" style="color:var(--ember-light); text-decoration:underline; cursor:pointer;" data-i18n="login_buy_license">💳 Acheter une licence</a>
+      </div>
+    </div>
+    <button class="submit-btn" id="submitBtn" data-i18n="login_signup_btn">Créer mon compte</button>
+    <div class="switch-mode">
+      <span id="switchText" data-i18n="login_have_account">Déjà un compte ?</span> <a id="switchLink" data-i18n="login_signin">Se connecter</a>
+    </div>
+  </div>
+
+  <div class="step-footer mono" data-i18n="step_3_6">Étape 3 sur 6</div>
+
+<script src="./lib/i18n.js"></script>
+<script>
+  const dotsEl = document.getElementById('dots');
+  for(let i=0;i<6;i++){ const d=document.createElement('i'); if(i===2)d.className='on'; dotsEl.appendChild(d); }
+
+  const formTitle = document.getElementById('formTitle');
+  const formSub = document.getElementById('formSub');
+  const submitBtn = document.getElementById('submitBtn');
+  const switchText = document.getElementById('switchText');
+  const switchLinkEl = document.getElementById('switchLink');
+  const errBox = document.getElementById('errBox');
+  const emailInput = document.getElementById('emailInput');
+  const passwordInput = document.getElementById('passwordInput');
+  const licenseField = document.getElementById('licenseField');
+  const licenseInput = document.getElementById('licenseInput');
+  const buyLink = document.getElementById('buyLink');
+
+  let mode = 'signup';
+
+  document.getElementById('toggleEyeBtn').addEventListener('click', () => {
+    passwordInput.type = passwordInput.type === 'password' ? 'text' : 'password';
+  });
+
+  buyLink.addEventListener('click', () => {
+    if(!window.forgeAPI || !window.forgeAPI.buyLicense) return;
+    buyLink.textContent = t('login_buying_license');
+    window.forgeAPI.buyLicense().finally(() => {
+      setTimeout(() => { buyLink.textContent = t('login_buy_license'); }, 4000);
+    });
+  });
+
+  function setMode(newMode){
+    mode = newMode;
+    errBox.classList.remove('show');
+    submitBtn.disabled = false;
+    if(mode === 'signup'){
+      licenseField.style.display = 'block';
+      formTitle.textContent = t('login_signup_title');
+      formSub.textContent = t('login_signup_sub');
+      submitBtn.textContent = t('login_signup_btn');
+      switchText.textContent = t('login_have_account');
+      switchLinkEl.textContent = t('login_signin');
+    } else {
+      licenseField.style.display = 'none';
+      formTitle.textContent = t('login_signin_title');
+      formSub.textContent = t('login_signin_sub');
+      submitBtn.textContent = t('login_signin');
+      switchText.textContent = t('login_no_account');
+      switchLinkEl.textContent = t('login_create_one');
+    }
+  }
+
+  switchLinkEl.addEventListener('click', (e) => {
+    e.preventDefault();
+    errBox.classList.remove('show');
+    setMode(mode === 'signup' ? 'signin' : 'signup');
+  });
+
+  setMode('signup');
+
+  async function checkAlreadyLoggedIn(){
+    try {
+      if(window.forgeAPI && window.forgeAPI.isForgeConnected){
+        const r = await window.forgeAPI.isForgeConnected();
+        if(r.connected){
+          document.body.style.opacity = '0';
+          document.body.style.transition = 'opacity 0.2s ease';
+          setTimeout(() => { window.location.href = 'accounts.html'; }, 200);
+        }
+      }
+    } catch(e){}
+  }
+  checkAlreadyLoggedIn();
+
+  function showError(msg){
+    errBox.textContent = msg;
+    errBox.classList.add('show');
+  }
+
+  async function submit(){
+    if(submitBtn.disabled) return;
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+
+    if(!window.forgeAPI || !window.forgeAPI.supabaseAuth){
+      showError(t('login_err_unavailable'));
+      return;
+    }
+    if(!email || !password){
+      showError(t('login_err_fill'));
+      return;
+    }
+    if(password.length < 6){
+      showError(t('login_err_password'));
+      return;
+    }
+
+    errBox.classList.remove('show');
+    submitBtn.disabled = true;
+
+    if(mode === 'signup'){
+      const licenseKey = licenseInput.value.trim();
+      if(!licenseKey){
+        showError(t('login_err_license_required'));
+        submitBtn.disabled = false;
+        return;
+      }
+      if(!window.forgeAPI.verifyLicense){
+        showError(t('login_err_unavailable'));
+        submitBtn.disabled = false;
+        return;
+      }
+      submitBtn.textContent = t('login_validating_license');
+      const license = await window.forgeAPI.verifyLicense(licenseKey);
+      if(license.error){
+        showError(license.error);
+        submitBtn.disabled = false;
+        submitBtn.textContent = t('login_signup_btn');
+        return;
+      }
+      submitBtn.textContent = t('login_creating_account');
+      const result = await window.forgeAPI.supabaseAuth(mode, email, password, licenseKey);
+      if(result.error){
+        showError(result.error);
+        submitBtn.disabled = false;
+        submitBtn.textContent = t('login_signup_btn');
+        return;
+      }
+    } else {
+      submitBtn.textContent = t('login_connecting');
+      const result = await window.forgeAPI.supabaseAuth(mode, email, password);
+      if(result.error){
+        showError(result.error);
+        submitBtn.disabled = false;
+        submitBtn.textContent = t('login_signin');
+        return;
+      }
+    }
+
+    document.body.style.opacity = '0';
+    document.body.style.transition = 'opacity 0.2s ease';
+    setTimeout(() => { window.location.href = 'accounts.html'; }, 200);
+  }
+
+  submitBtn.addEventListener('click', submit);
+  passwordInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
+</script>
+<script>initLang();</script>
+
+</body>
+</html>
