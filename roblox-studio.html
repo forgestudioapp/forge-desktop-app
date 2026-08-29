@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<title>Forge — Roblox Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E; --char2:#1C1712; --char3:#221C15;
+    --border:#2C2419; --border-light:#3A3024;
+    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
+    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
+    --success:#5FBE7A; --success-dim:#233327;
+    --warn:#60A5FA; --warn-dim:#3A2A18;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
+    height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; padding-top:80px;
+    opacity:0; animation:pageIn 0.35s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.05), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(96,165,250,0.03), transparent);
+    animation:aurora 20s ease-in-out infinite alternate;
+  }
+  @keyframes aurora {
+    0%{transform:translate(0,0) scale(1);} 33%{transform:translate(2%,-1%) scale(1.02);}
+    66%{transform:translate(-1%,2%) scale(0.98);} 100%{transform:translate(1%,-2%) scale(1.01);}
+  }
+  body::after {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:0.02;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat:repeat; background-size:256px 256px;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+
+  .top-bar{position:absolute; top:26px; right:30px; display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--smoke-dim); z-index:2;}
+  .top-bar b{color:var(--bone);}
+  .dots{display:flex; gap:6px; position:absolute; top:30px; left:50%; transform:translateX(-50%); z-index:2;}
+  .dots i{width:20px; height:3px; border-radius:2px; background:var(--border-light); display:block;}
+  .dots i.on{background:var(--ember);}
+  .step-name{position:absolute; top:52px; left:50%; transform:translateX(-50%); font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  .icon-circle{
+    width:96px;height:96px;border-radius:50%; margin:0 auto 26px; display:flex; align-items:center; justify-content:center;
+    background:var(--char2); border:1px solid var(--border-light); position:relative; z-index:2;
+    animation:fadeInUp 0.5s ease forwards;
+  }
+  .icon-circle.loading{color:var(--ember-light); animation:spin 1.6s linear infinite, fadeInUp 0.5s ease forwards;}
+  .icon-circle.error{color:var(--warn); background:var(--warn-dim); border-color:var(--warn); animation:fadeInUp 0.4s ease forwards;}
+  .icon-circle.success{color:var(--success); background:var(--success-dim); border-color:var(--success); animation:fadeInUp 0.4s ease forwards, popIn 0.4s ease forwards;}
+  @keyframes spin{from{transform:rotate(0deg);} to{transform:rotate(360deg);}}
+  @keyframes popIn{0%{transform:scale(0.9);} 70%{transform:scale(1.05);} 100%{transform:scale(1);}}
+
+  h1{font-family:'Space Grotesk',sans-serif; font-size:30px; text-align:center; margin-bottom:14px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.08s ease forwards; opacity:0;}
+  p.sub{color:var(--smoke); font-size:14.5px; text-align:center; max-width:480px; line-height:1.6; margin-bottom:30px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.15s ease forwards; opacity:0;}
+
+  .check-box{
+    background:rgba(28,23,18,0.5); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border:1px solid rgba(59,130,246,0.06); border-radius:14px;
+    padding:18px 20px; width:460px; max-width:90vw; margin-bottom:22px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.1); position:relative; z-index:2;
+    animation:fadeInUp 0.5s 0.22s ease forwards; opacity:0;
+  }
+  .check-row{display:flex; gap:12px; padding:11px 0;}
+  .check-row + .check-row{border-top:1px solid var(--border);}
+  .check-icon{flex-shrink:0; margin-top:2px;}
+  .check-icon.loading{color:var(--smoke); animation:spin 1.2s linear infinite;}
+  .check-icon.ok{color:var(--success);}
+  .check-icon.fail{color:#E9776B;}
+  .check-title{font-size:14px; font-weight:600; margin-bottom:2px;}
+  .check-desc{font-size:12.5px; color:var(--smoke-dim); line-height:1.5;}
+
+  .plugin-line{display:flex; align-items:center; gap:8px; color:var(--success); font-size:13px; margin-bottom:22px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.3s ease forwards; opacity:0;}
+
+  .btn{
+    padding:12px 26px; border-radius:10px; border:none; cursor:pointer;
+    font-weight:700; font-size:14px; font-family:'Inter',sans-serif; position:relative; overflow:hidden;
+    transition:all 0.25s cubic-bezier(.4,0,.2,1); z-index:2;
+  }
+  .btn-primary{
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char);
+    box-shadow:0 4px 16px rgba(59,130,246,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+  }
+  .btn-primary:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 8px 28px rgba(59,130,246,0.35);}
+  .btn-primary:active{transform:translateY(0) scale(0.98);}
+  .btn-primary::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent 40%,rgba(255,255,255,0.1),transparent 60%);
+    transform:translateX(-100%); transition:transform 0.6s ease;
+  }
+  .btn-primary:hover::after{transform:translateX(100%);}
+
+  .btn-secondary{background:var(--char2); color:var(--bone); border:1px solid var(--border-light); font-weight:600;}
+  .btn-secondary:hover{border-color:var(--ember); box-shadow:0 4px 16px rgba(59,130,246,0.1); transform:translateY(-1px);}
+  .action-row{display:flex; gap:16px; align-items:center; position:relative; z-index:2; animation:fadeInUp 0.5s 0.35s ease forwards; opacity:0;}
+  .skip-link{color:var(--smoke-dim); font-size:13px; cursor:pointer; text-decoration:underline; background:none; border:none; font-family:'Inter',sans-serif; transition:color 0.15s ease;}
+  .skip-link:hover{color:var(--smoke);}
+
+  .step-footer{position:absolute; bottom:26px; left:30px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
+
+  .hidden{display:none !important;}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes pageIn{from{opacity:0;}to{opacity:1;}}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;} ::-webkit-scrollbar-thumb:hover{background:var(--ember-dim);}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+  <div class="dots" id="dots"></div>
+  <div class="step-name mono">Roblox Studio</div>
+  <div class="top-bar">SYSTEM · <b style="padding:2px 6px;border-radius:4px;">FR</b> ·
+    <a href="settings.html?from=roblox-studio.html" target="_self" title="Paramètres" style="cursor:pointer;padding:4px;border-radius:5px;display:inline-flex;align-items:center;color:var(--smoke-dim);text-decoration:none;transition:color .15s ease,background .15s ease;" onmouseover="this.style.color='var(--ember-light)';this.style.background='var(--char3)'" onmouseout="this.style.color='var(--smoke-dim)';this.style.background='transparent'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    </a>
+  </div>
+
+  <!-- Etat : verification en cours -->
+  <div id="stateLoading">
+    <div class="icon-circle loading">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+    <h1 data-i18n="roblox_connecting_title">Connexion à Roblox Studio</h1>
+    <p class="sub" data-i18n="roblox_connecting_sub">On vérifie que le plugin Forge est bien installé et prêt à se connecter.</p>
+    <div class="check-box">
+      <div class="check-row">
+        <span class="check-icon loading">●</span>
+        <div><div class="check-title" data-i18n="roblox_plugin_detected">Plugin Forge détecté</div><div class="check-desc" data-i18n="roblox_plugin_searching">Recherche du plugin dans ton installation locale de Roblox.</div></div>
+      </div>
+      <div class="check-row">
+        <span class="check-icon loading">●</span>
+        <div><div class="check-title" data-i18n="roblox_server_ok">Serveur Forge opérationnel</div><div class="check-desc" data-i18n="roblox_server_starting">Démarrage du serveur local qui connecte l'IA à Roblox Studio.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Etat : erreur -->
+  <div id="stateError" class="hidden">
+    <div class="icon-circle error">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 17h.01M10.3 3.9L2.6 18a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h1 data-i18n="roblox_not_detected_title">Le plugin n'a pas été détecté</h1>
+    <p class="sub" id="errorDesc" data-i18n="roblox_not_detected_sub">Réessaie, ou passe pour l'instant et configure-le plus tard depuis l'espace de travail.</p>
+    <div class="check-box">
+      <div class="check-row">
+        <span class="check-icon" id="errIconPlugin">✕</span>
+        <div><div class="check-title" data-i18n="roblox_plugin_detected">Plugin Forge détecté</div><div class="check-desc" id="errorCheckDesc" data-i18n="roblox_plugin_not_found">Le fichier plugin n'a pas pu être trouvé ou installé.</div></div>
+      </div>
+      <div class="check-row">
+        <span class="check-icon" id="errIconServer">✕</span>
+        <div><div class="check-title" data-i18n="roblox_server_ok">Serveur Forge opérationnel</div><div class="check-desc" id="errorServerDesc" data-i18n="roblox_server_no_response">Le serveur local n'a pas répondu à temps.</div></div>
+      </div>
+    </div>
+    <div class="action-row">
+      <button class="btn btn-secondary" id="retryBtn" data-i18n="retry_caps">RÉESSAYER</button>
+      <button class="skip-link" id="skipBtn" data-i18n="skip">Passer</button>
+    </div>
+  </div>
+
+  <!-- Etat : succes -->
+  <div id="stateSuccess" class="hidden">
+    <div class="icon-circle success">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h1 data-i18n="roblox_ready_title">Plugin Forge prêt</h1>
+    <p class="sub" data-i18n="roblox_ready_sub">Le plugin est installé. Ouvre Roblox Studio quand tu veux — Forge s'y connectera automatiquement.</p>
+    <div class="check-box">
+      <div class="check-row">
+        <span class="check-icon ok">✓</span>
+        <div><div class="check-title" data-i18n="roblox_plugin_detected">Plugin Forge détecté</div><div class="check-desc" data-i18n="roblox_plugin_installed_desc">Installé dans ton dossier de plugins Roblox.</div></div>
+      </div>
+      <div class="check-row">
+        <span class="check-icon ok">✓</span>
+        <div><div class="check-title" data-i18n="roblox_server_ok">Serveur Forge opérationnel</div><div class="check-desc" data-i18n="roblox_server_ready_desc">Le serveur local répond, prêt à connecter Roblox Studio.</div></div>
+      </div>
+    </div>
+    <div class="plugin-line">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11h-3a2 2 0 01-2-2V6a2 2 0 012-2h3"/><path d="M13 5h-2a2 2 0 00-2 2v3"/><path d="M9 11H6a2 2 0 00-2 2v3a2 2 0 002 2h3"/><path d="M11 19v-3a2 2 0 012-2h3"/><path d="M15 13h3a2 2 0 012 2v3a2 2 0 01-2 2h-3"/></svg>
+      <span data-i18n="roblox_plugin_installed">ForgePlugin.rbxmx installé</span>
+    </div>
+    <button class="btn btn-primary" id="continueBtn" data-i18n="continue">Continuer</button>
+  </div>
+
+  <div class="step-footer mono" data-i18n="step_2_6">Étape 2 sur 6</div>
+
+<script src="./lib/i18n.js"></script>
+<script>
+  const dotsEl = document.getElementById('dots');
+  for(let i=0;i<6;i++){ const d=document.createElement('i'); if(i===1)d.className='on'; dotsEl.appendChild(d); }
+
+  const stateLoading = document.getElementById('stateLoading');
+  const stateError = document.getElementById('stateError');
+  const stateSuccess = document.getElementById('stateSuccess');
+
+  function showState(state){
+    stateLoading.classList.add('hidden');
+    stateError.classList.add('hidden');
+    stateSuccess.classList.add('hidden');
+    state.classList.remove('hidden');
+    state.style.animation = 'none';
+    state.offsetHeight;
+    state.style.animation = '';
+    const children = state.querySelectorAll('.icon-circle, h1, p.sub, .check-box, .plugin-line, .action-row, .btn');
+    children.forEach((el, i) => {
+      el.style.animation = 'none';
+      el.offsetHeight;
+      el.style.animation = '';
+    });
+  }
+
+  async function runCheck(){
+    showState(stateLoading);
+    const startTime = Date.now();
+
+    let pluginResult = { pluginInstalled: false };
+    if(window.forgeAPI && window.forgeAPI.checkSystem){
+      try { pluginResult = await window.forgeAPI.checkSystem(); }
+      catch(err) { pluginResult = { pluginInstalled: false }; }
+    }
+
+    let serverResult = { connected: false };
+    if(window.forgeAPI && window.forgeAPI.checkPluginConnection){
+      try { serverResult = await window.forgeAPI.checkPluginConnection(); }
+      catch(err) { serverResult = { connected: false }; }
+    }
+
+    const elapsed = Date.now() - startTime;
+    const remaining = Math.max(0, 1400 - elapsed);
+
+    setTimeout(() => {
+      if(pluginResult.pluginInstalled && serverResult.connected){
+        showState(stateSuccess);
+      } else {
+        const iconPlugin = document.getElementById('errIconPlugin');
+        const iconServer = document.getElementById('errIconServer');
+        iconPlugin.className = 'check-icon ' + (pluginResult.pluginInstalled ? 'ok' : 'fail');
+        iconPlugin.textContent = pluginResult.pluginInstalled ? '✓' : '✕';
+        iconServer.className = 'check-icon ' + (serverResult.connected ? 'ok' : 'fail');
+        iconServer.textContent = serverResult.connected ? '✓' : '✕';
+        showState(stateError);
+      }
+    }, remaining);
+  }
+
+  function goNext(){
+    document.body.style.opacity = '0'; document.body.style.transition = 'opacity 0.2s ease';
+    const go = (res) => { setTimeout(() => window.location.href = (res && res.connected) ? 'accounts.html' : 'login.html', 200); };
+    if(window.forgeAPI && window.forgeAPI.isForgeConnected){
+      window.forgeAPI.isForgeConnected().then(go).catch(() => go({ connected: false }));
+    } else {
+      go({ connected: false });
+    }
+  }
+
+  document.getElementById('retryBtn').addEventListener('click', runCheck);
+  document.getElementById('skipBtn').addEventListener('click', goNext);
+  document.getElementById('continueBtn').addEventListener('click', goNext);
+
+  runCheck();
+</script>
+<script>initLang();</script>
+
+</body>
+</html>

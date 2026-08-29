@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forge — Télécharger</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E; --char2:#1C1712; --char3:#221C15;
+    --border:#2C2419; --border-light:#3A3024;
+    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
+    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
+    --ok:#5FBE7A; --warn:#E8B65E; --danger:#E9776B;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative; padding:40px 16px;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.07), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(96,165,250,0.04), transparent);
+    animation:aurora 20s ease-in-out infinite alternate;
+  }
+  @keyframes aurora {
+    0%{transform:translate(0,0) scale(1);} 33%{transform:translate(2%,-1%) scale(1.02);}
+    66%{transform:translate(-1%,2%) scale(0.98);} 100%{transform:translate(1%,-2%) scale(1.01);}
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .back-link{
+    position:fixed; top:24px; left:28px; z-index:5;
+    font-size:13px; color:var(--smoke-dim); text-decoration:none; cursor:pointer;
+    display:flex; align-items:center; gap:7px;
+  }
+  .back-link:hover{color:var(--ember-light);}
+  .logo-mark{
+    width:56px;height:56px;border-radius:14px; margin:0 auto 20px;
+    display:block;object-fit:contain;
+    box-shadow:0 0 40px -5px rgba(59,130,246,0.3);
+    animation:fadeInUp 0.5s ease forwards;
+  }
+  h1{font-family:'Space Grotesk',sans-serif; font-size:26px; text-align:center; margin-bottom:8px; animation:fadeInUp 0.5s 0.08s ease forwards; opacity:0;}
+  p.sub{color:var(--smoke); font-size:13.5px; text-align:center; margin-bottom:28px; max-width:360px; animation:fadeInUp 0.5s 0.15s ease forwards; opacity:0;}
+
+  .dl-box{
+    width:400px; max-width:100%;
+    background:rgba(28,23,18,0.6); backdrop-filter:blur(24px) saturate(1.3); -webkit-backdrop-filter:blur(24px) saturate(1.3);
+    border:1px solid rgba(59,130,246,0.08); border-radius:18px;
+    padding:32px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.02);
+    animation:fadeInUp 0.5s 0.22s ease forwards; opacity:0;
+    text-align:center;
+  }
+  .dl-btn{
+    width:100%; padding:14px; border-radius:10px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char); font-weight:700; font-size:15px; font-family:'Inter',sans-serif;
+    text-decoration:none; display:flex; align-items:center; justify-content:center; gap:9px;
+    box-shadow:0 4px 16px rgba(59,130,246,0.25);
+    transition:all 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  .dl-btn:hover{transform:translateY(-2px) scale(1.01); box-shadow:0 8px 28px rgba(59,130,246,0.35);}
+  .dl-btn:active{transform:translateY(0) scale(0.98);}
+  .dl-meta{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); margin-top:12px;}
+
+  .reqs{width:400px; max-width:100%; margin:22px auto 0; text-align:left; animation:fadeInUp 0.5s 0.3s ease forwards; opacity:0;}
+  .reqs h3{font-family:'Space Grotesk',sans-serif; font-size:14px; color:var(--bone); margin-bottom:12px;}
+  .req{display:flex; align-items:center; gap:10px; padding:9px 12px; border:1px solid var(--border); border-radius:9px; margin-bottom:8px; background:var(--char2); font-size:13px;}
+  .req svg{flex-shrink:0;}
+  .req .r{color:var(--smoke); font-size:12px; margin-left:auto; text-align:right;}
+
+  .manual{width:400px; max-width:100%; margin:22px auto 0; text-align:left; animation:fadeInUp 0.5s 0.35s ease forwards; opacity:0;}
+  .manual .m{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--smoke); background:var(--char3); border:1px solid var(--border); border-radius:9px; padding:12px 14px; line-height:1.7; overflow-x:auto;}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body>
+
+  <a class="back-link" href="index.html">← Retour à l'accueil</a>
+
+  <img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">
+  <h1>Installer Forge</h1>
+  <p class="sub" id="sub">Télécharge l'installeur, lance <span class="mono">setup.bat</span> et l'onboarding vérifie tout automatiquement.</p>
+
+  <div class="dl-box">
+    <a class="dl-btn" id="dlBtn" href="forge-setup.exe" download>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Télécharger Forge pour Windows
+    </a>
+    <div class="dl-meta">Windows 10/11 · installeur ~50 Mo</div>
+    <p style="margin-top:12px;font-size:12px;color:var(--smoke-dim);">Gratuit à installer — la licence s'achète seulement à la création de ton compte in-app.</p>
+  </div>
+
+  <div class="reqs">
+    <h3>Ce que l'installeur gère automatiquement</h3>
+    <div class="req"><svg width="16" height="16" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Node.js LTS <span class="r">auto</span></div>
+    <div class="req"><svg width="16" height="16" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Roblox Studio + plugin Forge <span class="r">auto</span></div>
+    <div class="req"><svg width="16" height="16" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Agents IA (Codex, Claude) <span class="r">auto</span></div>
+    <div class="req"><svg width="16" height="16" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> rembg (suppression de fond) <span class="r">auto</span></div>
+  </div>
+
+<script>
+  // ==============================================
+  // INSTALLER — bouton de téléchargement direct.
+  // L'installation est gratuite : la licence ne
+  // s'achète qu'à la création du compte dans l'app.
+  // DOWNLOAD_URL pointe vers ton installeur hébergé.
+  // Si "forge-setup.exe" est uploadé à côté de ce
+  // fichier (même dossier), ça marche tel quel.
+  // ==============================================
+  var DOWNLOAD_URL = 'forge-setup.exe';
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var btn = document.getElementById('dlBtn');
+    btn.href = DOWNLOAD_URL;
+    btn.setAttribute('target', '_blank');
+  });
+</script>
+</body>
+</html>

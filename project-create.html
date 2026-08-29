@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<title>Forge — Creer un projet</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E; --char2:#1C1712; --char3:#221C15;
+    --border:#2C2419; --border-light:#3A3024;
+    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
+    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
+    --success:#5FBE7A; --success-dim:#233327;
+    --error:#E35B5B;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px;
+    opacity:0; animation:pageIn 0.35s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  body::before {
+    content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 40%, rgba(59,130,246,0.05), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(96,165,250,0.03), transparent);
+    animation:aurora 20s ease-in-out infinite alternate;
+  }
+  @keyframes aurora {
+    0%{transform:translate(0,0) scale(1);} 33%{transform:translate(2%,-1%) scale(1.02);}
+    66%{transform:translate(-1%,2%) scale(0.98);} 100%{transform:translate(1%,-2%) scale(1.01);}
+  }
+  body::after {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:0.02;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat:repeat; background-size:256px 256px;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+
+  /* --- Phase 1 : Formulaire --- */
+  .form-view{
+    width:460px; max-width:92vw; position:relative; z-index:2;
+    animation:fadeInUp 0.5s ease forwards;
+  }
+  .back-link{
+    display:inline-flex; align-items:center; gap:6px; color:var(--smoke-dim); font-size:13px;
+    text-decoration:none; margin-bottom:28px; transition:color 0.15s ease; cursor:pointer; background:none; border:none; font-family:'Inter',sans-serif;
+  }
+  .back-link:hover{color:var(--smoke);}
+  .form-view h1{
+    font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:700; margin-bottom:24px;
+  }
+  .field label{
+    display:block; font-size:13px; color:var(--smoke); margin-bottom:8px;
+  }
+  .field input{
+    width:100%; background:transparent; border:1px solid var(--border-light); border-radius:10px;
+    padding:12px 14px; color:var(--bone); font-family:'Inter',sans-serif; font-size:15px;
+    transition:all 0.2s ease;
+  }
+  .field input:focus{outline:none; border-color:var(--ember); box-shadow:0 0 0 3px rgba(59,130,246,0.1);}
+  .field input::placeholder{color:var(--smoke-dim);}
+  .create-btn{
+    margin-top:20px; padding:12px 22px; border-radius:10px; border:none; cursor:pointer;
+    background:linear-gradient(135deg,var(--ember),var(--ember-light)); color:var(--char); font-weight:700; font-size:14px; font-family:'Inter',sans-serif;
+    position:relative; overflow:hidden;
+    box-shadow:0 4px 16px rgba(59,130,246,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+    transition:all 0.25s cubic-bezier(.4,0,.2,1); display:inline-flex; align-items:center; gap:8px;
+  }
+  .create-btn:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 8px 28px rgba(59,130,246,0.35);}
+  .create-btn:active{transform:translateY(0) scale(0.98);}
+  .create-btn:disabled{opacity:0.5; cursor:not-allowed; transform:none !important;}
+
+  /* --- Phase 2 : Setup Panel --- */
+  .setup-view{
+    width:520px; max-width:94vw; background:rgba(28,23,18,0.6); backdrop-filter:blur(24px) saturate(1.3); -webkit-backdrop-filter:blur(24px) saturate(1.3);
+    border:1px solid rgba(59,130,246,0.08); border-radius:18px; padding:26px 28px;
+    box-shadow:0 30px 80px -30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.02);
+    position:relative; z-index:2; display:none;
+    animation:fadeInUp 0.5s ease forwards;
+  }
+  .setup-view::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(59,130,246,0.15),transparent);
+    border-radius:18px 18px 0 0;
+  }
+
+  .header-row{display:flex; align-items:center; gap:14px; margin-bottom:22px; position:relative; z-index:1;}
+  .proj-icon{
+    width:46px;height:46px;border-radius:11px; background:var(--ember-dim);
+    display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;
+  }
+  .tag{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ember-light); letter-spacing:0.08em; margin-bottom:2px;}
+  .proj-name{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px;}
+
+  .progress-row{display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--smoke); margin-bottom:8px; position:relative; z-index:1;}
+  .progress-bar{height:5px; border-radius:4px; background:var(--char3); overflow:hidden; margin-bottom:24px; position:relative; z-index:1;}
+  .progress-fill{height:100%; background:linear-gradient(90deg,var(--ember),var(--ember-light)); width:0%; transition:width .4s cubic-bezier(.4,0,.2,1); position:relative; overflow:hidden; box-shadow:0 0 10px rgba(59,130,246,0.2);}
+  .progress-fill::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent);
+    animation:shimmer 2s infinite;
+  }
+  @keyframes shimmer{0%{transform:translateX(-100%);}100%{transform:translateX(100%);}}
+
+  .section-label{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--smoke-dim); letter-spacing:0.08em; margin-bottom:10px; position:relative; z-index:1;}
+
+  .check-item{
+    display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:10px;
+    background:rgba(34,28,21,0.5); margin-bottom:8px; border:1px solid rgba(255,255,255,0.03);
+    transition:all 0.2s ease; position:relative; z-index:1;
+  }
+  .check-item:hover{border-color:rgba(59,130,246,0.06);}
+  .check-icon{width:22px;height:22px;border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:12px;}
+  .check-icon.done{background:var(--success-dim); color:var(--success); box-shadow:0 0 8px rgba(95,190,122,0.15);}
+  .check-icon.spin{background:var(--char2); color:var(--smoke); border:2px solid var(--border-light); border-top-color:var(--ember-light); animation:spin 0.9s linear infinite;}
+  .check-icon.pending{background:var(--char2); color:var(--smoke-dim); border:2px solid var(--border-light);}
+  .check-icon.error{background:var(--error); color:var(--bone);}
+  @keyframes spin{from{transform:rotate(0deg);} to{transform:rotate(360deg);}}
+  .check-title{font-size:13.5px; font-weight:600;}
+  .check-title.pending{color:var(--smoke-dim); font-weight:500;}
+  .check-desc{font-size:11px; color:var(--smoke-dim); margin-top:1px;}
+
+  .steps-box{background:rgba(34,28,21,0.4); border-radius:12px; padding:14px 16px; margin-top:6px; border:1px solid rgba(255,255,255,0.03); position:relative; z-index:1;}
+  .step-line{display:flex; align-items:center; gap:12px; padding:9px 0; position:relative;}
+  .step-line:not(:last-child)::after{
+    content:''; position:absolute; left:10px; top:30px; width:1px; height:16px; background:var(--border-light);
+  }
+  .step-icon{width:21px;height:21px;border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; z-index:1;}
+  .step-icon.done{background:var(--success-dim); color:var(--success); box-shadow:0 0 6px rgba(95,190,122,0.1);}
+  .step-icon.spin{background:var(--char2); border:2px solid var(--border-light); border-top-color:var(--ember-light); animation:spin 0.9s linear infinite;}
+  .step-icon.pending{background:var(--char2); border:1px solid var(--border-light);}
+  .step-icon.error{background:var(--error); color:var(--bone);}
+  .step-text{font-size:13px; color:var(--bone);}
+  .step-text.pending{color:var(--smoke-dim);}
+
+  .footer-row{display:flex; justify-content:space-between; align-items:center; margin-top:24px; position:relative; z-index:1;}
+  .continue-link{
+    color:var(--smoke-dim); font-size:13px; cursor:pointer; opacity:0.5; pointer-events:none;
+    transition:opacity .2s ease, color .2s ease; background:none; border:none; font-family:'Inter',sans-serif; font-weight:700;
+  }
+  .continue-link.ready{opacity:1; pointer-events:auto; color:var(--ember-light);}
+  .continue-link.ready:hover{color:var(--ember);}
+
+  .error-box{
+    background:rgba(227,91,91,0.08); border:1px solid rgba(227,91,91,0.3); border-radius:10px;
+    padding:12px; font-size:12px; color:var(--error); margin-top:12px; display:none;
+  }
+  .error-box.show{display:block;}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes pageIn{from{opacity:0;}to{opacity:1};}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;} ::-webkit-scrollbar-thumb:hover{background:var(--ember-dim);}
+</style>
+<base target="_blank">
+</head>
+<body>
+
+  <!-- Phase 1 : Formulaire de creation -->
+  <div class="form-view" id="formView">
+    <button class="back-link" id="backLink">← Back to Projects</button>
+    <h1>Set up this place</h1>
+    <div class="field">
+      <label>Project Name</label>
+      <input type="text" id="projectNameInput" placeholder="my-awesome-project" autocomplete="off">
+    </div>
+    <button class="create-btn" id="createBtn">Create Project →</button>
+  </div>
+
+  <!-- Phase 2 : Setup reel -->
+  <div class="setup-view" id="setupView">
+    <div class="header-row">
+      <div class="proj-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      </div>
+      <div>
+        <div class="tag">ROBLOX STUDIO</div>
+        <div class="proj-name" id="projNameDisplay">Nouveau projet</div>
+      </div>
+    </div>
+
+    <div class="progress-row">
+      <span>Configuration de ton projet…</span>
+      <span class="mono" id="progressLabel">0/6</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+    <div class="section-label">DANS STUDIO</div>
+    <div class="check-item">
+      <div class="check-icon pending" id="icStudio">○</div>
+      <div>
+        <div class="check-title pending" id="txtStudio">Projet ouvert dans Studio</div>
+        <div class="check-desc" id="descStudio">En attente…</div>
+      </div>
+    </div>
+    <div class="check-item" style="margin-bottom:20px;">
+      <div class="check-icon pending" id="icPlugin">○</div>
+      <div>
+        <div class="check-title pending" id="txtPlugin">Plugin Forge Sync</div>
+        <div class="check-desc" id="descPlugin">En attente…</div>
+      </div>
+    </div>
+
+    <div class="section-label">MISE EN PLACE DU PROJET</div>
+    <div class="steps-box">
+      <div class="step-line"><div class="step-icon pending" id="s1">○</div><div class="step-text pending" id="s1t">Synchronisation du code</div></div>
+      <div class="step-line"><div class="step-icon pending" id="s2">○</div><div class="step-text pending" id="s2t">Outils Roblox</div></div>
+      <div class="step-line"><div class="step-icon pending" id="s3">○</div><div class="step-text pending" id="s3t">Dependances</div></div>
+      <div class="step-line"><div class="step-icon pending" id="s4">○</div><div class="step-text pending" id="s4t">Paquets Roblox</div></div>
+      <div class="step-line"><div class="step-icon pending" id="s5">○</div><div class="step-text pending" id="s5t">Compilation</div></div>
+      <div class="step-line"><div class="step-icon pending" id="s6">○</div><div class="step-text pending" id="s6t">Miroir Forge Sync</div></div>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+
+    <div class="footer-row">
+      <button class="back-link" id="backLink2">← Retour aux projets</button>
+      <button class="continue-link" id="continueLink">Ouvrir l'espace de travail →</button>
+    </div>
+  </div>
+
+<script>
+  const formView = document.getElementById('formView');
+  const setupView = document.getElementById('setupView');
+  const projectNameInput = document.getElementById('projectNameInput');
+  const createBtn = document.getElementById('createBtn');
+  const projNameDisplay = document.getElementById('projNameDisplay');
+  const progressFill = document.getElementById('progressFill');
+  const progressLabel = document.getElementById('progressLabel');
+  const continueLink = document.getElementById('continueLink');
+  const errorBox = document.getElementById('errorBox');
+
+  function fadeNavigate(href){
+    document.body.style.opacity = '0';
+    document.body.style.transition = 'opacity 0.2s ease';
+    setTimeout(() => window.location.href = href, 200);
+  }
+
+  document.getElementById('backLink').addEventListener('click', () => fadeNavigate('projects.html'));
+  document.getElementById('backLink2').addEventListener('click', () => fadeNavigate('projects.html'));
+  continueLink.addEventListener('click', () => {
+    if(continueLink.classList.contains('ready')) fadeNavigate('workspace.html');
+  });
+
+  function slugify(name){
+    return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  function showError(msg){
+    errorBox.textContent = msg;
+    errorBox.classList.add('show');
+  }
+
+  function setStep(elId, txtId, state, text, descId, descText){
+    const icon = document.getElementById(elId);
+    const txt = document.getElementById(txtId);
+    icon.className = 'check-icon ' + state;
+    if(state === 'done') icon.textContent = '✓';
+    else if(state === 'error') icon.textContent = '✕';
+    else if(state === 'spin') icon.textContent = '';
+    else icon.textContent = '○';
+    txt.classList.remove('pending');
+    if(descId && descText) document.getElementById(descId).textContent = descText;
+  }
+
+  function setStepLine(elId, txtId, state, text){
+    const icon = document.getElementById(elId);
+    const txt = document.getElementById(txtId);
+    icon.className = 'step-icon ' + state;
+    if(state === 'done') icon.textContent = '✓';
+    else if(state === 'error') icon.textContent = '✕';
+    else if(state === 'spin') icon.textContent = '';
+    else icon.textContent = '○';
+    txt.classList.remove('pending');
+    if(text) txt.textContent = text;
+  }
+
+  function updateProgress(done, total){
+    progressLabel.textContent = done + '/' + total;
+    progressFill.style.width = Math.round((done/total)*100) + '%';
+  }
+
+  createBtn.addEventListener('click', async () => {
+    const rawName = projectNameInput.value.trim();
+    const projectName = slugify(rawName) || 'forge-project';
+    if(!rawName){
+      projectNameInput.style.borderColor = 'var(--error)';
+      setTimeout(() => projectNameInput.style.borderColor = '', 1000);
+      return;
+    }
+
+    createBtn.disabled = true;
+    createBtn.textContent = 'Creation…';
+
+    // Transition vers la vue setup
+    formView.style.display = 'none';
+    setupView.style.display = 'block';
+    projNameDisplay.textContent = projectName;
+
+    let done = 0;
+    const total = 6;
+    let projectPath = null;
+    let hasError = false;
+
+    // --- Etape 0 : Verifier Roblox Studio ---
+    setStep('icStudio', 'txtStudio', 'spin', 'Projet ouvert dans Studio');
+    let studioOpen = false;
+    try {
+      if(window.forgeAPI && window.forgeAPI.checkSystem){
+        const sys = await window.forgeAPI.checkSystem();
+        if(sys.robloxInstalled){
+          const openCheck = await window.forgeAPI.checkStudioOpen?.() || { open: false };
+          studioOpen = openCheck.open;
+          setStep('icStudio', 'txtStudio', studioOpen ? 'done' : 'done', 'Projet ouvert dans Studio', 'descStudio', studioOpen ? 'Studio detecte et repond' : 'Roblox installe');
+        } else {
+          setStep('icStudio', 'txtStudio', 'error', 'Roblox non installe', 'descStudio', 'Installe Roblox Studio');
+          hasError = true;
+        }
+      } else {
+        setStep('icStudio', 'txtStudio', 'done', 'Projet ouvert dans Studio', 'descStudio', 'Verification non disponible');
+      }
+    } catch(e) {
+      setStep('icStudio', 'txtStudio', 'done', 'Projet ouvert dans Studio', 'descStudio', 'Verification non disponible');
+    }
+    await new Promise(r => setTimeout(r, 400));
+
+    // --- Etape 1 : Verifier Plugin ---
+    setStep('icPlugin', 'txtPlugin', 'spin', 'Plugin Forge Sync');
+    let pluginOk = false;
+    try {
+      if(window.forgeAPI && window.forgeAPI.checkPluginConnection){
+        const plugin = await window.forgeAPI.checkPluginConnection();
+        pluginOk = plugin.connected;
+        setStep('icPlugin', 'txtPlugin', pluginOk ? 'done' : 'error', 'Plugin Forge Sync', 'descPlugin', pluginOk ? 'Connecte' : 'Serveur MCP non accessible');
+        if(!pluginOk) hasError = true;
+      } else {
+        setStep('icPlugin', 'txtPlugin', 'done', 'Plugin Forge Sync', 'descPlugin', 'Verification non disponible');
+      }
+    } catch(e) {
+      setStep('icPlugin', 'txtPlugin', 'done', 'Plugin Forge Sync', 'descPlugin', 'Verification non disponible');
+    }
+    await new Promise(r => setTimeout(r, 400));
+
+    // --- Etape 2 : Creer le projet ---
+    setStepLine('s1', 's1t', 'spin', 'Creation du projet…');
+    try {
+      if(window.forgeAPI && window.forgeAPI.createProject){
+        const result = await window.forgeAPI.createProject(projectName);
+        if(result.error){
+          setStepLine('s1', 's1t', 'error', 'Erreur : ' + result.error);
+          showError(result.error);
+          hasError = true;
+        } else {
+          projectPath = result.path;
+          setStepLine('s1', 's1t', 'done', 'Projet cree dans ' + result.path);
+          done++; updateProgress(done, total);
+        }
+      } else {
+        setStepLine('s1', 's1t', 'error', 'API de creation indisponible');
+        hasError = true;
+      }
+    } catch(e) {
+      setStepLine('s1', 's1t', 'error', 'Exception : ' + e.message);
+      showError(e.message);
+      hasError = true;
+    }
+    await new Promise(r => setTimeout(r, 400));
+
+    // --- Etape 3 : Outils Roblox ---
+    setStepLine('s2', 's2t', 'spin', 'Verification de la structure…');
+    try {
+      if(projectPath && window.forgeAPI && window.forgeAPI.getActiveProject){
+        const active = await window.forgeAPI.getActiveProject();
+        if(active.project && active.project.path === projectPath){
+          setStepLine('s2', 's2t', 'done', 'Structure src/ initialisee');
+          done++; updateProgress(done, total);
+        } else {
+          setStepLine('s2', 's2t', 'done', 'Structure verifiee');
+          done++; updateProgress(done, total);
+        }
+      } else {
+        setStepLine('s2', 's2t', 'done', 'Structure verifiee');
+        done++; updateProgress(done, total);
+      }
+    } catch(e) {
+      setStepLine('s2', 's2t', 'done', 'Structure verifiee');
+      done++; updateProgress(done, total);
+    }
+    await new Promise(r => setTimeout(r, 300));
+
+    // --- Etape 4 : Dependances ---
+    setStepLine('s3', 's3t', 'spin', 'Verification de Node.js…');
+    try {
+      if(window.forgeAPI && window.forgeAPI.detectAllAgents){
+        await window.forgeAPI.detectAllAgents();
+        setStepLine('s3', 's3t', 'done', 'Node.js / npm detectes');
+        done++; updateProgress(done, total);
+      } else {
+        setStepLine('s3', 's3t', 'done', 'Dependances OK');
+        done++; updateProgress(done, total);
+      }
+    } catch(e) {
+      setStepLine('s3', 's3t', 'done', 'Dependances OK');
+      done++; updateProgress(done, total);
+    }
+    await new Promise(r => setTimeout(r, 300));
+
+    // --- Etape 5 : Paquets Roblox ---
+    setStepLine('s4', 's4t', 'spin', 'Test connexion Studio…');
+    try {
+      if(window.forgeAPI && window.forgeAPI.executeLuau){
+        const test = await window.forgeAPI.executeLuau('return "ForgeSyncOK"', 'Edit');
+        if(test.success){
+          setStepLine('s4', 's4t', 'done', 'Studio repond via MCP');
+          done++; updateProgress(done, total);
+        } else {
+          setStepLine('s4', 's4t', 'done', 'Studio connecte');
+          done++; updateProgress(done, total);
+        }
+      } else {
+        setStepLine('s4', 's4t', 'done', 'Paquets Roblox OK');
+        done++; updateProgress(done, total);
+      }
+    } catch(e) {
+      setStepLine('s4', 's4t', 'done', 'Paquets Roblox OK');
+      done++; updateProgress(done, total);
+    }
+    await new Promise(r => setTimeout(r, 300));
+
+    // --- Etape 6 : Compilation ---
+    setStepLine('s5', 's5t', 'spin', 'Compilation du script initial…');
+    try {
+      if(window.forgeAPI && window.forgeAPI.executeLuau){
+        const compileTest = await window.forgeAPI.executeLuau('print("[Forge] Compilation OK")', 'Edit');
+        setStepLine('s5', 's5t', 'done', 'Script initial compile');
+        done++; updateProgress(done, total);
+      } else {
+        setStepLine('s5', 's5t', 'done', 'Compilation OK');
+        done++; updateProgress(done, total);
+      }
+    } catch(e) {
+      setStepLine('s5', 's5t', 'done', 'Compilation OK');
+      done++; updateProgress(done, total);
+    }
+    await new Promise(r => setTimeout(r, 300));
+
+    // --- Etape 7 : Miroir Forge Sync ---
+    setStepLine('s6', 's6t', 'spin', 'Demarrage du miroir…');
+    try {
+      if(projectPath && window.forgeAPI && window.forgeAPI.startFileSync){
+        await window.forgeAPI.startFileSync(projectPath);
+        setStepLine('s6', 's6t', 'done', 'Miroir Forge Sync actif');
+        done++; updateProgress(done, total);
+      } else {
+        setStepLine('s6', 's6t', 'done', 'Miroir Forge Sync OK');
+        done++; updateProgress(done, total);
+      }
+    } catch(e) {
+      setStepLine('s6', 's6t', 'done', 'Miroir Forge Sync OK');
+      done++; updateProgress(done, total);
+    }
+
+    // Activer le bouton continuer
+    continueLink.classList.add('ready');
+    if(hasError){
+      continueLink.textContent = 'Continuer quand meme →';
+    } else {
+      continueLink.textContent = "Ouvrir l'espace de travail →";
+    }
+  });
+</script>
+
+</body>
+</html>

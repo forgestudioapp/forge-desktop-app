@@ -1,0 +1,94 @@
+{
+  "name": "forge-desktop-app",
+  "version": "1.0.1",
+  "description": "Forge - Génère ton jeu Roblox avec l'IA",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron .",
+    "setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup.ps1",
+    "setup:core": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup.ps1 -SkipAgents",
+    "rebuild:pty": "npx electron-rebuild -f -w node-pty",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "publish": "electron-builder --win --publish always"
+  },
+  "keywords": [],
+  "author": "Forge Studio",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "electron-updater": "^6.8.9",
+    "node-pty": "^1.1.0",
+    "three": "^0.137.0"
+  },
+  "build": {
+    "appId": "com.forge.app",
+    "productName": "Forge",
+    "publish": {
+      "provider": "github",
+      "owner": "forgestudioapp",
+      "repo": "forgestudio",
+      "releaseType": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/logos/forge-logo.ico"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "login.html",
+      "accounts.html",
+      "onboarding.html",
+      "roblox-studio.html",
+      "projects.html",
+      "project-create.html",
+      "project-setup.html",
+      "workspace.html",
+      "agents.html",
+      "api-keys.html",
+      "thumbnail.html",
+      "settings.html",
+      "lib/**/*",
+      "assets/**/*",
+      "xterm-assets/**/*",
+      "scripts/setup.ps1",
+      "ForgePlugin.rbxmx",
+      ".env"
+    ],
+    "extraResources": [
+      {
+        "from": "../robloxstudio-mcp/dist",
+        "to": "robloxstudio-mcp/dist"
+      },
+      {
+        "from": "../robloxstudio-mcp/node_modules",
+        "to": "robloxstudio-mcp/node_modules"
+      },
+      {
+        "from": "ForgePlugin.rbxmx",
+        "to": "ForgePlugin.rbxmx"
+      },
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^32.3.3",
+    "electron-builder": "^26.15.3",
+    "electron-rebuild": "^3.2.9"
+  },
+  "allowScripts": {
+    "electron@32.3.3": true,
+    "electron-winstaller@5.4.0": true,
+    "node-pty@1.1.0": true,
+    "lzma-native@8.0.6": true
+  }
+}

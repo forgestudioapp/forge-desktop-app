@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
+<title>Forge — Paramètres</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E;--char2:#1C1712;--char3:#221C15;--char4:#2A2318;
+    --border:#2C2419;--border-light:#3A3024;--border-hover:#4A3E30;
+    --bone:#F3EDE3;--smoke:#948B7C;--smoke-dim:#6B6255;
+    --ember:#3B82F6;--ember-light:#60A5FA;--ember-dim:#1E3A5F;
+    --success:#5FBE7A;--success-dim:#233327;
+    --error:#E35B5B;--error-dim:#2A1515;
+    --info:#5B9BE3;
+  }
+  html.light-theme{
+    --char:#F5F2ED;--char2:#EDEAE4;--char3:#E5E1DA;--char4:#DDD9D1;
+    --border:#D5D0C8;--border-light:#C8C2B8;--border-hover:#B8B2A8;
+    --bone:#1A1612;--smoke:#6B6255;--smoke-dim:#948B7C;
+    --ember:#2563EB;--ember-light:#60A5FA;--ember-dim:#DBEAFE;
+    --success:#3A9A55;--success-dim:#D4F0DC;
+    --error:#CC3333;--error-dim:#F5D4D4;
+    --info:#3A7ACC;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:var(--char);color:var(--bone);font-family:'Inter',sans-serif;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;
+    padding-top:60px;padding-bottom:60px;position:relative;
+    opacity:0;animation:pageIn .35s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:radial-gradient(ellipse 80% 50% at 20% 40%,rgba(59,130,246,.03),transparent),
+               radial-gradient(ellipse 60% 40% at 80% 60%,rgba(96,165,250,.015),transparent);}
+
+  .top-bar{position:absolute;top:26px;right:30px;display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--smoke-dim);z-index:2;}
+  .top-bar b{color:var(--bone);cursor:pointer;padding:2px 6px;border-radius:4px;transition:all .2s;}
+  .top-bar b:hover{background:var(--char3);}
+
+  h1{font-family:'Space Grotesk',sans-serif;font-size:26px;text-align:center;margin-bottom:6px;position:relative;z-index:2;animation:fadeInUp .5s ease forwards;opacity:0;}
+  p.sub{color:var(--smoke);font-size:14px;text-align:center;max-width:500px;line-height:1.6;margin-bottom:32px;position:relative;z-index:2;animation:fadeInUp .5s .06s ease forwards;opacity:0;}
+
+  .settings-card{
+    width:520px;max-width:92vw;background:rgba(28,23,18,.5);backdrop-filter:blur(12px);
+    border:1px solid rgba(59,130,246,.05);border-radius:14px;
+    padding:20px 24px;margin-bottom:12px;position:relative;z-index:2;
+    animation:fadeInUp .5s .12s ease forwards;opacity:0;
+  }
+  .setting-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);}
+  .setting-row:last-child{border-bottom:none;}
+  .setting-label{font-weight:600;font-size:14px;color:var(--bone);}
+  .setting-desc{font-size:12px;color:var(--smoke-dim);margin-top:2px;}
+
+  .toggle{position:relative;width:48px;height:26px;flex-shrink:0;}
+  .toggle input{opacity:0;width:0;height:0;}
+  .toggle-slider{
+    position:absolute;inset:0;cursor:pointer;
+    background:var(--char3);border:1px solid var(--border-light);border-radius:13px;
+    transition:all .25s ease;
+  }
+  .toggle-slider::before{
+    content:'';position:absolute;width:20px;height:20px;left:2px;top:2px;
+    background:var(--smoke);border-radius:50%;transition:all .25s ease;
+  }
+  .toggle input:checked+.toggle-slider{background:var(--ember);border-color:var(--ember);}
+  .toggle input:checked+.toggle-slider::before{transform:translateX(22px);background:var(--char);}
+
+  /* Select dropdown */
+  .select-wrap{position:relative;flex-shrink:0;}
+  .select-wrap select{
+    appearance:none;-webkit-appearance:none;
+    background:var(--char3);border:1px solid var(--border-light);border-radius:8px;
+    color:var(--bone);font-family:'Inter',sans-serif;font-size:13px;font-weight:500;
+    padding:6px 30px 6px 12px;cursor:pointer;outline:none;transition:all .2s;
+  }
+  .select-wrap select:hover{border-color:var(--border-hover);}
+  .select-wrap select:focus{border-color:var(--ember);}
+  .select-wrap::after{
+    content:'▾';position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    color:var(--smoke);font-size:11px;pointer-events:none;
+  }
+
+  /* Input number */
+  .input-num{
+    width:60px;background:var(--char3);border:1px solid var(--border-light);border-radius:8px;
+    color:var(--bone);font-family:'Inter',sans-serif;font-size:13px;font-weight:500;
+    padding:6px 10px;text-align:center;outline:none;transition:all .2s;
+  }
+  .input-num:hover{border-color:var(--border-hover);}
+  .input-num:focus{border-color:var(--ember);}
+
+  .back-btn{
+    position:absolute;top:26px;left:30px;z-index:2;
+    padding:11px 18px;border-radius:10px;border:none;cursor:pointer;
+    background:var(--char3);color:var(--bone);font-weight:600;font-size:13px;font-family:'Inter',sans-serif;
+    border:1px solid var(--border-light);transition:all .2s ease;
+    animation:fadeInUp .5s .18s ease forwards;opacity:0;
+  }
+  .back-btn:hover{border-color:var(--ember);color:var(--ember-light);}
+
+  .account-email{
+    font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--smoke);
+    background:var(--char3);border:1px solid var(--border-light);border-radius:8px;
+    padding:6px 12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .logout-btn{
+    padding:9px 18px;border-radius:9px;border:none;cursor:pointer;
+    background:var(--error-dim);color:var(--error);font-weight:600;font-size:13px;
+    font-family:'Inter',sans-serif;border:1px solid rgba(227,91,91,.35);transition:all .2s ease;
+  }
+  .logout-btn:hover{background:var(--error);color:var(--bone);border-color:var(--error);}
+  .logout-btn:active{transform:scale(.97);}
+
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes pageIn{from{opacity:0;}to{opacity:1;}}
+</style>
+</head>
+<body>
+  <button class="back-btn" onclick="goBack()" data-i18n="back">← Retour</button>
+  <div class="top-bar">
+    SYSTEM ·
+    <b style="padding:2px 6px;border-radius:4px;">FR</b>
+  </div>
+
+  <h1 data-i18n="settings_title">Paramètres</h1>
+  <p class="sub" data-i18n="settings_sub">Personnalise l'apparence et le comportement de Forge.</p>
+
+  <!-- APPEARANCE -->
+  <div class="settings-card">
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_theme">Thème clair</div>
+        <div class="setting-desc" data-i18n="setting_theme_desc">Passe en mode clair pour une meilleure lisibilité en journée.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+  <!-- NOTIFICATIONS -->
+  <div class="settings-card">
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_notif_sound">Notifications sonores</div>
+        <div class="setting-desc" data-i18n="setting_notif_sound_desc">Joue un son quand un asset est généré par un agent IA.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="notifSoundToggle" onchange="toggleNotifSound()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- AGENTS -->
+  <div class="settings-card">
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_agent_autostart">Démarrage auto des agents</div>
+        <div class="setting-desc" data-i18n="setting_agent_autostart_desc">Lance automatiquement l'agent IA quand un projet est ouvert.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="agentAutostartToggle" onchange="toggleAgentAutostart()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_max_agents">Nombre max d'agents</div>
+        <div class="setting-desc" data-i18n="setting_max_agents_desc">Limite le nombre d'agents IA simultanés.</div>
+      </div>
+      <input type="number" class="input-num" id="maxAgentsInput" min="1" max="10" value="3" onchange="setMaxAgents(this.value)">
+    </div>
+  </div>
+
+  <!-- FILES -->
+  <div class="settings-card">
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_auto_sync">Auto-sync fichiers</div>
+        <div class="setting-desc" data-i18n="setting_auto_sync_desc">Synchronise automatiquement les fichiers modifiés vers Roblox Studio.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoSyncToggle" onchange="toggleAutoSync()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_save_interval">Intervalle auto-save</div>
+        <div class="setting-desc" data-i18n="setting_save_interval_desc">Sauvegarde automatique des fichiers du projet.</div>
+      </div>
+      <div class="select-wrap">
+        <select id="saveIntervalSelect" onchange="setSaveInterval(this.value)">
+          <option value="0" data-i18n-option="off">Désactivé</option>
+          <option value="30">30s</option>
+          <option value="60">1min</option>
+          <option value="300">5min</option>
+          <option value="600">10min</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_model_quality">Qualité des previews 3D</div>
+        <div class="setting-desc" data-i18n="setting_model_quality_desc">Résolution des thumbnails de modèles (plus haut = plus lent).</div>
+      </div>
+      <div class="select-wrap">
+        <select id="modelQualitySelect" onchange="setModelQuality(this.value)">
+          <option value="low" data-i18n-option="quality_low">Basse</option>
+          <option value="medium" data-i18n-option="quality_medium">Moyenne</option>
+          <option value="high" data-i18n-option="quality_high">Haute</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- IA & MEDIA -->
+  <div class="settings-card">
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Suppression d'arrière-plan auto</div>
+        <div class="setting-desc">Supprime automatiquement l'arrière-plan des images générées par l'IA (nécessite <code style="background:var(--char3);padding:1px 4px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:11px;">rembg</code> installé via Python).</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoRemoveBgToggle" onchange="toggleAutoRemoveBg()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="setting-row">
+      <div id="rembgStatus" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--smoke-dim);padding:4px 0;"></div>
+    </div>
+  </div>
+
+  <!-- ACCOUNT -->
+  <div class="settings-card">
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_account">Compte connecté</div>
+        <div class="setting-desc" data-i18n="setting_account_desc">Ton compte Forge. La déconnexion efface la session et déconnecte Roblox, GitHub et les clés API — tes projets restent, et tes données seront restaurées si tu te reconnectes avec le même compte.</div>
+      </div>
+      <span class="account-email" id="accountEmail">—</span>
+    </div>
+    <div class="setting-row" style="padding-top:16px;">
+      <button class="logout-btn" id="logoutBtn" data-i18n="logout" onclick="logout()">Se déconnecter</button>
+    </div>
+  </div>
+
+<script src="./lib/i18n.js"></script>
+<script>
+  const SETTINGS_KEY = 'forge_settings';
+
+  function loadSettings() {
+    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch(e) { return {}; }
+  }
+  function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+
+  // ── Theme ──
+  function applyTheme() {
+    const s = loadSettings();
+    document.documentElement.classList.toggle('light-theme', s.theme === 'light');
+    document.getElementById('themeToggle').checked = s.theme === 'light';
+  }
+  function toggleTheme() {
+    const s = loadSettings();
+    s.theme = document.getElementById('themeToggle').checked ? 'light' : 'dark';
+    saveSettings(s);
+    applyTheme();
+  }
+
+  // ── Notif sound ──
+  function toggleNotifSound() {
+    const s = loadSettings();
+    s.notifSound = document.getElementById('notifSoundToggle').checked;
+    saveSettings(s);
+  }
+
+  // ── Agent autostart ──
+  function toggleAgentAutostart() {
+    const s = loadSettings();
+    s.agentAutostart = document.getElementById('agentAutostartToggle').checked;
+    saveSettings(s);
+  }
+
+  // ── Max agents ──
+  function setMaxAgents(v) {
+    const s = loadSettings();
+    s.maxAgents = Math.max(1, Math.min(10, parseInt(v) || 3));
+    saveSettings(s);
+  }
+
+  // ── Auto sync ──
+  function toggleAutoSync() {
+    const s = loadSettings();
+    s.autoSync = document.getElementById('autoSyncToggle').checked;
+    saveSettings(s);
+  }
+
+  // ── Save interval ──
+  function setSaveInterval(v) {
+    const s = loadSettings();
+    s.saveInterval = parseInt(v) || 0;
+    saveSettings(s);
+  }
+
+  // ── Model quality ──
+  function setModelQuality(v) {
+    const s = loadSettings();
+    s.modelQuality = v;
+    saveSettings(s);
+  }
+
+  // ── Auto-remove background (rembg) ──
+  async function toggleAutoRemoveBg() {
+    const checked = document.getElementById('autoRemoveBgToggle').checked;
+    if (window.forgeAPI && window.forgeAPI.saveAppSettings) {
+      const current = (window.forgeAPI.getAppSettings ? await window.forgeAPI.getAppSettings() : {}) || {};
+      current.autoRemoveBg = checked;
+      await window.forgeAPI.saveAppSettings(current);
+    }
+  }
+
+  async function loadRembgStatus() {
+    const el = document.getElementById('rembgStatus');
+    const toggle = document.getElementById('autoRemoveBgToggle');
+    if (!window.forgeAPI || !window.forgeAPI.checkSystem) { el.textContent = ''; return; }
+    try {
+      const sys = await window.forgeAPI.checkSystem();
+      if (sys.rembgInstalled) {
+        el.innerHTML = '<span style="color:var(--ok);">rembg ' + (sys.rembgVersion || '') + ' installé</span>';
+      } else {
+        el.innerHTML = '<span style="color:var(--warn);">rembg non installé — lance <code>pip install "rembg[cpu,cli]"</code></span>';
+      }
+      if (sys.autoRemoveBg) toggle.checked = true;
+    } catch (e) { el.textContent = ''; }
+  }
+
+  // ── Compte / Déconnexion ──
+  async function loadAccount(){
+    if(window.forgeAPI && window.forgeAPI.isForgeConnected){
+      try{
+        const res = await window.forgeAPI.isForgeConnected();
+        if(res.connected && res.email){
+          document.getElementById('accountEmail').textContent = res.email;
+        }
+      }catch(e){}
+    }
+  }
+  loadAccount();
+
+  async function logout(){
+    if(!window.forgeAPI || !window.forgeAPI.logoutForge){
+      alert('forgeAPI indisponible.');
+      return;
+    }
+    const ok = confirm('Se déconnecter ? La session Forge sera fermée, Roblox, GitHub et les clés API seront déconnectés. Tes projets restent sauvegardés sur ton ordinateur.');
+    if(!ok) return;
+    const btn = document.getElementById('logoutBtn');
+    btn.disabled = true;
+    btn.textContent = 'Déconnexion…';
+    try{
+      await window.forgeAPI.logoutForge();
+      document.body.style.opacity = '0';
+      document.body.style.transition = 'opacity 0.2s ease';
+      setTimeout(() => { window.location.href = 'login.html'; }, 200);
+    }catch(e){
+      alert('Erreur lors de la déconnexion : ' + e.message);
+      btn.disabled = false;
+      btn.textContent = 'Se déconnecter';
+    }
+  }
+
+  // ── Retour vers la page d'origine ──
+  function goBack() {
+    let target = 'workspace.html';
+    try {
+      const from = new URLSearchParams(window.location.search).get('from');
+      if (from && /^[\w.\-]+\.html$/.test(from)) {
+        target = from;
+      } else if (document.referrer) {
+        const segs = document.referrer.split('/').filter(Boolean);
+        const last = segs[segs.length - 1];
+        if (last && /^[\w.\-]+\.html$/.test(last)) target = last;
+      }
+    } catch (e) {}
+    document.body.style.opacity = '0';
+    document.body.style.transition = 'opacity 0.2s ease';
+    setTimeout(() => { window.location.href = target; }, 150);
+  }
+
+  // ── Init ──
+  const s = loadSettings();
+  document.getElementById('themeToggle').checked = s.theme === 'light';
+  document.getElementById('notifSoundToggle').checked = s.notifSound !== false;
+  document.getElementById('agentAutostartToggle').checked = s.agentAutostart === true;
+  document.getElementById('maxAgentsInput').value = s.maxAgents || 3;
+  document.getElementById('autoSyncToggle').checked = s.autoSync !== false;
+  document.getElementById('saveIntervalSelect').value = s.saveInterval || 0;
+  document.getElementById('modelQualitySelect').value = s.modelQuality || 'medium';
+  applyTheme();
+  loadRembgStatus();
+</script>
+</body>
+</html>
