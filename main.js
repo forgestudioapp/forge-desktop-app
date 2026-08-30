@@ -591,6 +591,10 @@ function migrateLegacyData() {
 // L'app vérifie la clé contre la table license_keys via Supabase REST.
 // ============================================
 
+function getLicenseUrl() {
+  return process.env.FORGE_LICENSE_URL || 'https://forgestudioapp.github.io/forge-desktop-app/forge/get-license.html';
+}
+
 function getStripeStoreUrl() {
   return process.env.STRIPE_STORE_URL || 'https://forgestudioapp.itch.io/forge';
 }
@@ -640,7 +644,7 @@ function licenseError(msg) {
 
 ipcMain.handle('buy-license', async () => {
   const { shell } = require('electron');
-  shell.openExternal(getStripeStoreUrl());
+  shell.openExternal(getLicenseUrl());
   return { success: true };
 });
 

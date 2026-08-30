@@ -6,3 +6,5 @@ out/
 forge-users/
 active-project.json
 projects-registry.json
+
+releases/
