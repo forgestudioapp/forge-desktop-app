@@ -41,6 +41,10 @@
       "target": "nsis",
       "icon": "assets/logos/forge-logo.ico"
     },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/logos/forge-logo.png"
+    },
     "files": [
       "main.js",
       "preload.js",
@@ -61,8 +65,8 @@
       "assets/**/*",
       "xterm-assets/**/*",
       "scripts/setup.ps1",
-      "ForgePlugin.rbxmx",
-      ".env"
+      "scripts/postinstall.js",
+      "ForgePlugin.rbxmx"
     ],
     "extraResources": [
       {
@@ -76,10 +80,6 @@
       {
         "from": "ForgePlugin.rbxmx",
         "to": "ForgePlugin.rbxmx"
-      },
-      {
-        "from": ".env",
-        "to": ".env"
       }
     ]
   },
