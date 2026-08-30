@@ -1,0 +1,74 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Clone MCP server (sibling dir)
+        run: git clone https://github.com/forgestudioapp/robloxstudio-mcp.git ../robloxstudio-mcp
+
+      - name: Build MCP server
+        run: |
+          cd ../robloxstudio-mcp
+          npm install
+          npm run build
+
+      - name: Install app dependencies
+        run: npm install
+
+      - name: Rebuild node-pty for Electron
+        run: npx electron-rebuild -f -w node-pty
+
+      - name: Build Windows installer
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Clone MCP server (sibling dir)
+        run: git clone https://github.com/forgestudioapp/robloxstudio-mcp.git ../robloxstudio-mcp
+
+      - name: Build MCP server
+        run: |
+          cd ../robloxstudio-mcp
+          npm install
+          npm run build
+
+      - name: Install app dependencies
+        run: npm install
+
+      - name: Rebuild node-pty for Electron
+        run: npx electron-rebuild -f -w node-pty
+
+      - name: Build macOS DMG
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
