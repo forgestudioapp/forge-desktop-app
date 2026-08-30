@@ -586,17 +586,13 @@ function migrateLegacyData() {
 }
 
 // ============================================
-// LICENCE LEMON SQUEEZY (paywall création de compte)
-// Une clé de licence active (achetée sur le store) est requise pour créer
-// un compte Forge. L'API Licenses de Lemon Squeezy est publique (pas de
-// secret serveur) : l'app l'appelle directement. L'activation crée une
-// "instance" par machine, ce qui limite le partage d'une clé.
+// LICENCE STRIPE + SUPABASE (paywall création de compte)
+// Les clés sont générées par le webhook Stripe → Supabase Edge Function.
+// L'app vérifie la clé contre la table license_keys via Supabase REST.
 // ============================================
-const LEMONSQUEEZY_LICENSE_API = 'https://api.lemonsqueezy.com/v1/licenses';
-const LEMONSQUEEZY_INSTANCE_NAME = 'forge';
 
-function getLemonsqueezyStoreUrl() {
-  return process.env.LEMONSQUEEZY_STORE_URL || 'https://forge.lemonsqueezy.com';
+function getStripeStoreUrl() {
+  return process.env.STRIPE_STORE_URL || 'https://forgestudioapp.itch.io/forge';
 }
 
 function getLicenseFilePath() {
@@ -609,48 +605,42 @@ function readLicenseFile() {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; }
 }
 
-async function lemonsqueezyActivate(licenseKey) {
-  const res = await fetchWithTimeout(`${LEMONSQUEEZY_LICENSE_API}/activate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ license_key: licenseKey, instance_name: LEMONSQUEEZY_INSTANCE_NAME })
+function getSupabaseConfig() {
+  const url = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  return { url, serviceKey };
+}
+
+async function supabaseVerifyLicense(licenseKey) {
+  const { url, serviceKey } = getSupabaseConfig();
+  if (!url || !serviceKey) {
+    return { valid: false, error: 'Supabase non configuré (variables d\'environnement manquantes)' };
+  }
+  const endpoint = `${url}/rest/v1/rpc/verify_license?key=${encodeURIComponent(licenseKey)}`;
+  const res = await fetchWithTimeout(endpoint, {
+    method: 'GET',
+    headers: {
+      'apikey': serviceKey,
+      'Authorization': 'Bearer ' + serviceKey,
+    },
   }, 15000);
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, data };
+  if (!res.ok) {
+    const txt = await res.text();
+    return { valid: false, error: 'Erreur Supabase : ' + txt.slice(0, 150) };
+  }
+  const rows = await res.json().catch(() => []);
+  if (!rows.length) return { valid: false, error: 'Clé introuvable.' };
+  const r = rows[0];
+  return { valid: r.valid, status: r.license_status, email: r.license_email, plan: r.license_plan };
 }
 
-async function lemonsqueezyVerify(licenseKey, instanceId) {
-  const url = `${LEMONSQUEEZY_LICENSE_API}/verify?license_key=${encodeURIComponent(licenseKey)}&instance_id=${encodeURIComponent(instanceId)}&instance_name=${encodeURIComponent(LEMONSQUEEZY_INSTANCE_NAME)}`;
-  const res = await fetchWithTimeout(url, {}, 15000);
-  const data = await res.json().catch(() => ({}));
-  return data;
-}
-
-function licenseIsActive(data) {
-  return !!(data && data.activated === true && data.license_key && data.license_key.status === 'active');
-}
-
-// Clés de test désactivées en production.
-function isTestKeyEnabled() {
-  return false;
-}
-
-function isTestKey(licenseKey) {
-  if (!isTestKeyEnabled() || !licenseKey) return false;
-  const keys = (process.env.FORGE_TEST_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
-  return keys.includes(licenseKey.trim());
-}
-
-function licenseError(data) {
-  const raw = data && (data.error || data.message);
-  if (typeof raw === 'string') return raw;
-  if (raw && typeof raw === 'object') return raw.message || raw.key || 'Clé de licence invalide.';
-  return 'Clé de licence invalide.';
+function licenseError(msg) {
+  return typeof msg === 'string' ? msg : 'Clé de licence invalide.';
 }
 
 ipcMain.handle('buy-license', async () => {
   const { shell } = require('electron');
-  shell.openExternal(getLemonsqueezyStoreUrl());
+  shell.openExternal(getStripeStoreUrl());
   return { success: true };
 });
 
@@ -662,31 +652,19 @@ ipcMain.handle('verify-license', async (event, licenseKey) => {
   if (existing && existing.key === licenseKey) {
     return { success: true, license: existing };
   }
-  if (isTestKey(licenseKey)) {
-    const license = {
-      key: licenseKey,
-      test: true,
-      instanceId: null,
-      instanceName: LEMONSQUEEZY_INSTANCE_NAME,
-      activatedAt: new Date().toISOString()
-    };
-    fs.writeFileSync(getLicenseFilePath(), JSON.stringify(license, null, 2));
-    console.warn('[License] Clé de TEST utilisée — ne pas garder en production.');
-    return { success: true, license };
-  }
   try {
-    const { ok, data } = await lemonsqueezyActivate(licenseKey);
-    if (ok && licenseIsActive(data)) {
+    const result = await supabaseVerifyLicense(licenseKey.trim());
+    if (result.valid) {
       const license = {
-        key: licenseKey,
-        instanceId: (data.instance && data.instance.id) || null,
-        instanceName: (data.instance && data.instance.name) || LEMONSQUEEZY_INSTANCE_NAME,
+        key: licenseKey.trim(),
+        email: result.email || null,
+        plan: result.plan || 'pro',
         activatedAt: new Date().toISOString()
       };
       fs.writeFileSync(getLicenseFilePath(), JSON.stringify(license, null, 2));
       return { success: true, license };
     }
-    return { error: licenseError(data) };
+    return { error: licenseError(result.error || 'Clé inactive ou expirée.') };
   } catch (err) {
     return { error: 'Impossible de valider la licence (hors-ligne ?) : ' + err.message };
   }
@@ -696,9 +674,8 @@ ipcMain.handle('license-status', async () => {
   const license = readLicenseFile();
   if (!license) return { licensed: false };
   try {
-    const data = await lemonsqueezyVerify(license.key, license.instanceId);
-    const valid = (data && data.valid === 1) || (data && data.license_key && data.license_key.status === 'active');
-    return { licensed: !!valid, license };
+    const result = await supabaseVerifyLicense(license.key);
+    return { licensed: !!result.valid, license };
   } catch (e) {
     return { licensed: true, license, offline: true };
   }
@@ -718,15 +695,13 @@ ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey)
     }
     const existing = readLicenseFile();
     if (!existing || existing.key !== licenseKey.trim()) {
-      if (!isTestKey(licenseKey.trim())) {
-        try {
-          const { ok, data } = await lemonsqueezyActivate(licenseKey.trim());
-          if (!(ok && licenseIsActive(data))) {
-            return { error: 'Clé de licence invalide ou déjà utilisée sur une autre machine : ' + licenseError(data) };
-          }
-        } catch (err) {
-          return { error: 'Impossible de valider la licence (hors-ligne ?) : ' + err.message };
+      try {
+        const result = await supabaseVerifyLicense(licenseKey.trim());
+        if (!result.valid) {
+          return { error: 'Clé de licence invalide : ' + (result.error || 'clé inactive ou expirée') };
         }
+      } catch (err) {
+        return { error: 'Impossible de valider la licence (hors-ligne ?) : ' + err.message };
       }
     }
   }

@@ -141,7 +141,7 @@
     </form>
 
     <div class="divider">Pas encore de licence ?</div>
-    <a class="buy-btn" href="https://forgestudioapp.lemonsqueezy.com/checkout/buy/1115fdef-6647-4d87-9f22-db0753096b5c" target="_blank" rel="noopener">Acheter Forge — 49 €</a>
+    <a class="buy-btn" href="https://forgestudioapp.itch.io/forge" target="_blank" rel="noopener">Acheter Forge — 49 €</a>
 
     <div class="switch-mode">
       <span id="switchPrompt">Pas de compte ?</span> <a id="switchLink">Créer un compte</a>
@@ -152,13 +152,12 @@
 <script>
   // ============================================
   // Connexion Forge — côté navigateur (site web).
-  // Réplique le flux de l'app : licence Lemon
-  // Squeezy + compte Supabase, via fetch direct.
+  // Réplique le flux de l'app : licence Supabase
+  // + compte Supabase, via fetch direct.
   // ============================================
   var SUPABASE_URL = 'https://quzbsdcjtkmdeuiyyhnv.supabase.co';
   var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1emJzZGNqdGttZGV1aXl5aG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjAwNTksImV4cCI6MjEwMTU5NjA1OX0.ToM71JAeMxTQNFatqcnSPK2xLQIye8vRU1nDmoyyMbE';
-  var LICENSE_API = 'https://api.lemonsqueezy.com/v1/licenses';
-  var INSTANCE_NAME = 'forge-web';
+  var LICENSE_API = SUPABASE_URL + '/rest/v1/rpc/verify_license';
   var MODE = 'signin'; // 'signin' | 'signup'
 
   var titleEl = document.getElementById('formTitle');
@@ -199,25 +198,25 @@
   function showOk(msg) { errBox.classList.remove('show'); okBox.textContent = msg; okBox.classList.add('show'); }
   function hideOk() { okBox.classList.remove('show'); }
 
-  // Activation de la licence sans atteindre supabase si invalide.
+  // Validation de la licence via Supabase RPC.
   async function validateLicense(licenseKey) {
-    var res = await fetch(LICENSE_API + '/activate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ license_key: licenseKey, instance_name: INSTANCE_NAME })
+    var res = await fetch(LICENSE_API + '?key=' + encodeURIComponent(licenseKey), {
+      method: 'GET',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
     });
-    var data = await res.json().catch(function () { return {}; });
-    return { ok: res.ok, data: data };
+    var rows = await res.json().catch(function () { return []; });
+    if (!rows.length) return { ok: false, data: { error: 'Clé introuvable.' } };
+    var r = rows[0];
+    return { ok: r.valid, data: { activated: r.valid, error: r.valid ? null : 'Clé inactive ou expirée.' } };
   }
 
   function licenseIsActive(data) {
-    return !!(data && data.activated === true && data.license_key && data.license_key.status === 'active');
+    return !!(data && data.activated === true);
   }
 
   function licenseError(data) {
-    var raw = data && (data.error || data.message);
+    var raw = data && data.error;
     if (typeof raw === 'string') return raw;
-    if (raw && typeof raw === 'object') return raw.message || raw.key || 'Clé de licence invalide.';
     return 'Clé de licence invalide.';
   }
 
@@ -231,7 +230,7 @@
 
     var licenseKey = MODE === 'signup' ? document.getElementById('licenseKey').value.trim() : '';
 
-    // Mode signup : valide d'abord la licence Lemon Squeezy.
+    // Mode signup : valide d'abord la licence Supabase.
     if (MODE === 'signup') {
       if (!licenseKey) { showErr('Une licence doit être achetée pour créer un compte.'); return; }
       try {
