@@ -28,10 +28,11 @@
   "build": {
     "appId": "com.forge.app",
     "productName": "Forge",
+    "npmRebuild": false,
     "publish": {
       "provider": "github",
       "owner": "forgestudioapp",
-      "repo": "forgestudio",
+      "repo": "forge-desktop-app",
       "releaseType": "release"
     },
     "win": {
