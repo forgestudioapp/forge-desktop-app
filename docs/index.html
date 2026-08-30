@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FORGE — Génère ton jeu Roblox avec l'IA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --char:#14110E;
+    --char2:#1C1712;
+    --char3:#221C15;
+    --border:#2C2419;
+    --border-light:#3A3024;
+    --bone:#F3EDE3;
+    --smoke:#948B7C;
+    --smoke-dim:#6B6255;
+    --ember:#3B82F6;
+    --ember-light:#60A5FA;
+    --ember-dim:#1E3A5F;
+    --success:#5FBE7A;
+    --success-dim:#233327;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth; scroll-padding-top:110px;}
+  section[id]{scroll-margin-top:80px;}
+  body{
+    background:var(--char);
+    color:var(--bone);
+    font-family:'Inter',sans-serif;
+    line-height:1.5;
+    overflow-x:hidden;
+  }
+  h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;letter-spacing:-0.02em;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  a{color:inherit;text-decoration:none;}
+  img{max-width:100%;display:block;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 28px;}
+  ::selection{background:var(--ember);color:var(--char);}
+
+  /* focus visibility */
+  button:focus-visible, a:focus-visible, summary:focus-visible{
+    outline:2px solid var(--ember-light); outline-offset:3px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important;}
+  }
+
+  /* ---------- eyebrow / labels ---------- */
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    letter-spacing:0.08em;
+    color:var(--ember-light);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:14px;
+  }
+  .eyebrow::before{content:"";width:16px;height:1px;background:var(--ember);display:inline-block;}
+  .section-tag{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    color:var(--smoke-dim);
+    letter-spacing:0.06em;
+    margin-bottom:8px;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    position:sticky; top:0; z-index:50;
+    background:rgba(20,17,14,0.86);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .promo-bar{
+    background:var(--ember);
+    color:var(--char);
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:13px;
+    font-weight:600;
+    padding:8px 12px;
+    letter-spacing:0.02em;
+  }
+  .nav{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 28px;
+    max-width:1180px; margin:0 auto;
+  }
+  .logo{
+    display:flex; align-items:center; gap:9px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700; font-size:19px; letter-spacing:-0.01em;
+  }
+  .logo-mark{
+    width:28px;height:28px;border-radius:7px;
+    display:block;object-fit:contain;
+  }
+  .nav-links{display:flex; gap:32px; font-size:14.5px; color:var(--smoke);}
+  .nav-links a:hover{color:var(--bone);}
+  .nav-right{display:flex; align-items:center; gap:20px; font-size:14.5px;}
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    font-family:'Inter',sans-serif; font-weight:600; font-size:14.5px;
+    padding:11px 20px; border-radius:9px; border:none; cursor:pointer;
+    transition:transform .15s ease, background .15s ease, opacity .15s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:var(--ember); color:var(--char);}
+  .btn-primary:hover{background:var(--ember-light);}
+  .btn-ghost{background:transparent; color:var(--bone); border:1px solid var(--border-light);}
+  .btn-ghost:hover{border-color:var(--ember);}
+  @media(max-width:860px){ .nav-links{display:none;} }
+
+  /* ---------- hero ---------- */
+  .hero{padding:88px 0 60px; position:relative;}
+  .hero-grid{
+    display:grid; grid-template-columns:1.05fr 0.95fr; gap:56px; align-items:center;
+  }
+  @media(max-width:960px){ .hero-grid{grid-template-columns:1fr;} }
+  .hero h1{font-size:clamp(36px,5vw,58px); line-height:1.04; margin-bottom:22px;}
+  .hero h1 em{font-style:normal; color:var(--ember-light);}
+  .hero p.lead{font-size:17px; color:var(--smoke); max-width:480px; margin-bottom:30px;}
+  .hero-cta{display:flex; gap:14px; margin-bottom:38px; flex-wrap:wrap;}
+  .badges{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:44px;}
+  .badge{
+    font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--smoke);
+    border:1px solid var(--border); padding:6px 12px; border-radius:100px;
+  }
+  .stats{display:flex; gap:40px; flex-wrap:wrap;}
+  .stat-num{font-family:'JetBrains Mono',monospace; font-size:28px; font-weight:600; color:var(--bone);}
+  .stat-label{font-size:12.5px; color:var(--smoke-dim); margin-top:2px;}
+
+  /* hero terminal mock */
+  .term{
+    background:var(--char2); border:1px solid var(--border); border-radius:14px;
+    overflow:hidden; box-shadow:0 30px 80px -30px rgba(0,0,0,0.6);
+  }
+  .term-bar{
+    display:flex; align-items:center; gap:7px; padding:12px 16px;
+    border-bottom:1px solid var(--border); background:var(--char3);
+  }
+  .dot{width:10px;height:10px;border-radius:50%;}
+  .term-body{padding:22px; font-family:'JetBrains Mono',monospace; font-size:13.5px; min-height:230px;}
+  .term-line{color:var(--smoke); margin-bottom:12px;}
+  .term-you{color:var(--bone);}
+  .term-you::before{content:"❯ "; color:var(--ember-light);}
+  .cursor{display:inline-block; width:7px; height:15px; background:var(--ember-light); vertical-align:middle; animation:blink 1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  .check-row{display:flex; align-items:center; gap:9px; margin-top:8px; opacity:0; animation:fadeUp .4s ease forwards;}
+  .check-row svg{flex-shrink:0;}
+  .check-row span{color:var(--smoke);}
+  @keyframes fadeUp{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  /* ---------- generic section ---------- */
+  section{padding:96px 0;}
+  .section-head{max-width:620px; margin-bottom:52px;}
+  .section-head h2{font-size:clamp(26px,3.4vw,38px); line-height:1.1; margin-bottom:14px;}
+  .section-head p{color:var(--smoke); font-size:15.5px;}
+  .divider{height:1px; background:var(--border); width:100%;}
+
+  /* ---------- showcase ---------- */
+  .showcase-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
+  @media(max-width:860px){.showcase-grid{grid-template-columns:1fr;}}
+  .show-card{
+    background:var(--char2); border:1px solid var(--border); border-radius:14px; overflow:hidden;
+    transition:border-color .2s ease, transform .2s ease;
+  }
+  .show-card:hover{border-color:var(--border-light); transform:translateY(-3px);}
+  .show-thumb{
+    height:150px; display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; color:var(--char);
+  }
+  .show-body{padding:18px 20px;}
+  .show-genre{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ember-light); margin-bottom:6px;}
+  .show-name{font-size:16px; font-weight:600; margin-bottom:6px;}
+  .show-meta{font-size:13px; color:var(--smoke-dim); display:flex; justify-content:space-between; align-items:center;}
+
+  /* ---------- 3 steps ---------- */
+  .steps3{display:grid; grid-template-columns:repeat(3,1fr); gap:24px;}
+  @media(max-width:860px){.steps3{grid-template-columns:1fr;}}
+  .step3-card{padding:26px; border:1px solid var(--border); border-radius:14px; background:var(--char2);}
+  .step3-num{font-family:'JetBrains Mono',monospace; color:var(--ember-light); font-size:13px; margin-bottom:14px;}
+  .step3-card h3{font-size:19px; margin-bottom:10px;}
+  .step3-card p{color:var(--smoke); font-size:14.5px;}
+
+  /* ---------- INSTALL SIMULATOR ---------- */
+  .sim-wrap{
+    display:grid; grid-template-columns:260px 1fr; gap:0;
+    border:1px solid var(--border); border-radius:16px; overflow:hidden;
+    background:var(--char2);
+  }
+  @media(max-width:860px){.sim-wrap{grid-template-columns:1fr;}}
+  .sim-nav{border-right:1px solid var(--border); padding:10px;}
+  @media(max-width:860px){.sim-nav{border-right:none; border-bottom:1px solid var(--border); display:flex; overflow-x:auto; gap:4px;}}
+  .sim-nav button{
+    display:block; width:100%; text-align:left; background:transparent; border:none; color:var(--smoke);
+    font-family:'JetBrains Mono',monospace; font-size:12.5px; padding:12px 14px; border-radius:9px; cursor:pointer;
+    white-space:nowrap;
+  }
+  .sim-nav button:hover{background:var(--char3); color:var(--bone);}
+  .sim-nav button.active{background:var(--ember-dim); color:var(--ember-light);}
+  .sim-stage{
+    background:#100D0A; min-height:460px; position:relative;
+    display:flex; align-items:center; justify-content:center; padding:28px;
+  }
+  .sim-screen{width:100%; max-width:560px; display:none;}
+  .sim-screen.active{display:block; animation:fadeUp .35s ease;}
+
+  /* installer wizard look */
+  .wiz{display:flex; border-radius:10px; overflow:hidden; border:1px solid var(--border); box-shadow:0 20px 50px -20px rgba(0,0,0,.7);}
+  .wiz-side{
+    width:38%; background:var(--char); padding:34px 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    border-right:1px solid var(--border);
+  }
+  .wiz-logo{width:52px;height:52px;border-radius:12px; display:flex;align-items:center;justify-content:center; overflow:hidden;}
+  .wiz-logo img{width:100%;height:100%;object-fit:contain;}
+  .wiz-side .name{font-family:'Space Grotesk',sans-serif; font-weight:700; letter-spacing:0.08em; font-size:13px;}
+  .wiz-side .sub{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--ember-light); letter-spacing:0.14em;}
+  .wiz-main{flex:1; background:#F3EDE3; color:#1C1712; padding:26px 24px;}
+  .wiz-main h4{font-size:16px; margin-bottom:12px; color:#14110E;}
+  .wiz-main p{font-size:12.5px; color:#5c5347; margin-bottom:10px; line-height:1.55;}
+  .wiz-btns{display:flex; justify-content:flex-end; gap:8px; margin-top:20px;}
+  .wiz-btns button{font-size:12px; padding:8px 16px; border-radius:5px; border:1px solid #d8cfc0; background:#fff; cursor:pointer; font-family:'Inter';}
+  .wiz-btns .next{background:var(--ember); border-color:var(--ember); color:#fff; font-weight:600;}
+  .wiz-progress{margin-top:16px; height:6px; border-radius:4px; background:#e5ddd0; overflow:hidden;}
+  .wiz-progress-fill{height:100%; background:var(--ember); width:0%; transition:width 1.4s ease;}
+  .wiz-progress-fill.go{width:100%;}
+  .wiz-pct{font-family:'JetBrains Mono',monospace; font-size:11px; color:#8a8175; margin-top:6px;}
+
+  /* setup screen look (dark, dots progress) */
+  .setup{background:#14110E; border:1px solid var(--border); border-radius:10px; padding:30px 26px; box-shadow:0 20px 50px -20px rgba(0,0,0,.7);}
+  .setup-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px;}
+  .setup-dots{display:flex; gap:5px;}
+  .setup-dots i{width:16px; height:3px; border-radius:2px; background:var(--border-light); display:block;}
+  .setup-dots i.on{background:var(--ember);}
+  .setup-lang{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--smoke-dim); display:flex; gap:8px; align-items:center;}
+  .setup-lang b{color:var(--bone);}
+  .setup-step-name{text-align:center; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); margin-bottom:26px;}
+  .setup-icon{width:56px;height:56px;border-radius:50%; margin:0 auto 18px; display:flex; align-items:center; justify-content:center; background:var(--char3); border:1px solid var(--border-light);}
+  .setup h4{text-align:center; font-size:22px; margin-bottom:10px;}
+  .setup p.desc{text-align:center; color:var(--smoke); font-size:12.5px; max-width:360px; margin:0 auto 22px; line-height:1.6;}
+  .check-item{
+    display:flex; gap:11px; padding:13px 15px; border:1px solid var(--border); border-radius:9px; margin-bottom:9px; background:var(--char2);
+  }
+  .check-item .t{font-size:13px; font-weight:600; margin-bottom:2px;}
+  .check-item .d{font-size:11.5px; color:var(--smoke-dim);}
+  .setup-cta{width:100%; margin-top:8px;}
+  .setup-footstep{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--smoke-dim); margin-top:18px;}
+
+  .acc-card{border:1px solid var(--ember); border-radius:10px; padding:16px; margin-bottom:12px; background:rgba(59,130,246,0.06);}
+  .acc-card.dim{border-color:var(--border); background:transparent;}
+  .acc-top{display:flex; align-items:center; gap:11px; margin-bottom:8px;}
+  .acc-icon{width:32px;height:32px;border-radius:8px; background:var(--ember-dim); display:flex; align-items:center; justify-content:center;}
+  .acc-name{font-weight:700; font-size:13.5px;}
+  .acc-badge{font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--ember-light); border:1px solid var(--ember); padding:2px 7px; border-radius:100px; margin-left:6px;}
+  .acc-badge.opt{color:var(--smoke); border-color:var(--border-light);}
+  .acc-desc{font-size:11.5px; color:var(--smoke); margin-bottom:11px; margin-left:43px;}
+
+  .api-card{border:1px solid var(--border); border-radius:9px; padding:14px 16px; margin-bottom:10px; background:var(--char2);}
+  .api-top{display:flex; justify-content:space-between; align-items:center;}
+  .api-name{font-weight:700; font-size:13px;}
+  .api-desc{font-size:11px; color:var(--smoke-dim); margin-top:2px;}
+  .api-set{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--success); border:1px solid var(--success-dim); background:var(--success-dim); padding:3px 9px; border-radius:100px;}
+
+  .dash-top{display:flex; justify-content:space-between; align-items:center; background:var(--char2); border:1px solid var(--ember); border-radius:9px; padding:14px 16px; margin-bottom:18px;}
+  .dash-top .l{font-size:12px;}
+  .dash-top .l b{display:block; font-size:13.5px;}
+  .dash-top .tag{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ember-light); letter-spacing:0.06em;}
+  .proj-grid{display:grid; grid-template-columns:1fr 1fr; gap:9px;}
+  .proj-card{border:1px solid var(--border); border-radius:9px; padding:12px 13px; font-size:11.5px;}
+  .proj-card.active{border-color:var(--ember); background:rgba(59,130,246,0.06);}
+  .proj-card .n{font-weight:700; font-size:12.5px; margin-bottom:3px;}
+  .proj-card .p{color:var(--smoke-dim); font-family:'JetBrains Mono',monospace; font-size:10px;}
+
+  /* ---------- architecture / router diagram ---------- */
+  .arch{display:grid; grid-template-columns:1fr 1fr; gap:52px; align-items:center;}
+  @media(max-width:900px){.arch{grid-template-columns:1fr;}}
+  .router{position:relative; background:var(--char2); border:1px solid var(--border); border-radius:16px; padding:36px 24px; overflow:hidden;}
+  .router-input{
+    background:var(--char3); border:1px solid var(--border-light); border-radius:9px; padding:12px 14px;
+    font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--bone); margin-bottom:26px;
+  }
+  .router-core{
+    width:64px;height:64px;border-radius:50%; margin:0 auto 26px; background:linear-gradient(150deg,var(--ember),var(--ember-light));
+    display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--char); font-size:12px;
+    box-shadow:0 0 0 8px var(--ember-dim);
+  }
+  .router-branches{display:flex; justify-content:space-between; gap:10px;}
+  .r-branch{flex:1; text-align:center; padding:14px 8px; border-radius:10px; border:1px solid var(--border); position:relative; opacity:0.45; transition:opacity .3s ease, border-color .3s ease;}
+  .r-branch.hit{opacity:1; border-color:var(--ember);}
+  .r-branch .ic{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:15px; margin-bottom:6px;}
+  .r-branch .lb{font-size:10.5px; color:var(--smoke);}
+  .arch-copy p{color:var(--smoke); font-size:15px; margin-bottom:16px;}
+  .arch-copy ul{list-style:none;}
+  .arch-copy li{display:flex; gap:10px; margin-bottom:12px; font-size:14px; color:var(--bone);}
+  .arch-copy li svg{flex-shrink:0; margin-top:3px;}
+
+  /* ---------- asset library ---------- */
+  .asset-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px;}
+  @media(max-width:860px){.asset-grid{grid-template-columns:repeat(2,1fr);}}
+  .asset-card{border:1px solid var(--border); border-radius:12px; padding:20px; background:var(--char2);}
+  .asset-card .count{font-family:'JetBrains Mono',monospace; color:var(--ember-light); font-size:22px; margin-bottom:6px;}
+  .asset-card .label{font-size:14px; font-weight:600;}
+
+  /* ---------- pricing ---------- */
+  .price-card{
+    max-width:440px; margin:0 auto; background:var(--char2); border:1px solid var(--border-light); border-radius:18px; padding:40px 34px;
+    position:relative;
+  }
+  .price-num{font-family:'JetBrains Mono',monospace; font-size:44px; font-weight:700; margin:14px 0 4px;}
+  .price-sub{color:var(--smoke); font-size:13.5px; margin-bottom:26px;}
+  .price-list{list-style:none; margin-bottom:28px;}
+  .price-list li{display:flex; gap:10px; font-size:14px; margin-bottom:11px; color:var(--bone);}
+
+  /* ---------- FAQ ---------- */
+  .faq-item{border-bottom:1px solid var(--border);}
+  .faq-item summary{
+    list-style:none; cursor:pointer; padding:20px 0; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:15.5px;
+  }
+  .faq-item summary::-webkit-details-marker{display:none;}
+  .faq-item summary .plus{font-family:'JetBrains Mono',monospace; color:var(--ember-light); transition:transform .2s ease;}
+  .faq-item[open] summary .plus{transform:rotate(45deg);}
+  .faq-item p{color:var(--smoke); font-size:14.5px; padding-bottom:20px; max-width:680px;}
+
+  footer{border-top:1px solid var(--border); padding:44px 0; margin-top:20px;}
+  .foot-grid{display:flex; justify-content:space-between; flex-wrap:wrap; gap:24px; align-items:center;}
+  .foot-links{display:flex; gap:22px; font-size:13.5px; color:var(--smoke);}
+  .foot-note{font-size:12px; color:var(--smoke-dim); margin-top:20px;}
+
+  .cta-final{text-align:center; padding:100px 0; background:radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.10), transparent 60%);}
+  .cta-final h2{font-size:clamp(28px,4vw,44px); margin-bottom:20px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav">
+    <div class="logo"><img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">FORGE</div>
+    <nav class="nav-links">
+      <a href="#how">Formation</a>
+      <a href="#pricing">Tarifs</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/forgestudioapp/forge-desktop-app/releases">Installer</a>
+      <a href="https://github.com/forgestudioapp/forge-desktop-app/releases">Connexion</a>
+    </nav>
+    <div class="nav-right">
+      <a href="https://github.com/forgestudioapp/forge-desktop-app/releases" class="btn btn-ghost" style="padding:9px 16px;">Connexion</a>
+      <a href="https://forgestudioapp.lemonsqueezy.com/checkout/buy/1115fdef-6647-4d87-9f22-db0753096b5c" target="_blank" rel="noopener" class="btn btn-primary">Acheter — 49 €</a>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">[ F-001 / GÉNÉRATION IA ]</div>
+      <h1>Décris ton jeu.<br><em>Forge</em> le construit.</h1>
+      <p class="lead">Cartes, modèles 3D, scripts, interfaces, sons — une IA orchestre les meilleurs modèles spécialisés et livre le résultat directement dans Roblox Studio.</p>
+      <div class="hero-cta">
+        <a href="https://forgestudioapp.lemonsqueezy.com/checkout/buy/1115fdef-6647-4d87-9f22-db0753096b5c" target="_blank" rel="noopener" class="btn btn-primary">Acheter pour Windows — 49 €</a>
+        <a href="#how" class="btn btn-ghost">Voir comment ça marche</a>
+      </div>
+      <div class="badges">
+        <span class="badge">49 € — paiement unique</span>
+        <span class="badge">Tout-en-un</span>
+        <span class="badge">En développement actif</span>
+      </div>
+      <div class="stats">
+        <div><div class="stat-num" data-count="47">0</div><div class="stat-label">créateurs actifs</div></div>
+        <div><div class="stat-num" data-count="1240">0</div><div class="stat-label">assets générés</div></div>
+        <div><div class="stat-num" data-count="15">0</div><div class="stat-label">min avant 1er jeu publié</div></div>
+      </div>
+    </div>
+
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot" style="background:#E9776B"></span>
+        <span class="dot" style="background:#E8B65E"></span>
+        <span class="dot" style="background:#63C77D"></span>
+      </div>
+      <div class="term-body" id="heroTerm">
+        <div class="term-line term-you">Un obby dans un temple englouti, avec une boutique de skins<span class="cursor"></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap"><div class="divider"></div></div>
+
+<section id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-tag">§ 01 — LE FLUX</div>
+      <h2>Trois étapes, un jeu publié</h2>
+      <p>De l'idée à la publication sur Roblox, sans écrire une seule ligne de code.</p>
+    </div>
+    <div class="steps3">
+      <div class="step3-card">
+        <div class="step3-num">01</div>
+        <h3>Tu décris</h3>
+        <p>En langage naturel, comme à un ami : le thème, l'ambiance, les mécaniques que tu veux.</p>
+      </div>
+      <div class="step3-card">
+        <div class="step3-num">02</div>
+        <h3>Forge orchestre</h3>
+        <p>L'agent choisit la bonne IA spécialisée pour chaque élément et assemble le résultat dans Studio.</p>
+      </div>
+      <div class="step3-card">
+        <div class="step3-num">03</div>
+        <h3>Tu publies</h3>
+        <p>Le jeu est jouable sur Roblox, avec sa boutique, ses gamepasses et ses scripts déjà câblés.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-tag">§ 02 — LE CERVEAU DE FORGE</div>
+      <h2>Une IA qui choisit la meilleure IA pour chaque tâche</h2>
+      <p>Tu ne choisis jamais l'outil. Forge route ta demande vers le modèle spécialisé adapté, récupère le résultat, et l'installe directement dans Roblox Studio.</p>
+    </div>
+    <div class="arch">
+      <div class="router">
+        <div class="router-input mono" id="routerInput">"Fais-moi un coffre légendaire brillant"</div>
+        <div class="router-core">FORGE</div>
+        <div class="router-branches" id="routerBranches">
+          <div class="r-branch" data-b="gemini"><div class="ic">Ge</div><div class="lb">Images / icônes</div></div>
+          <div class="r-branch" data-b="tripo"><div class="ic">Tr</div><div class="lb">Modèles 3D</div></div>
+          <div class="r-branch" data-b="eleven"><div class="ic">El</div><div class="lb">Son / musique</div></div>
+        </div>
+      </div>
+      <div class="arch-copy">
+        <ul>
+          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Génération d'images et de textures → <b>Gemini</b></li>
+          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Modèles 3D importables dans Studio → <b>Tripo3D</b></li>
+          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Musique, sons et voix → <b>ElevenLabs</b></li>
+          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Scripts, GUI et logique de jeu → <b>l'agent Forge lui-même</b>, exécutés directement dans Roblox Studio via le pont MCP.</li>
+        </ul>
+        <p>Chaque service utilise ta propre clé API — stockée localement, jamais transmise à nos serveurs.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-tag">§ 03 — BIBLIOTHÈQUE</div>
+      <h2>Une toolbox alimentée par toute la communauté</h2>
+      <p>Chaque asset généré peut être partagé et réutilisé — la bibliothèque grandit avec chaque créateur.</p>
+    </div>
+    <div class="asset-grid">
+      <div class="asset-card"><div class="count" data-count="380">0</div><div class="label">Icônes</div></div>
+      <div class="asset-card"><div class="count" data-count="142">0</div><div class="label">Modèles 3D</div></div>
+      <div class="asset-card"><div class="count" data-count="96">0</div><div class="label">Cartes</div></div>
+      <div class="asset-card"><div class="count" data-count="211">0</div><div class="label">Thumbnails</div></div>
+      <div class="asset-card"><div class="count" data-count="74">0</div><div class="label">Musiques</div></div>
+      <div class="asset-card"><div class="count" data-count="29">0</div><div class="label">Animations</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap" style="text-align:center;">
+    <div class="section-head" style="margin:0 auto 52px;">
+      <div class="section-tag">§ 04 — ACCÈS</div>
+      <h2>Un paiement unique. À vie.</h2>
+    </div>
+    <div class="price-card">
+      <div class="section-tag" style="text-align:left;">FORGE — LICENCE À VIE</div>
+      <div class="price-num">49 €</div>
+      <div class="price-sub" style="text-align:left;">Paiement unique — licence à vie, toutes les mises à jour incluses.</div>
+      <ul class="price-list">
+        <li>✓ Génération 3D (selon tes propres clés API)</li>
+        <li>✓ Intégration Roblox Studio (MCP)</li>
+        <li>✓ Suppression d'arrière-plan automatique</li>
+        <li>✓ Mises à jour au fil du développement</li>
+      </ul>
+      <a href="https://forgestudioapp.lemonsqueezy.com/checkout/buy/1115fdef-6647-4d87-9f22-db0753096b5c" target="_blank" rel="noopener" id="buyBtn" class="btn btn-primary" style="width:100%;">Acheter Forge — 49 €</a>
+      <p style="margin-top:12px;font-size:12px;color:var(--smoke-dim);">Paiement sécurisé par carte ou Apple Pay. Licence envoyée par email.</p>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap" style="max-width:760px;">
+    <div class="section-head">
+      <div class="section-tag">§ 05 — QUESTIONS FRÉQUENTES</div>
+      <h2>Tout ce qu'il faut savoir</h2>
+    </div>
+    <div class="faq-list">
+      <details class="faq-item" open><summary>Ai-je besoin de clés API séparées ? <span class="plus">+</span></summary><p>Oui — Gemini, Tripo3D et ElevenLabs nécessitent chacun ta propre clé, que tu renseignes une fois dans Forge. Elles restent stockées sur ta machine.</p></details>
+      <details class="faq-item"><summary>Combien ça coûte ? <span class="plus">+</span></summary><p>49 €, paiement unique — licence à vie et toutes les mises à jour incluses. Le prix de lancement pourra augmenter plus tard.</p></details>
+      <details class="faq-item"><summary>Ça marche sur Mac ? <span class="plus">+</span></summary><p>Forge est disponible pour Windows. Une version Mac est en réflexion selon la demande.</p></details>
+      <details class="faq-item"><summary>Puis-je utiliser Forge sur un projet Roblox existant ? <span class="plus">+</span></summary><p>Non, Forge fonctionne en TypeScript et n'est pas compatible avec un projet Luau existant créé avant l'installation. Il faut démarrer un nouveau projet dans l'app.</p></details>
+      <details class="faq-item"><summary>Quel niveau technique faut-il ? <span class="plus">+</span></summary><p>Aucun prérequis en programmation. Tu décris ce que tu veux en français ou en anglais, Forge s'occupe du reste.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="cta-final">
+  <div class="wrap">
+    <h2>Ton prochain jeu Roblox commence<br>par une phrase.</h2>
+    <a href="https://forgestudioapp.lemonsqueezy.com/checkout/buy/1115fdef-6647-4d87-9f22-db0753096b5c" target="_blank" rel="noopener" class="btn btn-primary" style="padding:15px 30px; font-size:16px;">Acheter Forge pour Windows — 49 €</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="logo"><img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">FORGE</div>
+      <div class="foot-links">
+        <a href="#how">Formation</a>
+        <a href="#pricing">Tarifs</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/forgestudioapp/forge-desktop-app/releases">Installer</a>
+        <a href="https://github.com/forgestudioapp/forge-desktop-app/releases">Connexion</a>
+      </div>
+    </div>
+    <p class="foot-note">Forge n'est pas affilié à Roblox Corporation, Google, Tripo3D ou ElevenLabs. Les noms de marques citées appartiennent à leurs propriétaires respectifs.</p>
+  </div>
+</footer>
+
+<script>
+  // ---- counters ----
+  const counters = document.querySelectorAll('.stat-num, .count');
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        const el = e.target;
+        const target = parseInt(el.dataset.count,10) || 0;
+        let cur = 0;
+        const step = Math.max(1, Math.ceil(target/60));
+        const t = setInterval(()=>{
+          cur += step;
+          if(cur>=target){cur=target; clearInterval(t);}
+          el.textContent = cur.toLocaleString('fr-FR');
+        },20);
+        io.unobserve(el);
+      }
+    });
+  },{threshold:0.4});
+  counters.forEach(c=>io.observe(c));
+
+  // ---- router animation ----
+  const branches = document.querySelectorAll('.r-branch');
+  const routerInput = document.getElementById('routerInput');
+  const requests = [
+    {text:'"Fais-moi un coffre légendaire brillant"', hit:'tripo'},
+    {text:'"Génère une icône d\'épée en feu"', hit:'gemini'},
+    {text:'"Ajoute une musique d\'ambiance de forêt"', hit:'eleven'},
+  ];
+  let ri = 0;
+  function cycleRouter(){
+    branches.forEach(b=>b.classList.remove('hit'));
+    const req = requests[ri % requests.length];
+    routerInput.textContent = req.text;
+    setTimeout(()=>{
+      document.querySelector('.r-branch[data-b="'+req.hit+'"]').classList.add('hit');
+    }, 500);
+    ri++;
+  }
+  cycleRouter();
+  setInterval(cycleRouter, 3200);
+
+  // ---- hero terminal typing demo ----
+  const heroTerm = document.getElementById('heroTerm');
+  const lines = [
+    {cls:'term-line', text:'→ Analyse de la demande…'},
+    {cls:'term-line', text:'→ Route vers Tripo3D (modèles 3D) et Gemini (icônes)'},
+    {cls:'check-row', text:'✓ Carte du temple générée'},
+    {cls:'check-row', text:'✓ 4 modèles 3D importés dans Studio'},
+    {cls:'check-row', text:'✓ Boutique de skins câblée'},
+  ];
+  let li = 0;
+  function typeNext(){
+    if(li >= lines.length) return;
+    const l = lines[li];
+    const div = document.createElement('div');
+    div.className = l.cls;
+    if(l.cls==='check-row'){
+      div.innerHTML = '<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6.5" stroke="#5FBE7A" stroke-width="1.4"/><path d="M4.5 7.5L6.5 9.5L10.5 5.5" stroke="#5FBE7A" stroke-width="1.4" stroke-linecap="round"/></svg><span>'+l.text.slice(2)+'</span>';
+    } else {
+      div.textContent = l.text;
+    }
+    heroTerm.appendChild(div);
+    li++;
+    setTimeout(typeNext, 900);
+  }
+  setTimeout(typeNext, 1200);
+</script>
+
+</body>
+</html>
