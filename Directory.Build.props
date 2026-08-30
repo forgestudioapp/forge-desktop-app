@@ -1,1 +1,1 @@
-<Project><PropertyGroup><SpectreMitigation>false</SpectreMitigation></PropertyGroup></Project>
+<Project><PropertyGroup><SpectreMitigation>false</SpectreMitigation><EnableSpectreMitigation>false</EnableSpectreMitigation></PropertyGroup></Project>
