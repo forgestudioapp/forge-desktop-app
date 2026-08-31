@@ -121,7 +121,6 @@
   <button class="back-btn" onclick="goBack()" data-i18n="back">← Retour</button>
   <div class="top-bar">
     SYSTEM ·
-    <b style="padding:2px 6px;border-radius:4px;">FR</b>
   </div>
 
   <h1 data-i18n="settings_title">Paramètres</h1>
@@ -138,6 +137,19 @@
         <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
         <span class="toggle-slider"></span>
       </label>
+    </div>
+
+  <!-- LANGUAGE -->
+  <div class="settings-card">
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" data-i18n="setting_language">Langue</div>
+        <div class="setting-desc" data-i18n="setting_language_desc">Choisis la langue de l'application.</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="lang-btn active" id="langFR" onclick="setLang('fr')" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border-light);background:var(--ember);color:var(--char);font-weight:600;font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;">FR</button>
+        <button class="lang-btn" id="langEN" onclick="setLang('en')" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border-light);background:transparent;color:var(--smoke);font-weight:600;font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;">EN</button>
+      </div>
     </div>
 
   <!-- NOTIFICATIONS -->
@@ -404,6 +416,21 @@
   document.getElementById('modelQualitySelect').value = s.modelQuality || 'medium';
   applyTheme();
   loadRembgStatus();
+
+  // ── Langue ──
+  function setLangBtnState(lang) {
+    document.getElementById('langFR').style.background = lang === 'fr' ? 'var(--ember)' : 'transparent';
+    document.getElementById('langFR').style.color = lang === 'fr' ? 'var(--char)' : 'var(--smoke)';
+    document.getElementById('langEN').style.background = lang === 'en' ? 'var(--ember)' : 'transparent';
+    document.getElementById('langEN').style.color = lang === 'en' ? 'var(--char)' : 'var(--smoke)';
+  }
+  function setLang(lang) {
+    localStorage.setItem('forge_lang', lang);
+    setLangBtnState(lang);
+    if (typeof initLang === 'function') initLang();
+    if (typeof applyTranslations === 'function') applyTranslations();
+  }
+  setLangBtnState(localStorage.getItem('forge_lang') || 'fr');
 </script>
 </body>
 </html>
