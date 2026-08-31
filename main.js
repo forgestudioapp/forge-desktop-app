@@ -644,7 +644,7 @@ function licenseError(msg) {
 
 ipcMain.handle('buy-license', async () => {
   const { shell } = require('electron');
-  shell.openExternal(getLicenseUrl());
+  shell.openExternal(getStripeStoreUrl());
   return { success: true };
 });
 
