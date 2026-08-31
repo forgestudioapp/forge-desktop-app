@@ -1,19 +1,24 @@
 // ============================================================
-// FORGE — Genere une cle de licence + l'envoie par email
+// FORGE — Verifie l'achat itch.io, genere une cle, l'envoie par email
 //
 // Appel : POST /functions/v1/send-license
 // Body : { "email": "client@example.com" }
 //
-// Retourne : { "key": "XXXX-XXXX-XXXX-XXXX-XXXX", "sent": true }
+// 1. Verifie sur l'API itch.io que cet email a bien achete
+// 2. Si oui, genere/recupere la cle et l'envoie par email
+// 3. Si non, retourne une erreur
 //
-// Variables d'env requises :
-//   SUPABASE_SERVICE_ROLE_KEY
-//   RESEND_API_KEY
-//   FORGE_FROM_EMAIL (ex: noreply@tondomaine.com)
+// Variables d'env :
+//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+//   RESEND_API_KEY, FORGE_FROM_EMAIL
+//   ITCH_API_KEY, ITCH_GAME_ID
 // ============================================================
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const ITCH_API_KEY = Deno.env.get("ITCH_API_KEY") || "";
+const ITCH_GAME_ID = Deno.env.get("ITCH_GAME_ID") || "4956125";
 
 function generateLicenseKey() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -27,7 +32,30 @@ function generateLicenseKey() {
     .join("-");
 }
 
-async function sendEmail(to, licenseKey) {
+async function verifyItchPurchase(email: string): Promise<boolean> {
+  if (!ITCH_API_KEY) {
+    console.error("[send-license] ITCH_API_KEY not set");
+    return false;
+  }
+  try {
+    const url = `https://itch.io/api/1/${ITCH_API_KEY}/game/${ITCH_GAME_ID}/download_keys?email=${encodeURIComponent(email)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.errors && data.errors.length > 0) {
+      console.error("[send-license] itch.io errors:", data.errors);
+      return false;
+    }
+    if (data.download_keys && data.download_keys.length > 0) {
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("[send-license] itch.io verify error:", err);
+    return false;
+  }
+}
+
+async function sendEmail(to: string, licenseKey: string) {
   const resendKey = Deno.env.get("RESEND_API_KEY");
   const fromEmail = Deno.env.get("FORGE_FROM_EMAIL") || "onboarding@resend.dev";
 
@@ -70,7 +98,6 @@ async function sendEmail(to, licenseKey) {
 }
 
 serve(async (req) => {
-  // CORS
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       headers: {
@@ -90,7 +117,24 @@ serve(async (req) => {
       });
     }
 
-    // Verifier si cet email a deja une cle
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return new Response(JSON.stringify({ error: "Email invalide" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const hasPaid = await verifyItchPurchase(email);
+    if (!hasPaid) {
+      return new Response(JSON.stringify({
+        error: "Aucun achat trouve pour cette adresse email. Achete d'abord sur itch.io.",
+      }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const supabase = createClient(supabaseUrl, serviceKey);
@@ -106,7 +150,6 @@ serve(async (req) => {
     if (existing && existing.length) {
       licenseKey = existing[0].license_key;
     } else {
-      // Generer une nouvelle cle
       licenseKey = generateLicenseKey();
       const { error } = await supabase.from("license_keys").insert({
         license_key: licenseKey,
@@ -123,7 +166,6 @@ serve(async (req) => {
       }
     }
 
-    // Envoyer l'email
     const sent = await sendEmail(email, licenseKey);
 
     return new Response(JSON.stringify({
