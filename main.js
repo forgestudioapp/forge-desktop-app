@@ -620,13 +620,15 @@ async function supabaseVerifyLicense(licenseKey) {
   if (!url || !serviceKey) {
     return { valid: false, error: 'Supabase non configuré (variables d\'environnement manquantes)' };
   }
-  const endpoint = `${url}/rest/v1/rpc/verify_license?key=${encodeURIComponent(licenseKey)}`;
+  const endpoint = `${url}/rest/v1/rpc/verify_license`;
   const res = await fetchWithTimeout(endpoint, {
-    method: 'GET',
+    method: 'POST',
     headers: {
       'apikey': serviceKey,
       'Authorization': 'Bearer ' + serviceKey,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({ key: licenseKey }),
   }, 15000);
   if (!res.ok) {
     const txt = await res.text();
