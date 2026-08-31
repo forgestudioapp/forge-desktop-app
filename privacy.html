@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forge Desktop — Politique de confidentialité</title>
+<style>
+  :root {
+    --char: #14110E; --char2: #1C1712; --char3: #221C15; --char4: #2A2318;
+    --border: #2C2419; --border-light: #3A3024;
+    --bone: #F3EDE3; --smoke: #948B7C; --smoke-dim: #6B6255;
+    --ember: #3B82F6; --ember-light: #60A5FA;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--char); color: var(--bone);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.7; padding: 60px 20px 80px;
+  }
+  .container { max-width: 700px; margin: 0 auto; }
+  .brand {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 40px; padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand-icon {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: var(--ember); display: flex; align-items: center;
+    justify-content: center; font-weight: 900; font-size: 20px;
+    color: var(--char);
+  }
+  .brand-name { font-size: 22px; font-weight: 700; color: var(--bone); }
+  .brand-sub { font-size: 12px; color: var(--smoke-dim); font-family: monospace; }
+  h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; color: var(--bone); }
+  .updated { font-size: 13px; color: var(--smoke-dim); margin-bottom: 32px; }
+  h2 {
+    font-size: 17px; font-weight: 600; color: var(--ember-light);
+    margin-top: 32px; margin-bottom: 10px;
+  }
+  p, li { font-size: 14.5px; color: var(--smoke); margin-bottom: 12px; }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  a { color: var(--ember-light); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .back {
+    display: inline-block; margin-top: 40px; padding: 10px 20px;
+    border: 1px solid var(--border-light); border-radius: 8px;
+    color: var(--smoke); font-size: 13px; transition: all 0.2s;
+  }
+  .back:hover { border-color: var(--ember); color: var(--ember-light); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="brand">
+    <div class="brand-icon">F</div>
+    <div>
+      <div class="brand-name">Forge Desktop</div>
+      <div class="brand-sub">by @springtrapfanboy1</div>
+    </div>
+  </div>
+
+  <h1>Politique de confidentialité</h1>
+  <p class="updated">Dernière mise à jour : 30 août 2026</p>
+
+  <h2>1. Collecte des données</h2>
+  <p>Forge Desktop collecte les données suivantes :</p>
+  <ul>
+    <li><strong>Token d'authentification Roblox (OAuth 2.0)</strong> — utilisé uniquement pour accéder à l'API Roblox et interagir avec tes expériences.</li>
+    <li><strong>Clés API tierces</strong> (ex : Tripo3D, OpenAI) — fournies par l'utilisateur et stockées uniquement en local sur ta machine.</li>
+    <li><strong>Chemins de fichiers locaux</strong> — pour accéder à tes projets Roblox sur ton ordinateur.</li>
+    <li><strong>Préférences utilisateur</strong> (thème, langue, paramètres) — stockées en local.</li>
+  </ul>
+
+  <h2>2. Utilisation des données</h2>
+  <p>Les données collectées sont utilisées exclusivement pour :</p>
+  <ul>
+    <li>Fonctionnalités de l'application (conversion d'assets, édition de scripts, connexion à Roblox Studio).</li>
+    <li>Amélioration de l'expérience utilisateur.</li>
+  </ul>
+
+  <h2>3. Partage des données</h2>
+  <p><strong>Nous ne vendons, ne partageons et ne transmettons jamais tes données à des tiers.</strong> Tes clés API et tokens restent sur ta machine et ne quittent jamais ton ordinateur, sauf lors des appels directs aux services concernés (Roblox, Tripo3D, etc.).</p>
+
+  <h2>4. Sécurité</h2>
+  <p>Toutes les données sensibles (tokens, clés API) sont stockées localement sur ton appareil. Aucune donnée n'est envoyée à nos serveurs — l'application fonctionne entièrement en local.</p>
+
+  <h2>5. Cookies</h2>
+  <p>Forge Desktop n'utilise pas de cookies. L'application est un logiciel de bureau et n'implémente aucun跟踪 ou analytics.</p>
+
+  <h2>6. Droits utilisateurs</h2>
+  <p>Tu peux à tout moment :</p>
+  <ul>
+    <li>Révoquer l'accès OAuth via les paramètres de ton compte Roblox.</li>
+    <li>Supprimer tes clés API depuis les paramètres de l'application.</li>
+    <li>Désinstaller l'application pour supprimer toutes les données locales.</li>
+  </ul>
+
+  <h2>7. Modifications</h2>
+  <p>Cette politique peut être mise à jour. Les changements seront publiés sur cette page avec une date de mise à jour révisée.</p>
+
+  <h2>8. Contact</h2>
+  <p>Pour toute question concernant cette politique de confidentialité, contacte-nous via le
+    <a href="https://github.com/forgesudioapp/forge-desktop-app/issues">GitHub du projet</a>.</p>
+
+  <a href="index.html" class="back">← Retour à l'accueil</a>
+</div>
+</body>
+</html>
