@@ -610,9 +610,10 @@ function readLicenseFile() {
 }
 
 function getSupabaseConfig() {
-  const url = process.env.SUPABASE_URL || 'https://quzbsdcjtkmdeuiyyhnv.supabase.co';
-  const serviceKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1emJzZGNqdGttZGV1aXl5aG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjAwNTksImV4cCI6MjEwMTU5NjA1OX0.ToM71JAeMxTQNFatqcnSPK2xLQIye8vRU1nDmoyyMbE';
-  return { url, serviceKey };
+  const url = (process.env.SUPABASE_URL || 'https://quzbsdcjtkmdeuiyyhnv.supabase.co').replace(/\/$/, '');
+  const anonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1emJzZGNqdGttZGV1aXl5aG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjAwNTksImV4cCI6MjEwMTU5NjA1OX0.ToM71JAeMxTQNFatqcnSPK2xLQIye8vRU1nDmoyyMbE';
+  if (!url || !anonKey) return null;
+  return { url, anonKey, serviceKey: anonKey };
 }
 
 async function supabaseVerifyLicense(licenseKey) {
@@ -688,8 +689,7 @@ ipcMain.handle('license-status', async () => {
 });
 
 ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey) => {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_ANON_KEY;
+  const { url: supabaseUrl, serviceKey: supabaseKey } = getSupabaseConfig();
   if (!supabaseUrl || !supabaseKey) {
     return { error: 'Configuration Supabase manquante dans .env' };
   }
@@ -2628,13 +2628,6 @@ ipcMain.handle('pty-kill', async (event, sessionId) => {
 // Tout asset (image/son/modèle) détecté dans un projet est publié
 // automatiquement ici, en plus de la notification locale.
 const LIB_BUCKET = 'library-assets';
-
-function getSupabaseConfig() {
-  const url = process.env.SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return null;
-  return { url: url.replace(/\/$/, ''), anonKey };
-}
 
 function loadForgeSession() {
   const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
