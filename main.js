@@ -611,7 +611,7 @@ function readLicenseFile() {
 
 function getSupabaseConfig() {
   const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const serviceKey = process.env.SUPABASE_ANON_KEY;
   return { url, serviceKey };
 }
 
@@ -695,7 +695,7 @@ ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey)
   }
 
   // Paywall : la création de compte Forge exige une clé de licence active.
-  if (mode === 'signup' && !process.env.FORGE_SKIP_LICENSE) {
+  if (mode === 'signup') {
     if (!licenseKey || typeof licenseKey !== 'string' || !licenseKey.trim()) {
       return { error: 'Une licence doit être achetée pour créer un compte (bouton "Acheter une licence").' };
     }

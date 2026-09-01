@@ -269,6 +269,14 @@
           setMode('signin');
           return;
         }
+        // Consommer la cle de licence apres creation de compte
+        try {
+          await fetch(SUPABASE_URL + '/rest/v1/rpc/consume_license', {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: licenseKey, user_email: email }),
+          });
+        } catch (e) { /* best effort */ }
         showOk('Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi.');
         setMode('signin');
       } else {
