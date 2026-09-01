@@ -610,8 +610,8 @@ function readLicenseFile() {
 }
 
 function getSupabaseConfig() {
-  const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_ANON_KEY;
+  const url = process.env.SUPABASE_URL || 'https://quzbsdcjtkmdeuiyyhnv.supabase.co';
+  const serviceKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1emJzZGNqdGttZGV1aXl5aG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjAwNTksImV4cCI6MjEwMTU5NjA1OX0.ToM71JAeMxTQNFatqcnSPK2xLQIye8vRU1nDmoyyMbE';
   return { url, serviceKey };
 }
 

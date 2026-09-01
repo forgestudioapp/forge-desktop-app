@@ -1,6 +1,6 @@
 {
   "name": "forge-desktop-app",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Forge - Génère ton jeu Roblox avec l'IA",
   "main": "main.js",
   "scripts": {
@@ -40,6 +40,14 @@
     "win": {
       "target": "nsis",
       "icon": "assets/logos/forge-logo.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Forge"
     },
     "mac": {
       "target": "dmg",
