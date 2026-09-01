@@ -64,8 +64,8 @@ as $$
   limit 1;
 $$;
 
--- 4) Fonction pour activer une clé (première utilisation) ----
-create or replace function public.activate_license(key text, user_email text default null)
+-- 4) Fonction pour marquer une cle comme utilisee (apres creation de compte) ----
+create or replace function public.consume_license(key text, user_email text default null)
 returns table (
   valid boolean,
   message text
@@ -75,14 +75,14 @@ security definer
 as $$
   update public.license_keys
   set
-    status = 'active',
+    status = 'used',
     email = coalesce(user_email, email),
     activated_at = now()
   where license_keys.license_key = key
-    and license_keys.status in ('active')
+    and license_keys.status = 'active'
   returning
     true as valid,
-    'License activated' as message;
+    'License consumed' as message;
 $$;
 
 -- 5) Vérification -------------------------------------------

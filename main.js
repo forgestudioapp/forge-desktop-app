@@ -712,7 +712,7 @@ ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey)
     }
   }
 
-  const endpoint = mode === 'signup'
+    const endpoint = mode === 'signup'
     ? `${supabaseUrl}/auth/v1/signup`
     : `${supabaseUrl}/auth/v1/token?grant_type=password`;
   try {
@@ -724,6 +724,19 @@ ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey)
     const data = await response.json();
     if (!response.ok) {
       return { error: data.error_description || data.msg || 'Erreur de connexion' };
+    }
+    // Apres creation de compte, marquer la cle comme utilisee
+    if (mode === 'signup' && licenseKey) {
+      try {
+        const { url: svcUrl, serviceKey: svcKey } = getSupabaseConfig();
+        if (svcUrl && svcKey) {
+          await fetchWithTimeout(`${svcUrl}/rest/v1/rpc/consume_license`, {
+            method: 'POST',
+            headers: { 'apikey': svcKey, 'Authorization': 'Bearer ' + svcKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: licenseKey.trim(), user_email: email }),
+          }, 10000);
+        }
+      } catch (e) { /* best effort */ }
     }
     const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
     fs.writeFileSync(sessionPath, JSON.stringify(data));
