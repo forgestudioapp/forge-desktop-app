@@ -728,6 +728,7 @@ if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(functio
 let mcpActivityTimer=null;
 function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b)b.style.display='none';}
 function showMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b)b.style.display='inline';}
+function showMcpBadgeAll(){agents.forEach(function(a){if(a.element&&a.element.classList.contains('running'))showMcpBadge(a.id);});}
 function hideAllMcpBadges(){agents.forEach(function(a){hideMcpBadge(a.id);});}
 function getMostRecentActiveAgent(){
   var best=null,bestTs=0;
@@ -737,8 +738,7 @@ function getMostRecentActiveAgent(){
 if(window.forgeAPI&&window.forgeAPI.onMcpStudioActivity){
   window.forgeAPI.onMcpStudioActivity(function(payload){
     if(payload.active){
-      var a=getMostRecentActiveAgent();
-      if(a)showMcpBadge(a.id);
+      showMcpBadgeAll();
       if(mcpActivityTimer){clearTimeout(mcpActivityTimer);mcpActivityTimer=null;}
     }else{
       if(mcpActivityTimer)clearTimeout(mcpActivityTimer);

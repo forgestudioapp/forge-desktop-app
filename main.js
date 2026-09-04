@@ -1575,9 +1575,9 @@ async function mcpInitialize() {
   console.log('[MCP] Initialise');
 }
 
-async function mcpCallTool(name, args) {
+async function mcpCallTool(name, args, timeoutMs) {
   await mcpInitialize();
-  return await mcpSend('tools/call', { name, arguments: args });
+  return await mcpSend('tools/call', { name, arguments: args }, timeoutMs || 15000);
 }
 
 async function isStudioConnected() {
@@ -3429,20 +3429,29 @@ async function syncScriptToStudio(filename, source) {
   const execCode = source;
   const fullCode = injectCode + "\n" + execCode;
 
-  try {
-    const result = await mcpCallTool('execute_luau', {
-      code: fullCode,
-      datamodel_type: 'Edit'
-    });
-    console.log('[FileSync] ✓ Sync + exec OK:', relativePath);
-    if (result && result.content) {
-      const text = result.content.map(c => c.text).join('');
-      console.log('[FileSync] Resultat MCP:', text.substring(0, 300));
+  // Sync prioritaire : timeout court (5s) pour ne pas bloquer si le MCP server est occupe
+  // Si echec, on reessaie 1 fois apres 2s
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const result = await mcpCallTool('execute_luau', {
+        code: fullCode,
+        datamodel_type: 'Edit'
+      }, 5000);
+      console.log('[FileSync] ✓ Sync + exec OK:', relativePath);
+      if (result && result.content) {
+        const text = result.content.map(c => c.text).join('');
+        console.log('[FileSync] Resultat MCP:', text.substring(0, 300));
+      }
+      return { success: true, result };
+    } catch (err) {
+      if (attempt === 0) {
+        console.warn('[FileSync] Tentative 1 echouee, retry dans 2s:', err.message);
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        console.error('[FileSync] ✗ MCP Error (2 tentatives):', err.message);
+        return { error: err.message };
+      }
     }
-    return { success: true, result };
-  } catch (err) {
-    console.error('[FileSync] ✗ MCP Error:', err.message);
-    return { error: err.message };
   }
 }
 
