@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   onAgentInstall: (callback) => ipcRenderer.on('agent-install', (event, data) => callback(data)),
   openAgentTerminal: (agentType, projectPath) => ipcRenderer.invoke('open-agent-terminal', agentType, projectPath),
 
+  // --- Persistance agents (navigation workspace) ---
+  saveAgentState: (agentsState) => ipcRenderer.invoke('save-agent-state', agentsState),
+  loadAgentState: () => ipcRenderer.invoke('load-agent-state'),
+  clearAgentState: () => ipcRenderer.invoke('clear-agent-state'),
+  reconnectPty: (sessionId) => ipcRenderer.invoke('reconnect-pty', sessionId),
+
   // --- Systeme & Roblox ---
   ping: () => 'pong depuis le backend Electron !',
   checkSystem: () => ipcRenderer.invoke('check-system'),

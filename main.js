@@ -409,6 +409,69 @@ ipcMain.handle('agent-list', async () => {
   return agentManager.listSessions();
 });
 
+// ============================================
+// PERSISTANCE DES AGENTS (workspace navigation)
+// ============================================
+ipcMain.handle('save-agent-state', async (event, agentsState) => {
+  try {
+    const p = userDataFile('agents-state.json');
+    fs.writeFileSync(p, JSON.stringify(agentsState, null, 2));
+    return { success: true };
+  } catch (err) {
+    console.error('[Agents] Erreur sauvegarde etat:', err.message);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('load-agent-state', async () => {
+  try {
+    const p = userDataFile('agents-state.json');
+    if (!fs.existsSync(p)) return { agents: [] };
+    const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+    // Verifier que les sessions PTY existent encore
+    const alive = [];
+    for (const a of (data.agents || [])) {
+      if (a.sessionId && PTYS.has(a.sessionId)) {
+        alive.push(a);
+      }
+    }
+    return { agents: alive };
+  } catch (err) {
+    console.error('[Agents] Erreur chargement etat:', err.message);
+    return { agents: [] };
+  }
+});
+
+ipcMain.handle('clear-agent-state', async () => {
+  try {
+    const p = userDataFile('agents-state.json');
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// Reconnecter les PTY existants a un nouveau renderer (navigation workspace)
+ipcMain.handle('reconnect-pty', async (event, sessionId) => {
+  const ptyEntry = PTYS.get(sessionId);
+  if (!ptyEntry) return { error: 'Session PTY introuvable' };
+  const sender = event.sender;
+  // Remplacer le callback onData pour envoyer au nouveau renderer
+  ptyEntry.pty.onData((data) => {
+    if (!sender.isDestroyed()) {
+      sender.send('pty-data', { sessionId, data });
+    }
+  });
+  ptyEntry.pty.onExit(({ exitCode, signal }) => {
+    if (!sender.isDestroyed()) {
+      sender.send('pty-exit', { sessionId, exitCode, signal });
+    }
+    PTYS.delete(sessionId);
+  });
+  return { success: true };
+});
+
 ipcMain.handle('agent-install', async (event, agentType) => {
   return await agentManager.install(agentType);
 });
@@ -777,6 +840,12 @@ ipcMain.handle('logout-forge', async () => {
 
   const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
   removeIfExists(sessionPath);
+
+  // Nettoyer l'etat des agents
+  try {
+    const agentsStatePath = userDataFile('agents-state.json');
+    removeIfExists(agentsStatePath);
+  } catch (e) {}
 
   return { success: true };
 });
@@ -3428,5 +3497,10 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (mcpServerProcess) { mcpServerProcess.kill(); mcpServerProcess = null; }
+  // Nettoyer l'etat des agents a la fermeture
+  try {
+    const agentsStatePath = userDataFile('agents-state.json');
+    removeIfExists(agentsStatePath);
+  } catch (e) {}
   if (process.platform !== 'darwin') app.quit();
 });
