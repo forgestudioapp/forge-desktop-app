@@ -3,7 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn, execFile } = require('child_process');
-const { isExistingDirectoryWithinRoots } = require('./lib/path-security');
+const { canonicalExistingPath, isPathInside, isExistingDirectoryWithinRoots } = require('./lib/path-security');
+const {
+  buildCodexExec,
+  findMediaItem,
+  findMediaEntry,
+  normalizeMediaPath,
+} = require('./lib/media-generation');
+const { syncForgeAgentInstructions } = require('./lib/forge-instructions');
 require('dotenv').config({ path: path.join(app.isPackaged ? process.resourcesPath : __dirname, '.env') });
 
 // ---- node-pty (terminal interactif) ----
@@ -39,6 +46,29 @@ function isPathAllowed(targetPath) {
 
 function sanitizePrompt(prompt) {
   return prompt.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').trim();
+}
+
+let forgeSystemPromptCache = null;
+
+function loadForgeSystemPrompt() {
+  if (forgeSystemPromptCache) return forgeSystemPromptCache;
+  const candidates = [
+    path.join(__dirname, 'forge-system-prompt.md'),
+    path.join(process.resourcesPath || '', 'forge-system-prompt.md'),
+  ];
+  const promptPath = candidates.find(candidate => fs.existsSync(candidate));
+  if (!promptPath) throw new Error('Fichier forge-system-prompt.md introuvable.');
+  forgeSystemPromptCache = fs.readFileSync(promptPath, 'utf8').trim();
+  return forgeSystemPromptCache;
+}
+
+function prepareForgeAgentInstructions(projectPath, agentType) {
+  try {
+    return syncForgeAgentInstructions(projectPath, agentType, loadForgeSystemPrompt());
+  } catch (err) {
+    console.error(`[Agents] Instructions Forge non installees pour ${agentType}:`, err.message);
+    return { error: err.message };
+  }
 }
 
 // ============================================
@@ -105,7 +135,7 @@ class AgentManager {
     });
   }
 
-  async launch(agentType, projectPath, prompt) {
+  async launch(agentType, projectPath, prompt, options = {}) {
     if (!isPathAllowed(projectPath)) {
       return { error: 'Chemin de projet non autorise. Place ton projet dans Documents, Desktop, ou un dossier de developpement.' };
     }
@@ -118,7 +148,10 @@ class AgentManager {
     const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
     try {
-      const { cmd, args } = this._buildCommand(agentType, safePrompt);
+      if (!options.skipForgeInstructions) {
+        prepareForgeAgentInstructions(projectPath, agentType);
+      }
+      const { cmd, args, stdin } = this._buildCommand(agentType, safePrompt, options);
       const proc = spawn(cmd, args, {
         cwd: projectPath,
         shell: true,
@@ -156,12 +189,19 @@ class AgentManager {
         }
       });
 
+      if (stdin !== undefined && proc.stdin) proc.stdin.end(stdin);
+
       proc.on('error', (err) => {
         const msg = err.code === 'ENOENT'
           ? `Commande introuvable : "${cmd}". Verifie que l'agent est bien installe.`
           : err.message;
         this._emit(sessionId, 'error', msg);
-        this.sessions.delete(sessionId);
+        const sess = this.sessions.get(sessionId);
+        if (sess) {
+          sess.error = msg;
+          sess.exitCode = -1;
+          sess.endTime = Date.now();
+        }
       });
 
       return { success: true, sessionId };
@@ -194,7 +234,9 @@ class AgentManager {
       projectPath: sess.projectPath,
       running: !sess.process.killed && sess.exitCode === undefined,
       exitCode: sess.exitCode,
-      duration: Date.now() - sess.startTime
+      duration: Date.now() - sess.startTime,
+      error: sess.error || null,
+      outputTail: sess.buffer.slice(-12).map(chunk => chunk.d).join('').slice(-2000)
     };
   }
 
@@ -278,9 +320,9 @@ class AgentManager {
     return map[agentType] || agentType;
   }
 
-  _buildCommand(agentType, prompt) {
+  _buildCommand(agentType, prompt, options = {}) {
     const mcpServerPath = getMcpServerPath();
-    if (!mcpServerPath) {
+    if (!mcpServerPath && !options.skipMcp) {
       throw new Error('Serveur MCP Roblox introuvable. Reinstalle Forge ou reconstruis robloxstudio-mcp.');
     }
 
@@ -303,14 +345,8 @@ class AgentManager {
       case 'codex':
         // Codex 0.150+ utilise 'codex mcp add' pour configurer les serveurs MCP
         // et --dangerously-bypass-approvals-and-sandbox au lieu de --full-auto.
-        ensureCodexMcpEntry(mcpServerPath);
-        return {
-          cmd: 'codex',
-          args: [
-            '--dangerously-bypass-approvals-and-sandbox',
-            '-p', prompt
-          ]
-        };
+        if (mcpServerPath && !options.skipMcp) ensureCodexMcpEntry(mcpServerPath);
+        return { cmd: 'codex', ...buildCodexExec(prompt, options.images) };
       case 'antigravity':
         // agy lit ses serveurs MCP dans ~/.gemini/config/mcp_config.json
         // (pas de flag --mcp-config) : on y enregistre forge_roblox avant.
@@ -337,6 +373,7 @@ class AgentManager {
     if (!isPathAllowed(projectPath)) {
       return { error: 'Chemin de projet non autorise.' };
     }
+    prepareForgeAgentInstructions(projectPath, agentType);
     const cmd = buildAgentShellCommand(agentType) || this._getCommand(agentType);
     const platform = process.platform;
 
@@ -1895,6 +1932,16 @@ function ensureMediaFolder(projectPath, folder) {
   return dir;
 }
 
+function resolveMediaSource(projectPath, source) {
+  if (!source || typeof source !== 'string') return null;
+  const projectRoot = canonicalExistingPath(projectPath);
+  const requested = path.isAbsolute(source) ? source : path.join(projectPath, source);
+  const resolved = canonicalExistingPath(requested);
+  if (!projectRoot || !resolved || !isPathInside(projectRoot, resolved)) return null;
+  try { return fs.statSync(resolved).isFile() ? resolved : null; }
+  catch (e) { return null; }
+}
+
 function mediaGenId(prefix) {
   return (prefix || 'm') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -1916,7 +1963,8 @@ ipcMain.handle('media-list-files', async (event, projectPath) => {
   for (const [kind, info] of Object.entries(MEDIA_KINDS)) {
     folders[kind] = listMediaFiles(projectPath, info.folder, info.exts);
   }
-  return { folders, categories: loadMediaManifest(projectPath).categories || {} };
+  const manifest = loadMediaManifest(projectPath);
+  return { folders, categories: manifest.categories || {}, jobs: manifest.jobs || [] };
 });
 
 // Crée une catégorie racine dans l'arbre (type d'élément).
@@ -1929,7 +1977,11 @@ ipcMain.handle('media-create-item', async (event, projectPath, kind, name) => {
     const manifest = loadMediaManifest(projectPath);
     const catKey = kind;
     if (!manifest.categories[catKey]) manifest.categories[catKey] = { label: info.label, items: [] };
-    const item = { id: mediaGenId(), name: name || 'Nouvel élément', kind, prompt: '', files: [], variants: [] };
+    const item = {
+      id: mediaGenId(), name: name || 'Nouvel élément', kind, prompt: '',
+      files: [], variants: [], status: 'draft', expectedCount: 0,
+      createdAt: Date.now(), error: null
+    };
     manifest.categories[catKey].items.push(item);
     saveMediaManifest(projectPath, manifest);
     return { success: true, item };
@@ -1959,27 +2011,85 @@ ipcMain.handle('media-generate', async (event, options) => {
 
 // Codex : lance l'agent avec une consigne pour créer les images à l'endroit
 // exact du dossier du projet. On retourne l'id de session pour le suivi.
-async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, itemId, variantId, folder }) {
+async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, itemId, variantId, folder, baseImage }) {
   const agentType = 'codex';
-  const target = path.join(folder, kind === 'icon' ? 'icon_' : 'thumb_');
+  const generationId = mediaGenId('codex');
+  const outputPrefix = `${kind}_${generationId}_`;
+  const outputNames = Array.from({ length: n }, (_, index) => `${outputPrefix}${index + 1}.png`);
+  const outputPaths = outputNames.map(name => path.join(folder, name));
+  const sourceImage = resolveMediaSource(projectPath, baseImage);
+  let manifest = loadMediaManifest(projectPath);
+  let entry = findMediaEntry(manifest, kind, itemId, variantId);
+  if (!entry) return { error: 'Élément de génération introuvable' };
+
+  entry.prompt = prompt;
+  entry.status = 'starting';
+  entry.error = null;
+  entry.expectedCount = n;
+  entry.startedAt = Date.now();
+  saveMediaManifest(projectPath, manifest);
+
   const instructions = [
-    `Tu es l'outil d'illustration d'un éditeur de jeux Roblox.`,
-    `Crée exactement ${n} image(s) de type « ${info.label} » (miniature ou icône de jeu).`,
+    `Utilise obligatoirement la compétence imagegen et l'outil de génération d'images de Codex.`,
+    `Tu es l'outil d'illustration de Forge, un éditeur de jeux Roblox.`,
+    `Crée exactement ${n} image(s) distincte(s) de type « ${info.label} ».`,
     `Sujet demandé : ${prompt || '(sujet libre)'}.`,
-    `Enregistre chaque image dans ce dossier : ${target}`,
-    `Nomme-les : ${target}1.${kind === 'icon' ? 'png' : 'jpg'} ... N.${kind === 'icon' ? 'png' : 'jpg'}`,
-    `Préférer le format ${kind === 'icon' ? 'PNG avec fond transparent' : 'JPG/PNG 1024x1024'}.`,
-    `Ne réponds qu'en créant les fichiers, rien d'autre.`
+    sourceImage
+      ? `L'image jointe est la source à modifier. Respecte sa composition sauf pour les changements demandés.`
+      : `Il s'agit d'une création originale sans image source.`,
+    kind === 'icon'
+      ? `Chaque résultat doit être une icône carrée, lisible en petit format, en PNG. Ajoute un contour (stroke) net et contrasté autour du sujet principal, qui épouse sa silhouette sans former une bordure autour de toute l'image, sauf si la demande exige explicitement un style sans contour.`
+      : `Chaque résultat doit être une miniature Roblox au format 16:9, en PNG.`,
+    `Enregistre ou copie les résultats exactement vers ces chemins, un fichier différent par chemin :`,
+    ...outputPaths.map((outputPath, index) => `${index + 1}. ${outputPath}`),
+    `Vérifie que les ${n} fichiers existent avant de terminer.`,
+    `Ne crée pas de faux visuel avec SVG, HTML, canvas ou un script de dessin : utilise bien la génération d'images Codex.`
   ].join('\n');
-  const res = await agentManager.launch(agentType, projectPath, instructions);
+  const res = await agentManager.launch(agentType, projectPath, instructions, {
+    skipMcp: true,
+    skipForgeInstructions: true,
+    images: sourceImage ? [sourceImage] : [],
+  });
   if (!res || res.error) {
+    manifest = loadMediaManifest(projectPath);
+    entry = findMediaEntry(manifest, kind, itemId, variantId);
+    if (entry) {
+      entry.status = 'failed';
+      entry.error = (res && res.error) || 'Échec du lancement de Codex';
+      entry.finishedAt = Date.now();
+      saveMediaManifest(projectPath, manifest);
+    }
     return { error: (res && res.error) || 'Echec du lancement de Codex' };
   }
-  const manifest = loadMediaManifest(projectPath);
-  const entry = findMediaEntry(manifest, kind, itemId, variantId);
-  if (entry) { entry.prompt = prompt; }
+
+  manifest = loadMediaManifest(projectPath);
+  entry = findMediaEntry(manifest, kind, itemId, variantId);
+  if (entry) {
+    entry.status = 'running';
+    entry.sessionId = res.sessionId;
+    entry.generationId = generationId;
+  }
+  manifest.jobs = manifest.jobs || [];
+  manifest.jobs.push({
+    id: generationId,
+    sessionId: res.sessionId,
+    kind,
+    method: 'codex',
+    itemId,
+    variantId: variantId || null,
+    prompt,
+    target: info.folder,
+    outputPrefix,
+    outputNames,
+    expectedCount: n,
+    status: 'running',
+    startedAt: Date.now(),
+    finishedAt: null,
+    notified: false,
+  });
+  if (manifest.jobs.length > 50) manifest.jobs = manifest.jobs.slice(-50);
   saveMediaManifest(projectPath, manifest);
-  return { sessionId: res?.sessionId, method: 'codex', message: 'Génération Codex lancée' };
+  return { sessionId: res.sessionId, jobId: generationId, method: 'codex', message: 'Génération Codex lancée' };
 }
 
 // Tripo3D V2 (docs.tripo3d.ai) :
@@ -2143,15 +2253,6 @@ function attachJob(manifest, kind, method, jobId, prompt, target) {
   if (manifest.jobs.length > 50) manifest.jobs = manifest.jobs.slice(-50);
 }
 
-function findMediaEntry(manifest, kind, itemId, variantId) {
-  const cat = manifest.categories[kind];
-  if (!cat) return null;
-  const item = cat.items.find(i => i.id === itemId);
-  if (!item) return null;
-  if (variantId) return item.variants.find(v => v.id === variantId);
-  return item;
-}
-
 // Vérifie l'avancement des tâches Tripo, télécharge les résultats dans le
 // dossier du projet et met l'arbre à jour.
 ipcMain.handle('media-poll', async (event, projectPath) => {
@@ -2162,7 +2263,58 @@ ipcMain.handle('media-poll', async (event, projectPath) => {
     const jobs = [];
     let anyRunning = false;
     for (const job of manifest.jobs) {
-      if (job.method === 'codex') { jobs.push(job); continue; }
+      if (job.method === 'codex') {
+        if (job.status === 'done' || job.status === 'partial' || job.status === 'failed') {
+          jobs.push(job);
+          continue;
+        }
+
+        const entry = findMediaEntry(manifest, job.kind, job.itemId, job.variantId);
+        const info = MEDIA_KINDS[job.kind];
+        const generated = info
+          ? listMediaFiles(projectPath, info.folder, info.exts)
+            .filter(file => file.name.startsWith(job.outputPrefix || ''))
+            .map(file => normalizeMediaPath(path.join(info.folder, file.name)))
+          : [];
+
+        if (entry && generated.length) {
+          entry.files = Array.from(new Set([...(entry.files || []), ...generated]));
+        }
+
+        const agentStatus = job.sessionId ? agentManager.getStatus(job.sessionId) : { exists: false };
+        const timedOut = Date.now() - (job.startedAt || Date.now()) > 10 * 60 * 1000;
+        if (generated.length >= (job.expectedCount || 1)) {
+          job.status = 'done';
+        } else if (agentStatus.running && !timedOut) {
+          job.status = 'running';
+          anyRunning = true;
+        } else if (generated.length) {
+          job.status = 'partial';
+          job.error = `Codex a créé ${generated.length} image(s) sur ${job.expectedCount || 1}.`;
+        } else {
+          job.status = 'failed';
+          job.error = timedOut
+            ? 'La génération Codex a dépassé 10 minutes.'
+            : (agentStatus.error || agentStatus.outputTail || `Codex s'est arrêté sans créer d'image (code ${agentStatus.exitCode ?? 'inconnu'}).`);
+        }
+
+        if (job.status !== 'running') {
+          job.finishedAt = Date.now();
+          if (entry) {
+            entry.status = job.status;
+            entry.error = job.error || null;
+            entry.finishedAt = job.finishedAt;
+          }
+          if (!job.notified) {
+            notifyMediaDone(projectPath, job.kind, generated[generated.length - 1], job.prompt, job.status === 'failed');
+            job.notified = true;
+          }
+        } else if (entry) {
+          entry.status = 'running';
+        }
+        jobs.push(job);
+        continue;
+      }
       if (job.status === 'done' || job.status === 'failed') { jobs.push(job); continue; }
       anyRunning = true;
       try {
@@ -2314,8 +2466,30 @@ ipcMain.handle('media-download', async (event, projectPath, relPath) => {
 ipcMain.handle('media-delete', async (event, projectPath, kind, itemId, variantId, relPath) => {
   try {
     if (relPath) {
-      const full = path.join(projectPath, relPath);
-      if (fs.existsSync(full)) fs.unlinkSync(full);
+      const manifest = loadMediaManifest(projectPath);
+      const item = findMediaItem(manifest, kind, itemId);
+      const entry = findMediaEntry(manifest, kind, itemId, variantId);
+      const normalized = normalizeMediaPath(relPath);
+      const full = resolveMediaSource(projectPath, relPath);
+      if (full) fs.unlinkSync(full);
+      if (entry) entry.files = (entry.files || []).filter(file => normalizeMediaPath(file) !== normalized);
+      if (item) {
+        const directChildren = (item.variants || [])
+          .filter(variant =>
+            (variant.parentVariantId || null) === (variantId || null) &&
+            normalizeMediaPath(variant.parentFile) === normalized
+          )
+          .map(variant => variant.id);
+        const removedIds = collectVariantDescendants(item, directChildren);
+        const removedVariants = (item.variants || []).filter(variant => removedIds.has(variant.id));
+        removedVariants.forEach(variant => removeMediaFiles(projectPath, variant.files));
+        item.variants = (item.variants || []).filter(variant => !removedIds.has(variant.id));
+        await removeMediaJobs(manifest, job =>
+          job.itemId === itemId && job.variantId && removedIds.has(job.variantId)
+        );
+      }
+      saveMediaManifest(projectPath, manifest);
+      return { success: true };
     }
     const manifest = loadMediaManifest(projectPath);
     const cat = manifest.categories[kind];
@@ -2325,12 +2499,17 @@ ipcMain.handle('media-delete', async (event, projectPath, kind, itemId, variantI
         if (idx >= 0) {
           const item = cat.items[idx];
           if (variantId) {
-            const removed = item.variants.filter(v => v.id === variantId);
+            const removedIds = collectVariantDescendants(item, [variantId]);
+            const removed = item.variants.filter(v => removedIds.has(v.id));
             removed.forEach(v => removeMediaFiles(projectPath, v.files));
-            item.variants = item.variants.filter(v => v.id !== variantId);
+            item.variants = item.variants.filter(v => !removedIds.has(v.id));
+            await removeMediaJobs(manifest, job =>
+              job.itemId === itemId && job.variantId && removedIds.has(job.variantId)
+            );
           } else {
-            item.variants.forEach(v => removeMediaFiles(projectPath, v.files));
+            (item.variants || []).forEach(v => removeMediaFiles(projectPath, v.files));
             removeMediaFiles(projectPath, item.files);
+            await removeMediaJobs(manifest, job => job.itemId === itemId);
             cat.items.splice(idx, 1);
           }
         }
@@ -2348,6 +2527,31 @@ async function removeMediaFiles(projectPath, files) {
   }
 }
 
+function collectVariantDescendants(item, initialIds) {
+  const ids = new Set(initialIds || []);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const variant of item.variants || []) {
+      if (variant.parentVariantId && ids.has(variant.parentVariantId) && !ids.has(variant.id)) {
+        ids.add(variant.id);
+        changed = true;
+      }
+    }
+  }
+  return ids;
+}
+
+async function removeMediaJobs(manifest, predicate) {
+  const removed = (manifest.jobs || []).filter(predicate);
+  manifest.jobs = (manifest.jobs || []).filter(job => !predicate(job));
+  for (const job of removed) {
+    if (job.method === 'codex' && job.sessionId && job.status === 'running') {
+      try { await agentManager.stop(job.sessionId); } catch (e) {}
+    }
+  }
+}
+
 // Crée des variantes : Codex ré-utilise les fichiers existants pour
 // décliner l'image ; Tripo relance une génération similaire.
 ipcMain.handle('media-variants', async (event, options) => {
@@ -2356,18 +2560,34 @@ ipcMain.handle('media-variants', async (event, options) => {
     if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Aucun projet actif' };
     const info = MEDIA_KINDS[kind];
     const manifest = loadMediaManifest(projectPath);
+    const item = findMediaItem(manifest, kind, itemId);
     const entry = findMediaEntry(manifest, kind, itemId, variantId);
-    if (!entry) return { error: 'Élément introuvable' };
+    if (!item || !entry) return { error: 'Élément introuvable' };
     const n = Math.max(1, Math.min(parseInt(count, 10) || 4, 8));
     const folder = ensureMediaFolder(projectPath, info.folder);
     let jobs = [];
     if (kind === 'thumb' || kind === 'icon') {
-      const seed = (baseImage && baseImage.startsWith('/'))
-        ? path.join(projectPath, baseImage) : (entry.files[0] ? path.join(projectPath, entry.files[0]) : null);
+      const sourceFile = baseImage || (entry.files && entry.files[0]);
+      const seed = resolveMediaSource(projectPath, sourceFile);
+      if (!seed) return { error: 'Image source introuvable pour créer la variante' };
       const newVariantId = mediaGenId('v');
-      entry.variants.push({ id: newVariantId, prompt, files: [], createdAt: Date.now() });
+      item.variants = item.variants || [];
+      item.variants.push({
+        id: newVariantId,
+        parentVariantId: variantId || null,
+        parentFile: normalizeMediaPath(sourceFile),
+        prompt,
+        files: [],
+        status: 'draft',
+        expectedCount: n,
+        createdAt: Date.now(),
+        error: null,
+      });
       saveMediaManifest(projectPath, manifest);
-      const res = await generateMediaWithCodex({ projectPath, kind, info, prompt, n, folder });
+      const res = await generateMediaWithCodex({
+        projectPath, kind, info, prompt, n, itemId,
+        variantId: newVariantId, folder, baseImage: seed
+      });
       return { ...res, method: 'codex', variant: true, seed: seed, newVariantId };
     }
     const newVariantId = mediaGenId('v');
@@ -2723,6 +2943,7 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows) =
     return { error: 'Chemin de projet non autorise.' };
   }
 
+  prepareForgeAgentInstructions(projectPath, agentType);
   const cmd = agentType === 'claude' ? 'claude' : agentType === 'codex' ? 'codex' : 'agy';
   // Avec le pont MCP quand il est disponible : l'agent herite des tools
   // Roblox Studio (create_object, insert_asset, execute_luau, ...).
