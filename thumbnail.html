@@ -62,22 +62,42 @@
   .tree-empty .te-title{font-family:'Space Grotesk';font-size:16px;font-weight:600;color:var(--smoke);}
   .tree-empty .te-sub{font-size:13px;max-width:340px;line-height:1.6;}
 
-  .tree-group{padding:20px 24px;position:relative;}
-  .tree-row{display:flex;align-items:flex-start;gap:20px;justify-content:center;margin-bottom:0;position:relative;}
+  #treeContent{min-width:max-content;padding:24px 32px 60px;}
+  .tree-group{padding:18px 28px 36px;position:relative;border-bottom:1px solid rgba(59,130,246,.08);}
+  .generation-branch{display:flex;flex-direction:column;align-items:center;position:relative;min-width:190px;}
+  .tree-request{width:230px;min-height:82px;padding:12px 14px;border:1px solid var(--border-light);border-radius:12px;background:linear-gradient(145deg,var(--char3),var(--char2));box-shadow:0 8px 24px rgba(0,0,0,.28);position:relative;}
+  .tree-request.selected{border-color:var(--ember);box-shadow:0 0 0 2px rgba(59,130,246,.22),0 8px 24px rgba(0,0,0,.3);}
+  .tr-head{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+  .tr-badge{font:600 9px 'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:5px;color:var(--ember-light);background:rgba(59,130,246,.13);}
+  .tr-badge.kind{color:var(--amber);background:rgba(210,154,60,.12);}
+  .tr-prompt{font-size:12px;line-height:1.35;color:var(--bone);word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .tr-status{margin-top:8px;font:10px 'JetBrains Mono',monospace;color:var(--smoke-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tr-status.running{color:#60A5FA}.tr-status.done{color:var(--success)}.tr-status.failed{color:var(--error)}.tr-status.partial{color:var(--amber)}
+  .tree-children{display:flex;align-items:flex-start;justify-content:center;gap:18px;position:relative;padding-top:30px;margin-top:0;}
+  .tree-children::before{content:'';position:absolute;top:14px;left:50%;width:2px;height:16px;background:var(--info);opacity:.48;}
+  .tree-child{display:flex;flex-direction:column;align-items:center;position:relative;padding:0 8px;}
+  .tree-child::before{content:'';position:absolute;top:-16px;left:50%;width:calc(100% + 18px);height:2px;background:var(--info);opacity:.48;}
+  .tree-child:first-child::before{left:50%;width:calc(50% + 17px)}
+  .tree-child:last-child::before{left:-9px;width:calc(50% + 17px)}
+  .tree-child:only-child::before{left:50%;width:2px;height:16px;top:-16px;}
+  .tree-child::after{content:'';position:absolute;top:-16px;left:50%;width:2px;height:16px;background:var(--info);opacity:.48;}
+  .nested-variants{display:flex;align-items:flex-start;gap:18px;position:relative;padding-top:30px;margin-top:0;}
+  .nested-variants::before{content:'';position:absolute;top:0;left:50%;width:2px;height:30px;background:var(--info);opacity:.48;}
+  .nested-variants>.generation-branch{padding:0 8px;}
   .tree-card{position:relative;cursor:pointer;transition:transform .15s;border-radius:10px;overflow:hidden;border:2px solid transparent;box-shadow:0 4px 20px rgba(0,0,0,.4);}
   .tree-card:hover{transform:scale(1.04);}
   .tree-card.selected{border-color:var(--ember);box-shadow:0 0 0 2px var(--ember),0 4px 20px rgba(59,130,246,.3);}
-  .tree-card img,.tree-card canvas{display:block;width:150px;height:100px;object-fit:cover;background:var(--char3);}
+  .tree-card img,.tree-card canvas{display:block;width:180px;height:110px;object-fit:cover;background:var(--char3);}
   .tree-card .tc-badge{position:absolute;top:4px;left:4px;font-size:9px;font-family:'JetBrains Mono';padding:2px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:var(--smoke);}
   .tree-card .tc-badge.base{color:var(--amber);background:rgba(50,40,10,.7);}
   .tree-card .tc-badge.pending{color:#60A5FA;background:rgba(59,130,246,.25);}
   @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
-  .tc-spinner{width:150px;height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--char3);}
+  .tc-spinner{width:180px;height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--char3);}
   .tc-spinner svg{animation:spin 1.2s linear infinite;color:var(--ember-light);}
   .tc-spinner span{font-size:10px;color:var(--smoke-dim);font-family:'JetBrains Mono';}
 
-  .tree-connectors{position:relative;height:30px;}
-  .tree-connectors .line-v{position:absolute;width:2px;background:var(--info);opacity:.5;top:0;bottom:0;}
+  .tc-spinner.failed svg{animation:none;color:var(--error)}
+  .tc-spinner.failed span{color:var(--error);max-width:155px;text-align:center;line-height:1.3;}
 
   /* ── Bottom generation bar (Visuels) ── */
   .gen-bar{flex-shrink:0;border-top:1px solid var(--border);padding:12px 20px;background:var(--input-bg);backdrop-filter:blur(12px);display:flex;flex-direction:column;gap:8px;}
@@ -417,6 +437,7 @@
     data: { folders: {}, categories: {} },
     selected: [],
     previewItem: null,
+    editSource: null,
     polling: null,
     agentSession: null,
     refFiles: [],
@@ -446,6 +467,7 @@
     const data = await window.forgeAPI.mediaListFiles(state.projectPath);
     state.data = data || { folders: {}, categories: {} };
     renderTree();
+    if((state.data.jobs||[]).some(job=>job.status==='running'||job.status==='pending'||job.status==='starting')) startPolling();
   }
 
   // ── Section switching ──
@@ -487,6 +509,11 @@
   function editCount(d){ state.editCount=Math.max(1,Math.min(8,state.editCount+d)); document.getElementById('editCountVal').textContent=state.editCount; }
   function previewCount(d){ state.previewCount=Math.max(1,Math.min(8,state.previewCount+d)); document.getElementById('previewCountVal').textContent=state.previewCount; }
 
+  function countRequestedInPrompt(prompt,fallback){
+    const match=String(prompt||'').match(/\b([1-8])\s*(?:miniatures?|minias?|ic[oô]nes?|images?|variantes?)\b/i);
+    return match ? Number(match[1]) : fallback;
+  }
+
   // ── Render tree (Visuels) ──
   function renderTree(){
     const content = document.getElementById('treeContent');
@@ -511,66 +538,124 @@
     for(const {kind, item} of allItems){
       const group = document.createElement('div');
       group.className = 'tree-group';
-      const baseRow = document.createElement('div');
-      baseRow.className = 'tree-row';
-      baseRow.appendChild(buildCard(kind, item, null));
-      group.appendChild(baseRow);
-      if(item.variants && item.variants.length){
-        const conn = document.createElement('div');
-        conn.className = 'tree-connectors';
-        conn.innerHTML = '<div class="line-v" style="left:50%;"></div>';
-        group.appendChild(conn);
-        const vRow = document.createElement('div');
-        vRow.className = 'tree-row';
-        for(const v of item.variants) vRow.appendChild(buildCard(kind, item, v));
-        group.appendChild(vRow);
-      }
+      group.appendChild(renderGenerationBranch(kind, item, null, 0, new Set()));
       content.appendChild(group);
     }
   }
 
-  function buildCard(kind, item, variant){
+  function normalizedFile(file){ return String(file||'').replace(/\\/g,'/'); }
+
+  function variantsForFile(item, parentVariantId, file){
+    const parentId = parentVariantId || null;
+    const wantedFile = normalizedFile(file);
+    return (item.variants||[]).filter(function(variant){
+      if((variant.parentVariantId||null)!==parentId) return false;
+      if(variant.parentFile) return normalizedFile(variant.parentFile)===wantedFile;
+      const parentEntry = parentId ? (item.variants||[]).find(v=>v.id===parentId) : item;
+      return normalizedFile(((parentEntry&&parentEntry.files)||[])[0])===wantedFile;
+    });
+  }
+
+  function renderGenerationBranch(kind, item, variant, depth, ancestry){
     const entry = variant || item;
-    const sel = state.selected.find(s=>s.kind===kind && s.itemId===item.id && (variant ? s.variantId===variant.id : !s.variantId));
+    const branch = document.createElement('div');
+    branch.className = 'generation-branch';
+    branch.appendChild(buildRequestCard(kind,item,variant));
+    if(depth>=8 || ancestry.has(entry.id)) return branch;
+
+    const nextAncestry = new Set(ancestry); nextAncestry.add(entry.id);
+    const files = (entry.files||[]).filter(f=>/\.(png|jpe?g|webp|svg)$/i.test(f));
+    const running = entry.status==='running'||entry.status==='starting'||entry.status==='pending';
+    const expected = Math.max(files.length, running ? (Number(entry.expectedCount)||1) : 0);
+    if(!expected) return branch;
+
+    const children = document.createElement('div');
+    children.className = 'tree-children';
+    for(let index=0;index<expected;index++){
+      const file = files[index] || null;
+      const child = document.createElement('div');
+      child.className = 'tree-child';
+      child.appendChild(buildImageCard(kind,item,variant,file,index,entry));
+      if(file){
+        const nested = variantsForFile(item,variant ? variant.id : null,file);
+        if(nested.length){
+          const nestedWrap = document.createElement('div');
+          nestedWrap.className = 'nested-variants';
+          nested.forEach(v=>nestedWrap.appendChild(renderGenerationBranch(kind,item,v,depth+1,nextAncestry)));
+          child.appendChild(nestedWrap);
+        }
+      }
+      children.appendChild(child);
+    }
+    branch.appendChild(children);
+    return branch;
+  }
+
+  function entryVisualStatus(entry){
+    if(entry.status) return entry.status;
+    return (entry.files&&entry.files.length) ? 'done' : 'failed';
+  }
+
+  function buildRequestCard(kind,item,variant){
+    const entry = variant || item;
+    const status = entryVisualStatus(entry);
+    const selected = state.selected.some(s=>s.kind===kind&&s.itemId===item.id&&s.variantId===(variant?variant.id:null)&&!s.file);
+    const card = document.createElement('div');
+    card.className = 'tree-request'+(selected?' selected':'');
+    const count = (entry.files||[]).length;
+    const expected = Number(entry.expectedCount)||count;
+    const labels = {
+      running:'Codex génère '+count+'/'+expected+'…', starting:'Démarrage de Codex…', pending:'En attente…',
+      done:count+' image'+(count>1?'s':'')+' créée'+(count>1?'s':''),
+      partial:count+'/'+expected+' image(s) créée(s)', failed:'Échec — clic droit pour sélectionner', draft:'Préparation…'
+    };
+    card.innerHTML = '<div class="tr-head"><span class="tr-badge">Codex</span><span class="tr-badge kind">'+(variant?'Variante':(kind==='icon'?'Icône':'Miniature'))+'</span></div>'+
+      '<div class="tr-prompt">'+escHtml(entry.prompt||item.name||'Nouvelle génération')+'</div>'+
+      '<div class="tr-status '+escHtml(status)+'">'+escHtml(labels[status]||status)+'</div>';
+    card.title = entry.error || entry.prompt || item.name || '';
+    card.oncontextmenu = function(e){e.preventDefault();toggleSelect(kind,item.id,variant?variant.id:null,null);};
+    return card;
+  }
+
+  function buildImageCard(kind,item,variant,file,index,entry){
+    const sel = file && state.selected.find(s=>s.kind===kind&&s.itemId===item.id&&s.variantId===(variant?variant.id:null)&&normalizedFile(s.file)===normalizedFile(file));
     const card = document.createElement('div');
     card.className = 'tree-card' + (sel ? ' selected':'');
-    const files = entry.files || [];
-    const imgFile = files.find(f=>/\.(png|jpe?g|webp|svg)$/i.test(f));
-    if(imgFile){
+    if(file){
       const img = document.createElement('img');
       img.alt = entry.name || '';
       card.appendChild(img);
       if(window.forgeAPI.mediaPreview && state.projectPath){
-        window.forgeAPI.mediaPreview(state.projectPath, imgFile).then(r=>{
+        window.forgeAPI.mediaPreview(state.projectPath, file).then(r=>{
           if(r && r.dataUrl) img.src = r.dataUrl;
         });
       }
     } else {
-      // Spinner de chargement pour les items en cours de generation
       const ph = document.createElement('div');
       ph.className = 'tc-spinner';
-      ph.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg><span>Generation...</span>';
+      ph.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg><span>Génération '+(index+1)+'/'+(entry.expectedCount||1)+'…</span>';
       card.appendChild(ph);
     }
-    if(!variant){
-      const badge = document.createElement('div');
-      badge.className = 'tc-badge base';
-      badge.textContent = 'Base';
-      card.appendChild(badge);
+    const badge = document.createElement('div');
+    badge.className = 'tc-badge '+(variant?'':'base');
+    badge.textContent = (variant?'Variante ':'Base ')+(index+1);
+    card.appendChild(badge);
+    if(file){
+      card.onclick = (e)=>{
+        if(e.shiftKey || e.ctrlKey) toggleSelect(kind,item.id,variant?variant.id:null,file);
+        else openPreview(kind,item,variant,file);
+      };
+      card.oncontextmenu = (e)=>{e.preventDefault();toggleSelect(kind,item.id,variant?variant.id:null,file);};
     }
-    card.onclick = (e)=>{
-      if(e.shiftKey || e.ctrlKey) toggleSelect(kind, item.id, variant ? variant.id : null);
-      else openPreview(kind, item, variant);
-    };
-    card.oncontextmenu = (e)=>{ e.preventDefault(); toggleSelect(kind, item.id, variant ? variant.id : null); };
     return card;
   }
 
   // ── Selection ──
-  function toggleSelect(kind, itemId, variantId){
-    const idx = state.selected.findIndex(s=>s.kind===kind && s.itemId===itemId && s.variantId===variantId);
+  function toggleSelect(kind, itemId, variantId, file){
+    const normalized = normalizedFile(file);
+    const idx = state.selected.findIndex(s=>s.kind===kind&&s.itemId===itemId&&s.variantId===variantId&&normalizedFile(s.file)===normalized);
     if(idx>=0) state.selected.splice(idx,1);
-    else state.selected.push({kind, itemId, variantId});
+    else state.selected.push({kind,itemId,variantId,file:file||null});
     updateSelBar();
     renderTree();
   }
@@ -584,7 +669,7 @@
   async function deleteSelected(){
     if(!state.projectPath || !state.selected.length) return;
     if(!confirm('Supprimer les éléments sélectionnés ?')) return;
-    for(const s of state.selected) await window.forgeAPI.mediaDelete(state.projectPath, s.kind, s.itemId, s.variantId, null);
+    for(const s of state.selected) await window.forgeAPI.mediaDelete(state.projectPath,s.kind,s.itemId,s.variantId,s.file||null);
     clearSelection();
     await refresh();
   }
@@ -593,39 +678,42 @@
     const s = state.selected[0];
     const cat = (state.data.categories[s.kind]||{});
     const item = (cat.items||[]).find(i=>i.id===s.itemId);
-    if(item && item.files && item.files.length) await window.forgeAPI.mediaDownload(state.projectPath, item.files[0]);
+    const entry = item && (s.variantId ? (item.variants||[]).find(v=>v.id===s.variantId) : item);
+    const file = s.file || (entry&&entry.files&&entry.files[0]);
+    if(file) await window.forgeAPI.mediaDownload(state.projectPath,file);
   }
 
   // ── Preview overlay ──
-  function openPreview(kind, item, variant){
-    state.previewItem = { kind, itemId: item.id, variantId: variant ? variant.id : null };
+  function openPreview(kind, item, variant, file){
+    state.previewItem = {kind,itemId:item.id,variantId:variant?variant.id:null,file:file||null};
     const entry = variant || item;
     const files = entry.files || [];
-    const imgFile = files.find(f=>/\.(png|jpe?g|webp|svg)$/i.test(f));
+    const imgFile = file || files.find(f=>/\.(png|jpe?g|webp|svg)$/i.test(f));
     const img = document.getElementById('previewImg');
     if(imgFile && window.forgeAPI.mediaPreview){
       window.forgeAPI.mediaPreview(state.projectPath, imgFile).then(r=>{ if(r && r.dataUrl) img.src = r.dataUrl; });
     } else { img.src = ''; }
     document.getElementById('previewOverlay').classList.add('open');
   }
-  function closePreview(){ document.getElementById('previewOverlay').classList.remove('open'); state.previewItem = null; }
+  function closePreview(preserve){document.getElementById('previewOverlay').classList.remove('open');if(!preserve)state.previewItem=null;}
   function toggleFav(){ const b=document.getElementById('favBtn'); b.classList.toggle('liked'); b.textContent=b.classList.contains('liked')?'♥':'♡'; }
   async function downloadPreview(){
     if(!state.previewItem || !state.projectPath) return;
     const entry = getEntry(state.previewItem);
-    if(entry && entry.files && entry.files.length) await window.forgeAPI.mediaDownload(state.projectPath, entry.files[0]);
+    const file = state.previewItem.file || (entry&&entry.files&&entry.files[0]);
+    if(file) await window.forgeAPI.mediaDownload(state.projectPath,file);
   }
   async function deletePreview(){
     if(!state.previewItem || !state.projectPath) return;
     if(!confirm('Supprimer cet élément ?')) return;
-    await window.forgeAPI.mediaDelete(state.projectPath, state.previewItem.kind, state.previewItem.itemId, state.previewItem.variantId, null);
+    await window.forgeAPI.mediaDelete(state.projectPath,state.previewItem.kind,state.previewItem.itemId,state.previewItem.variantId,state.previewItem.file||null);
     closePreview();
     await refresh();
   }
 
   // ── Edit modal ──
   function openEditModal(){ document.getElementById('editModal').classList.add('open'); }
-  function closeEditModal(){ document.getElementById('editModal').classList.remove('open'); state.refFiles=[]; document.getElementById('editText').value=''; document.getElementById('refPreview').innerHTML=''; }
+  function closeEditModal(){document.getElementById('editModal').classList.remove('open');state.editSource=null;state.refFiles=[];document.getElementById('editText').value='';document.getElementById('refPreview').innerHTML='';}
   function handleRefFiles(files){
     state.refFiles = Array.from(files);
     const prev = document.getElementById('refPreview');
@@ -640,48 +728,23 @@
       prev.appendChild(thumb);
     }
   }
-  function openVariantsFromPreview(){ closePreview(); openEditModal(); document.getElementById('editText').focus(); }
-  function openEditFromPreview(){ closePreview(); openEditModal(); document.getElementById('editText').focus(); }
+  function openVariantsFromPreview(){state.editSource=state.previewItem&&{...state.previewItem};closePreview(true);state.editCount=state.previewCount;document.getElementById('editCountVal').textContent=state.editCount;openEditModal();document.getElementById('editText').focus();}
+  function openEditFromPreview(){openVariantsFromPreview();}
   async function applyEdit(){
     const prompt = document.getElementById('editText').value.trim();
     if(!prompt){ alert('Décris la modification à appliquer.'); return; }
-    if(!state.previewItem || !state.projectPath) return;
+    const source = state.editSource || state.previewItem;
+    if(!source || !state.projectPath) return;
+    const requestedCount=countRequestedInPrompt(prompt,state.editCount);
     closeEditModal();
-    const opts = { projectPath:state.projectPath, kind:state.previewItem.kind, itemId:state.previewItem.itemId, variantId:state.previewItem.variantId, prompt, count:state.editCount };
+    const opts={projectPath:state.projectPath,kind:source.kind,itemId:source.itemId,variantId:source.variantId,prompt,count:requestedCount,baseImage:source.file};
     const res = await window.forgeAPI.mediaVariants(opts);
     if(res && res.error){ alert(res.error); return; }
-    if(res && res.sessionId){ startAgentScan(res.sessionId, state.previewItem.itemId, state.previewItem.kind, res.newVariantId); }
-    else startPolling();
+    startPolling();
     await refresh();
   }
 
-  // ── Agent scan ──
-  function startAgentScan(sessionId, itemId, kind, variantId){
-    var retries = 0;
-    var maxRetries = 120; // 5 minutes max (120 * 2.5s)
-    const scan = async () => {
-      try{
-        const st = await window.forgeAPI.getAgentStatus(sessionId);
-        // Agent termine : running===false ou exitCode defini
-        if(st && (st.done || st.status==='done' || st.status==='exited' || (st.running===false && st.exitCode!==undefined) || (st.exists===false))){
-          // Agent termine — attacher les fichiers generes
-          const raw = (await window.forgeAPI.mediaListFiles(state.projectPath)).folders[kind]||[];
-          await window.forgeAPI.mediaAttachFiles(state.projectPath, kind, itemId, variantId||null, raw.map(f=>f.name));
-          await refresh(); return;
-        }
-        if(st && st.status==='failed') return;
-        retries++;
-        if(retries >= maxRetries){
-          // Timeout — on force le refresh et on arrete
-          await refresh(); return;
-        }
-        setTimeout(scan, 2500);
-      }catch(e){ console.error(e); setTimeout(scan, 5000); }
-    };
-    scan();
-  }
-
-  // ── Polling (Tripo) ──
+  // ── Polling des générations persistantes (Codex + Tripo) ──
   let pollTimer = null;
   function startPolling(){
     if(state.polling) return;
@@ -699,15 +762,21 @@
     if(!prompt) return;
     if(!state.projectPath){ alert('Aucun projet actif.'); return; }
     const kind = state.kind; // thumb or icon
+    const requestedCount=countRequestedInPrompt(prompt,state.genCount);
+    state.genCount=requestedCount;document.getElementById('genCountVal').textContent=requestedCount;
     const name = prompt.slice(0,40);
-    const created = await window.forgeAPI.mediaCreateItem(state.projectPath, kind, name);
-    if(!created || created.error){ alert(created.error||'Erreur'); return; }
-    const opts = { projectPath:state.projectPath, kind, prompt, count:state.genCount, itemId:created.item.id };
-    const res = await window.forgeAPI.mediaGenerate(opts);
-    if(res && res.error){ alert(res.error); return; }
-    if(res && res.sessionId){ startAgentScan(res.sessionId, created.item.id, kind, null); }
-    else startPolling();
-    await refresh();
+    const send=document.getElementById('genSend');send.disabled=true;
+    try{
+      const created=await window.forgeAPI.mediaCreateItem(state.projectPath,kind,name);
+      if(!created||created.error){alert((created&&created.error)||'Erreur');return;}
+      await refresh();
+      const opts={projectPath:state.projectPath,kind,prompt,count:requestedCount,itemId:created.item.id};
+      const res=await window.forgeAPI.mediaGenerate(opts);
+      if(res&&res.error){await refresh();alert(res.error);return;}
+      startPolling();
+      document.getElementById('genPrompt').value='';
+      await refresh();
+    }finally{send.disabled=false;}
   }
 
   // ── Conversion: clé Tripo3D + assets de la toolbox ──
