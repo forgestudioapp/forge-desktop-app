@@ -6,14 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Forge — Connexion</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lib/theme.css">
+<script src="lib/theme.js"></script>
 <style>
-  :root{
-    --char:#14110E; --char2:#1C1712; --char3:#221C15;
-    --border:#2C2419; --border-light:#3A3024;
-    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
-    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
-    --ok:#5FBE7A; --warn:#E8B65E; --danger:#E9776B;
-  }
   *{margin:0;padding:0;box-sizing:border-box;}
   body{
     background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
@@ -49,7 +44,7 @@
 
   .form-box{
     width:400px; max-width:100%;
-    background:rgba(28,23,18,0.6); backdrop-filter:blur(24px) saturate(1.3); -webkit-backdrop-filter:blur(24px) saturate(1.3);
+    background:var(--input-bg); backdrop-filter:blur(24px) saturate(1.3); -webkit-backdrop-filter:blur(24px) saturate(1.3);
     border:1px solid rgba(59,130,246,0.08); border-radius:18px;
     padding:32px;
     box-shadow:0 20px 60px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.02);

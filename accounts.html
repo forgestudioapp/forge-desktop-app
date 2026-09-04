@@ -5,23 +5,9 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
 <title>Forge — Comptes</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lib/theme.css">
+<script src="lib/theme.js"></script>
 <style>
-  :root{
-    --char:#14110E; --char2:#1C1712; --char3:#221C15;
-    --border:#2C2419; --border-light:#3A3024;
-    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
-    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
-    --success:#5FBE7A; --success-dim:#233327;
-    --error:#E35B5B;
-  }
-  html.light-theme{
-    --char:#F5F2ED; --char2:#EDEAE4; --char3:#E5E1DA; --char4:#DDD9D1;
-    --border:#D5D0C8; --border-light:#C8C2B8; --border-hover:#B8B2A8;
-    --bone:#1A1612; --smoke:#6B6255; --smoke-dim:#948B7C;
-    --ember:#2563EB; --ember-light:#60A5FA; --ember-dim:#DBEAFE;
-    --success:#3A9A55; --success-dim:#D4F0DC;
-    --error:#CC3333;
-  }
   *{margin:0;padding:0;box-sizing:border-box;}
   body{
     background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
@@ -58,7 +44,7 @@
 
   .acc-card{
     width:460px; max-width:90vw; border-radius:14px; padding:20px; margin-bottom:16px;
-    background:rgba(28,23,18,0.55); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4);
+    background:var(--card-bg); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4);
     border:1px solid rgba(59,130,246,0.1); box-shadow:0 8px 32px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.02);
     position:relative; overflow:hidden; z-index:2;
     transition:all 0.3s cubic-bezier(.4,0,.2,1);
@@ -75,7 +61,7 @@
     box-shadow:0 12px 40px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.03);
     transform:translateY(-2px);
   }
-  .acc-card.dim{border-color:rgba(255,255,255,0.04); background:rgba(28,23,18,0.4);}
+  .acc-card.dim{border-color:rgba(255,255,255,0.04); background:var(--card-bg);}
   .acc-card.dim:hover{border-color:rgba(255,255,255,0.08);}
   .acc-top{display:flex; align-items:center; gap:12px; margin-bottom:10px; position:relative; z-index:1;}
   .acc-icon{width:38px;height:38px;border-radius:9px; background:var(--ember-dim); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;}
@@ -188,7 +174,6 @@
 <script src="./lib/i18n.js"></script>
 <script src="./lib/ux.js"></script>
 <script>
-  (function(){ try { var s = JSON.parse(localStorage.getItem('forge_settings') || '{}'); if (s.theme === 'light') document.documentElement.classList.add('light-theme'); } catch(e){} })();
   (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
   initLang();
   const dotsEl = document.getElementById('dots');

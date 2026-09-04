@@ -5,14 +5,9 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
 <title>Forge — Vérification</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lib/theme.css">
+<script src="lib/theme.js"></script>
 <style>
-  :root{
-    --char:#14110E; --char2:#1C1712; --char3:#221C15;
-    --border:#2C2419; --border-light:#3A3024;
-    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
-    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
-    --ok:#3FB97F; --ko:#E0414F; --warn:#E0A13F;
-  }
   *{margin:0;padding:0;box-sizing:border-box;}
   body{
     background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
@@ -66,7 +61,7 @@
 
   .check-card{
     width:580px; max-width:92vw; max-height:52vh; overflow-y:auto;
-    background:rgba(28,23,18,0.55); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4);
+    background:var(--card-bg); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4);
     border:1px solid rgba(59,130,246,0.1); border-radius:14px;
     padding:18px 18px 12px;
     box-shadow:0 8px 32px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.02);
@@ -74,7 +69,7 @@
   }
   .check-card::after{
     content:''; position:sticky; bottom:-12px; left:0; right:0; height:24px; pointer-events:none;
-    background:linear-gradient(transparent, rgba(28,23,18,0.7));
+    background:linear-gradient(transparent, var(--card-bg-hover));
   }
   .check-card::-webkit-scrollbar{width:6px;}
   .check-card::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px;}
