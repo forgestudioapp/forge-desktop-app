@@ -1,6 +1,6 @@
 {
   "name": "forge-desktop-app",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Forge - Génère ton jeu Roblox avec l'IA",
   "main": "main.js",
   "scripts": {
