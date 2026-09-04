@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn, execFile } = require('child_process');
+const { isExistingDirectoryWithinRoots } = require('./lib/path-security');
 require('dotenv').config({ path: path.join(app.isPackaged ? process.resourcesPath : __dirname, '.env') });
 
 // ---- node-pty (terminal interactif) ----
@@ -21,6 +22,9 @@ const HOME = os.homedir();
 const FORGE_PROJECTS_ROOT = path.join(app.getPath('documents'), 'ForgeProjects');
 const ALLOWED_ROOTS = [
   app.getPath('documents'),
+  // Electron suit parfois la redirection OneDrive du dossier Documents alors
+  // que d'anciens projets Forge se trouvent encore dans ~/Documents.
+  path.join(HOME, 'Documents'),
   path.join(HOME, 'Desktop'),
   path.join(HOME, 'projects'),
   path.join(HOME, 'Dev'),
@@ -29,17 +33,8 @@ const ALLOWED_ROOTS = [
   FORGE_PROJECTS_ROOT,
 ];
 
-function resolvePath(p) {
-  return path.resolve(p);
-}
-
 function isPathAllowed(targetPath) {
-  const resolved = resolvePath(targetPath);
-  if (!fs.existsSync(resolved)) return false;
-  return ALLOWED_ROOTS.some(root => {
-    const r = resolvePath(root);
-    return resolved === r || resolved.startsWith(r + path.sep);
-  });
+  return isExistingDirectoryWithinRoots(targetPath, ALLOWED_ROOTS);
 }
 
 function sanitizePrompt(prompt) {
