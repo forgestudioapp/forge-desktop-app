@@ -18,9 +18,9 @@ try {
 // CONFIG & UTILS
 // ============================================
 const HOME = os.homedir();
-const FORGE_PROJECTS_ROOT = path.join(HOME, 'Documents', 'ForgeProjects');
+const FORGE_PROJECTS_ROOT = path.join(app.getPath('documents'), 'ForgeProjects');
 const ALLOWED_ROOTS = [
-  path.join(HOME, 'Documents'),
+  app.getPath('documents'),
   path.join(HOME, 'Desktop'),
   path.join(HOME, 'projects'),
   path.join(HOME, 'Dev'),
