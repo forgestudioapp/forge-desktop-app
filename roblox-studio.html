@@ -5,15 +5,9 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
 <title>Forge — Roblox Studio</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lib/theme.css">
+<script src="lib/theme.js"></script>
 <style>
-  :root{
-    --char:#14110E; --char2:#1C1712; --char3:#221C15;
-    --border:#2C2419; --border-light:#3A3024;
-    --bone:#F3EDE3; --smoke:#948B7C; --smoke-dim:#6B6255;
-    --ember:#3B82F6; --ember-light:#60A5FA; --ember-dim:#1E3A5F;
-    --success:#5FBE7A; --success-dim:#233327;
-    --warn:#60A5FA; --warn-dim:#3A2A18;
-  }
   *{margin:0;padding:0;box-sizing:border-box;}
   body{
     background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
@@ -61,7 +55,7 @@
   p.sub{color:var(--smoke); font-size:14.5px; text-align:center; max-width:480px; line-height:1.6; margin-bottom:30px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.15s ease forwards; opacity:0;}
 
   .check-box{
-    background:rgba(28,23,18,0.5); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    background:var(--card-bg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
     border:1px solid rgba(59,130,246,0.06); border-radius:14px;
     padding:18px 20px; width:460px; max-width:90vw; margin-bottom:22px;
     box-shadow:0 8px 32px rgba(0,0,0,0.1); position:relative; z-index:2;

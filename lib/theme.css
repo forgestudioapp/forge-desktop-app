@@ -1,0 +1,47 @@
+/* ============================================
+   FORGE — Theme partage (dark / light)
+   Inclure via <link rel="stylesheet" href="lib/theme.css">
+   ============================================ */
+
+:root {
+  --char:#14110E;--char2:#1C1712;--char3:#221C15;--char4:#2A2318;
+  --border:#2C2419;--border-light:#3A3024;--border-hover:#4A3E30;
+  --bone:#F3EDE3;--smoke:#948B7C;--smoke-dim:#6B6255;
+  --ember:#3B82F6;--ember-light:#60A5FA;--ember-dim:#1E3A5F;
+  --success:#5FBE7A;--success-dim:#233327;
+  --error:#E35B5B;--error-dim:#2A1515;
+  --info:#5B9BE3;
+
+  /* Card / overlay backgrounds — utilisent les variables au lieu de rgba hardcoded */
+  --card-bg:rgba(28,23,18,0.5);
+  --card-bg-solid:rgba(28,23,18,0.97);
+  --card-bg-hover:rgba(28,23,18,0.7);
+  --sidebar-bg:rgba(18,15,12,0.98);
+  --overlay-bg:rgba(20,17,14,0.7);
+  --header-bg:rgba(34,28,21,0.4);
+  --toast-bg:rgba(28,23,18,0.92);
+  --tooltip-bg:rgba(28,23,18,0.95);
+  --input-bg:rgba(28,23,18,0.6);
+  --modal-bg:rgba(20,17,14,0.85);
+}
+
+html.light-theme {
+  --char:#F5F2ED;--char2:#EDEAE4;--char3:#E5E1DA;--char4:#DDD9D1;
+  --border:#D5D0C8;--border-light:#C8C2B8;--border-hover:#B8B2A8;
+  --bone:#1A1612;--smoke:#6B6255;--smoke-dim:#948B7C;
+  --ember:#2563EB;--ember-light:#60A5FA;--ember-dim:#DBEAFE;
+  --success:#3A9A55;--success-dim:#D4F0DC;
+  --error:#CC3333;--error-dim:#F5D4D4;
+  --info:#3A7ACC;
+
+  --card-bg:rgba(237,234,228,0.5);
+  --card-bg-solid:rgba(237,234,228,0.97);
+  --card-bg-hover:rgba(237,234,228,0.7);
+  --sidebar-bg:rgba(245,242,237,0.98);
+  --overlay-bg:rgba(237,234,228,0.7);
+  --header-bg:rgba(229,225,218,0.4);
+  --toast-bg:rgba(237,234,228,0.92);
+  --tooltip-bg:rgba(237,234,228,0.95);
+  --input-bg:rgba(237,234,228,0.6);
+  --modal-bg:rgba(237,234,228,0.85);
+}

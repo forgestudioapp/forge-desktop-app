@@ -5,31 +5,9 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co file:; media-src 'self' blob: https://*.supabase.co; connect-src 'self';">
 <title>Forge — Atelier IA</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lib/theme.css">
+<script src="lib/theme.js"></script>
 <style>
-  :root{
-    --char:#14110E;--char2:#1C1712;--char3:#221C15;--char4:#2A2318;
-    --border:#2C2419;--border-light:#3A3024;--border-hover:#4A3E30;
-    --bone:#F3EDE3;--smoke:#948B7C;--smoke-dim:#6B6255;
-    --ember:#3B82F6;--ember-light:#60A5FA;--ember-dim:#1E3A5F;
-    --success:#5FBE7A;--success-dim:#233327;
-    --error:#E35B5B;--error-dim:#2A1515;
-    --info:#5B9BE3;
-    --cyan:#4FD1C5;--cyan-dim:#1A3A35;
-    --amber:#D4A843;--amber-dim:#3A3020;
-    --purple:#9B6BE3;--purple-dim:#2A1E40;
-  }
-  html.light-theme{
-    --char:#F5F2ED;--char2:#EDEAE4;--char3:#E5E1DA;--char4:#DDD9D1;
-    --border:#D5D0C8;--border-light:#C8C2B8;--border-hover:#B8B2A8;
-    --bone:#1A1612;--smoke:#6B6255;--smoke-dim:#948B7C;
-    --ember:#2563EB;--ember-light:#60A5FA;--ember-dim:#DBEAFE;
-    --success:#3A9A55;--success-dim:#D4F0DC;
-    --error:#CC3333;--error-dim:#F5D4D4;
-    --info:#3A7ACC;
-    --cyan:#3AAFA9;--cyan-dim:#D4F0EE;
-    --amber:#B8960F;--amber-dim:#F5EED4;
-    --purple:#7B4FCF;--purple-dim:#E8DDF5;
-  }
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{height:100%;overflow:hidden;}
   body{background:var(--char);color:var(--bone);font-family:'Inter',sans-serif;display:flex;flex-direction:column;opacity:0;animation:pageIn .35s cubic-bezier(.4,0,.2,1) forwards;}
@@ -50,7 +28,7 @@
   .layout{flex:1;display:flex;min-height:0;overflow:hidden;}
 
   /* ── Sidebar ── */
-  .sidebar{width:180px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 0;background:rgba(28,23,18,.3);}
+  .sidebar{width:180px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 0;background:var(--card-bg);}
   .sidebar-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--smoke-dim);padding:0 16px 12px;text-transform:uppercase;}
   .sidebar-item{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;transition:all .15s;border-left:3px solid transparent;font-size:13.5px;color:var(--smoke);font-weight:500;}
   .sidebar-item:hover{background:var(--char3);color:var(--bone);}
@@ -97,7 +75,7 @@
   .tree-connectors .line-v{position:absolute;width:2px;background:var(--info);opacity:.5;top:0;bottom:0;}
 
   /* ── Bottom generation bar (Visuels) ── */
-  .gen-bar{flex-shrink:0;border-top:1px solid var(--border);padding:12px 20px;background:rgba(28,23,18,.6);backdrop-filter:blur(12px);display:flex;flex-direction:column;gap:8px;}
+  .gen-bar{flex-shrink:0;border-top:1px solid var(--border);padding:12px 20px;background:var(--input-bg);backdrop-filter:blur(12px);display:flex;flex-direction:column;gap:8px;}
   .gen-tabs{display:flex;align-items:center;gap:4px;}
   .gen-tab{padding:6px 16px;border-radius:20px;border:none;background:transparent;color:var(--smoke-dim);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Inter';}
   .gen-tab:hover{color:var(--bone);}
@@ -416,8 +394,6 @@
 <script>
   // ── Session guard ──
   (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
-  // ── Theme ──
-  (function(){ try { var s = JSON.parse(localStorage.getItem('forge_settings') || '{}'); if (s.theme === 'light') document.documentElement.classList.add('light-theme'); } catch(e){} })();
 
   // ── State ──
   const KIND_META = {
