@@ -650,19 +650,20 @@
     const opts = { projectPath:state.projectPath, kind:state.previewItem.kind, itemId:state.previewItem.itemId, variantId:state.previewItem.variantId, prompt, count:state.editCount };
     const res = await window.forgeAPI.mediaVariants(opts);
     if(res && res.error){ alert(res.error); return; }
-    if(res && res.sessionId){ state.agentSession=res.sessionId; startAgentScan(state.previewItem.itemId, state.previewItem.kind, state.previewItem.variantId); }
+    if(res && res.sessionId){ startAgentScan(res.sessionId, state.previewItem.itemId, state.previewItem.kind, res.newVariantId); }
     else startPolling();
     await refresh();
   }
 
   // ── Agent scan ──
-  function startAgentScan(itemId, kind, variantId){
+  function startAgentScan(sessionId, itemId, kind, variantId){
     var retries = 0;
     var maxRetries = 120; // 5 minutes max (120 * 2.5s)
     const scan = async () => {
       try{
-        const st = await window.forgeAPI.getAgentStatus(state.agentSession);
-        if(st && (st.done || st.status==='done' || st.status==='exited')){
+        const st = await window.forgeAPI.getAgentStatus(sessionId);
+        // Agent termine : running===false ou exitCode defini
+        if(st && (st.done || st.status==='done' || st.status==='exited' || (st.running===false && st.exitCode!==undefined) || (st.exists===false))){
           // Agent termine — attacher les fichiers generes
           const raw = (await window.forgeAPI.mediaListFiles(state.projectPath)).folders[kind]||[];
           await window.forgeAPI.mediaAttachFiles(state.projectPath, kind, itemId, variantId||null, raw.map(f=>f.name));
@@ -704,7 +705,7 @@
     const opts = { projectPath:state.projectPath, kind, prompt, count:state.genCount, itemId:created.item.id };
     const res = await window.forgeAPI.mediaGenerate(opts);
     if(res && res.error){ alert(res.error); return; }
-    if(res && res.sessionId){ state.agentSession=res.sessionId; startAgentScan(created.item.id, kind, null); }
+    if(res && res.sessionId){ startAgentScan(res.sessionId, created.item.id, kind, null); }
     else startPolling();
     await refresh();
   }
