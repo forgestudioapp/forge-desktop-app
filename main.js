@@ -2291,15 +2291,17 @@ ipcMain.handle('media-variants', async (event, options) => {
     if (kind === 'thumb' || kind === 'icon') {
       const seed = (baseImage && baseImage.startsWith('/'))
         ? path.join(projectPath, baseImage) : (entry.files[0] ? path.join(projectPath, entry.files[0]) : null);
-      const res = await generateMediaWithCodex({ projectPath, kind, info, prompt, n, folder });
-      entry.variants.push({ id: mediaGenId('v'), prompt, files: [], createdAt: Date.now() });
+      const newVariantId = mediaGenId('v');
+      entry.variants.push({ id: newVariantId, prompt, files: [], createdAt: Date.now() });
       saveMediaManifest(projectPath, manifest);
-      return { ...res, method: 'codex', variant: true, seed: seed };
+      const res = await generateMediaWithCodex({ projectPath, kind, info, prompt, n, folder });
+      return { ...res, method: 'codex', variant: true, seed: seed, newVariantId };
     }
-    const res = await generateMediaWithTripo({ projectPath, kind, info, prompt, n, baseImage: baseImage || (entry.files[0] && path.join(projectPath, entry.files[0])), folder });
-    entry.variants.push({ id: mediaGenId('v'), prompt, files: [], createdAt: Date.now() });
+    const newVariantId = mediaGenId('v');
+    entry.variants.push({ id: newVariantId, prompt, files: [], createdAt: Date.now() });
     saveMediaManifest(projectPath, manifest);
-    return { ...res, variant: true };
+    const res = await generateMediaWithTripo({ projectPath, kind, info, prompt, n, baseImage: baseImage || (entry.files[0] && path.join(projectPath, entry.files[0])), folder });
+    return { ...res, variant: true, newVariantId };
   } catch (err) { return { error: err.message }; }
 });
 
