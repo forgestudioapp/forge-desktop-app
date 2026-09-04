@@ -835,6 +835,12 @@ ipcMain.handle('logout-forge', async () => {
     mcpServerReady = false;
     mcpInitialized = false;
   }
+  if (syncMcpProcess) {
+    syncMcpProcess.kill();
+    syncMcpProcess = null;
+    syncMcpReady = false;
+    syncMcpInitialized = false;
+  }
   global.robloxAccessToken = null;
   clearGithubDevice();
 
@@ -1288,6 +1294,13 @@ let mcpRequestId = 0;
 let mcpPending = new Map();
 let mcpInitialized = false;
 
+// ── 2e serveur MCP dedie au file sync (pas de queue avec les agents) ──
+let syncMcpProcess = null;
+let syncMcpReady = false;
+let syncMcpRequestId = 0;
+let syncMcpPending = new Map();
+let syncMcpInitialized = false;
+
 function getBundledResourcePath(...relativeParts) {
   const candidates = [
     // Production : les ressources sont placees a cote de l'executable, hors app.asar.
@@ -1486,6 +1499,9 @@ function startMcpServer() {
     console.error('[MCP Server] Erreur de demarrage:', err.message);
     mcpServerProcess = null;
   });
+
+  // Demarrer aussi le serveur sync dedie au file sync
+  startSyncMcpServer();
 }
 
 async function waitForMcpServer(maxWaitMs = 10000) {
@@ -1578,6 +1594,68 @@ async function mcpInitialize() {
 async function mcpCallTool(name, args, timeoutMs) {
   await mcpInitialize();
   return await mcpSend('tools/call', { name, arguments: args }, timeoutMs || 15000);
+}
+
+// ── Serveur MCP dedie au file sync (canal separe, pas de queue avec les agents) ──
+function startSyncMcpServer() {
+  if (syncMcpProcess) return;
+  const finalPath = getMcpServerPath();
+  if (!finalPath) { console.error('[SyncMCP] Serveur introuvable'); return; }
+
+  const mcpEnv = { ...process.env };
+  mcpEnv.FORGE_ROBLOX_TOKEN_FILE = userDataFile('roblox-token.json');
+  mcpEnv.FORGE_ROBLOX_CLIENT_ID = ROBLOX_CLIENT_ID;
+  const userApiKeys = loadApiKeys();
+  if (userApiKeys.tripo) mcpEnv.TRIPO_API_KEY = userApiKeys.tripo;
+  if (userApiKeys.roblox) mcpEnv.ROBLOX_API_KEY = userApiKeys.roblox;
+
+  syncMcpProcess = spawn('node', [finalPath], { env: mcpEnv });
+
+  syncMcpProcess.stdout.on('data', (data) => {
+    for (const line of data.toString().split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.id !== undefined && syncMcpPending.has(msg.id)) {
+          const { resolve, reject } = syncMcpPending.get(msg.id);
+          syncMcpPending.delete(msg.id);
+          if (msg.error) reject(new Error(msg.error.message || JSON.stringify(msg.error)));
+          else resolve(msg.result);
+        }
+      } catch (e) {}
+    }
+  });
+
+  syncMcpProcess.stderr.on('data', () => {});
+  syncMcpProcess.on('exit', () => { syncMcpProcess = null; syncMcpInitialized = false; syncMcpReady = false; syncMcpPending.clear(); });
+  syncMcpProcess.on('error', (err) => { console.error('[SyncMCP] Erreur:', err.message); syncMcpProcess = null; });
+}
+
+async function syncMcpSend(method, params, timeoutMs = 5000) {
+  if (!syncMcpProcess) startSyncMcpServer();
+  if (!syncMcpProcess) throw new Error('SyncMCP non demarre');
+  for (let i = 0; i < 25; i++) { if (syncMcpReady) break; await new Promise(r => setTimeout(r, 200)); }
+  if (!syncMcpReady) throw new Error('SyncMCP ne repond pas');
+
+  const id = ++syncMcpRequestId;
+  const payload = JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n';
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { if (syncMcpPending.has(id)) { syncMcpPending.delete(id); reject(new Error('Timeout SyncMCP')); } }, timeoutMs);
+    syncMcpPending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); }, method });
+    try { syncMcpProcess.stdin.write(payload); } catch (err) { clearTimeout(timer); syncMcpPending.delete(id); reject(err); }
+  });
+}
+
+async function syncMcpInitialize() {
+  if (syncMcpInitialized) return;
+  await syncMcpSend('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'forge-sync', version: '1.0.0' } });
+  syncMcpProcess.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+  syncMcpInitialized = true;
+}
+
+async function syncMcpCallTool(name, args, timeoutMs) {
+  await syncMcpInitialize();
+  return await syncMcpSend('tools/call', { name, arguments: args }, timeoutMs || 5000);
 }
 
 async function isStudioConnected() {
@@ -3429,11 +3507,10 @@ async function syncScriptToStudio(filename, source) {
   const execCode = source;
   const fullCode = injectCode + "\n" + execCode;
 
-  // Sync prioritaire : timeout court (5s) pour ne pas bloquer si le MCP server est occupe
-  // Si echec, on reessaie 1 fois apres 2s
+  // Sync prioritaire : utilise le serveur MCP dedie au file sync (pas de queue avec les agents)
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await mcpCallTool('execute_luau', {
+      const result = await syncMcpCallTool('execute_luau', {
         code: fullCode,
         datamodel_type: 'Edit'
       }, 5000);
@@ -3516,6 +3593,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (mcpServerProcess) { mcpServerProcess.kill(); mcpServerProcess = null; }
+  if (syncMcpProcess) { syncMcpProcess.kill(); syncMcpProcess = null; }
   // Nettoyer l'etat des agents a la fermeture
   try {
     const agentsStatePath = userDataFile('agents-state.json');
