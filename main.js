@@ -1560,7 +1560,7 @@ ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
 // ============================================
 // PROJETS — Creation directe dans Documents/ForgeProjects
 // ============================================
-ipcMain.handle('create-project', async (event, projectName) => {
+ipcMain.handle('create-project', async (event, projectName, language) => {
   try {
     const projectsRoot = getUserProjectsRoot();
     if (!fs.existsSync(projectsRoot)) {
@@ -1570,31 +1570,90 @@ ipcMain.handle('create-project', async (event, projectName) => {
     const projectDir = path.join(projectsRoot, projectName);
     if (fs.existsSync(projectDir)) return { error: 'Un dossier avec ce nom existe deja' };
 
-    fs.mkdirSync(projectDir, { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'assets'), { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'sounds'), { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'models'), { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'src'), { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'src', 'ServerScriptService'), { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'src', 'ReplicatedStorage'), { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'src', 'StarterPlayer'), { recursive: true });
-    fs.mkdirSync(path.join(projectDir, 'src', 'StarterGui'), { recursive: true });
+    const isTypeScript = language === 'typescript';
 
-    const mainLua = `-- Forge Project: ${projectName}
+    if (isTypeScript) {
+      // Copier le template TypeScript
+      const templatePath = path.join(__dirname, 'templates', 'typescript');
+      if (!fs.existsSync(templatePath)) return { error: 'Template TypeScript introuvable' };
+
+      // Creer la structure de dossiers
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'assets'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'sounds'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'models'), { recursive: true });
+
+      // Copier recursivement le template
+      function copyDirSync(src, dest) {
+        const entries = fs.readdirSync(src, { withFileTypes: true });
+        for (const entry of entries) {
+          const srcPathCopy = path.join(src, entry.name);
+          const destPathCopy = path.join(dest, entry.name);
+          if (entry.isDirectory()) {
+            fs.mkdirSync(destPathCopy, { recursive: true });
+            copyDirSync(srcPathCopy, destPathCopy);
+          } else {
+            fs.copyFileSync(srcPathCopy, destPathCopy);
+          }
+        }
+      }
+      copyDirSync(templatePath, projectDir);
+
+      // Installer les dependances
+      console.log('[TypeScript] Installation des dependances...');
+      const npmResult = await new Promise((resolve) => {
+        const proc = spawn('npm', ['install'], {
+          cwd: projectDir,
+          shell: true,
+          windowsHide: true
+        });
+        let stderr = '';
+        proc.stderr.on('data', d => stderr += d.toString());
+        proc.on('close', (code) => resolve({ code, stderr }));
+        proc.on('error', (err) => resolve({ code: -1, stderr: err.message }));
+      });
+      if (npmResult.code !== 0) {
+        console.error('[TypeScript] npm install echoue:', npmResult.stderr);
+      }
+
+      // Initialiser git
+      await new Promise((resolve) => {
+        const proc = spawn('git', ['init'], {
+          cwd: projectDir,
+          shell: true,
+          windowsHide: true
+        });
+        proc.on('close', () => resolve());
+        proc.on('error', () => resolve());
+      });
+    } else {
+      // Projet Lua classique
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'assets'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'sounds'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'models'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'src'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'src', 'ServerScriptService'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'src', 'ReplicatedStorage'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'src', 'StarterPlayer'), { recursive: true });
+      fs.mkdirSync(path.join(projectDir, 'src', 'StarterGui'), { recursive: true });
+
+      const mainLua = `-- Forge Project: ${projectName}
 -- Genere automatiquement par Forge
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 print("[Forge] Projet '${projectName}' charge !")
 `;
-    fs.writeFileSync(path.join(projectDir, 'src', 'ServerScriptService', 'main.lua'), mainLua);
+      fs.writeFileSync(path.join(projectDir, 'src', 'ServerScriptService', 'main.lua'), mainLua);
+    }
 
     const activeProjectPath = userDataFile('active-project.json');
-    fs.writeFileSync(activeProjectPath, JSON.stringify({ name: projectName, path: projectDir }));
+    fs.writeFileSync(activeProjectPath, JSON.stringify({ name: projectName, path: projectDir, language: language || 'lua' }));
 
     startFileSync(projectDir);
     addProjectToRegistry(projectName, projectDir);
 
-    return { success: true, path: projectDir };
+    return { success: true, path: projectDir, language: language || 'lua' };
   } catch (err) { return { error: err.message }; }
 });
 
@@ -3130,13 +3189,52 @@ function startFileSync(projectPath) {
   console.log('[FileSync] Surveillance activee pour:', srcPath);
   currentSyncProjectPath = projectPath;
 
-  fileWatcher = fs.watch(srcPath, { recursive: true }, (eventType, filename) => {
-    if (!filename || !filename.endsWith('.lua')) return;
+  fileWatcher = fs.watch(srcPath, { recursive: true }, async (eventType, filename) => {
+    if (!filename) return;
+    const ext = path.extname(filename).toLowerCase();
+    const isLua = ext === '.lua';
+    const isTs = ext === '.ts' || ext === '.tsx';
+    if (!isLua && !isTs) return;
     const now = Date.now();
     if (now - lastSyncTime < 400) return;
     lastSyncTime = now;
     const filePath = path.join(srcPath, filename);
     if (!fs.existsSync(filePath)) return;
+
+    // TypeScript : compiler d'abord, puis sync le fichier compile
+    if (isTs) {
+      const tsConfigPath = path.join(path.dirname(srcPath), 'tsconfig.json');
+      if (fs.existsSync(tsConfigPath)) {
+        console.log('[FileSync] Compilation TypeScript pour:', filename);
+        const result = await compileTypeScript(path.dirname(srcPath));
+        if (result.success) {
+          // Resolver le fichier compile dans out/
+          const outDir = path.join(path.dirname(srcPath), 'out');
+          const relativeToSrc = filename.replace(/\\/g, '/');
+          const baseName = path.basename(filename, ext);
+          const outExt = '.luau';
+          // Chercher le fichier compile correspondant dans out/
+          const serviceName = relativeToSrc.split('/')[0];
+          const compiledPath = path.join(outDir, serviceName, path.dirname(filename).replace(/\\/g, '/').replace(/^[^/]+\//, ''), baseName + outExt);
+          if (fs.existsSync(compiledPath)) {
+            try {
+              const compiledSource = fs.readFileSync(compiledPath, 'utf8');
+              const compiledFilename = path.relative(srcPath, compiledPath).replace(/\\/g, '/');
+              syncScriptToStudio(compiledFilename, compiledSource);
+            } catch (err) {
+              console.error('[FileSync] Erreur lecture fichier compile:', err.message);
+            }
+          } else {
+            console.warn('[FileSync] Fichier compile introuvable:', compiledPath);
+          }
+        } else {
+          console.error('[FileSync] Echec compilation TypeScript:', result.error);
+        }
+        return;
+      }
+    }
+
+    // Lua : sync direct
     try {
       const source = fs.readFileSync(filePath, 'utf8');
       syncScriptToStudio(filename, source);
@@ -3161,6 +3259,36 @@ function stopFileSync() {
   assetWatchers = [];
   currentSyncProjectPath = null;
   console.log('[FileSync] Surveillance arretee');
+}
+
+// ============================================
+// TYPESCRIPT COMPILATION (roblox-ts)
+// ============================================
+function compileTypeScript(projectPath) {
+  return new Promise((resolve) => {
+    const proc = spawn('npx', ['rbxtsc'], {
+      cwd: projectPath,
+      shell: true,
+      windowsHide: true
+    });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', d => stdout += d.toString());
+    proc.stderr.on('data', d => stderr += d.toString());
+    proc.on('close', (code) => {
+      if (code === 0) {
+        console.log('[TypeScript] Compilation reussie pour:', projectPath);
+        resolve({ success: true });
+      } else {
+        console.error('[TypeScript] Echec compilation (code ' + code + '):', stderr || stdout);
+        resolve({ success: false, error: stderr || stdout || 'Compilation echouee' });
+      }
+    });
+    proc.on('error', (err) => {
+      console.error('[TypeScript] Erreur lancement rbxtsc:', err.message);
+      resolve({ success: false, error: err.message });
+    });
+  });
 }
 
 function getScriptClassName(serviceName, relativePath) {

@@ -1,0 +1,20 @@
+{
+  "name": "ForgeProject",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$path": "out/ServerScriptService"
+    },
+    "ReplicatedStorage": {
+      "$path": "out/ReplicatedStorage"
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "$path": "out/StarterPlayer/StarterPlayerScripts"
+      }
+    },
+    "StarterGui": {
+      "$path": "out/StarterGui"
+    }
+  }
+}

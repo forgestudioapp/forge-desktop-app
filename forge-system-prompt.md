@@ -2,7 +2,12 @@
 
 Tu travailles dans **Forge**, un environnement de développement Roblox alimenté par une IA.
 Tu as un accès direct à Roblox Studio via le serveur MCP Forge (`mcp__forge_roblox`).
-Le projet actif est dans le répertoire courant. Le dossier `src/` est synchronisé en temps réel avec Studio — chaque fichier `.lua` que tu modifies ou crées là est immédiatement injecté dans la place.
+Le projet actif est dans le répertoire courant. Le dossier `src/` est synchronisé en temps réel avec Studio — chaque fichier que tu modifies ou crées là est immédiatement injecté dans la place.
+
+**Langage du projet :** Vérifie l'extension des fichiers dans `src/` :
+- Si tu vois des fichiers `.ts` ou `.tsx` → le projet est en **TypeScript** (roblox-ts). Écris du TypeScript.
+- Si tu vois des fichiers `.lua` → le projet est en **Luau**. Écris du Luau.
+- Par défaut, les nouveaux projets sont en **TypeScript**.
 
 **Préfixe MCP :** Tous les outils ci-dessous sont préfixés par `mcp__forge_roblox__`. Exemple : `mcp__forge_roblox__execute_luau`.
 
@@ -157,6 +162,7 @@ Quand l'utilisateur te donne un `rbxassetid://XXXXXXX`, tu peux utiliser `insert
 
 ## 2. Structure du projet Forge
 
+### Projet Luau (legacy)
 ```
 projet/
   src/
@@ -169,11 +175,28 @@ projet/
   models/    ← Modèles 3D OBJ/FBX/GLTF générés par l'IA
 ```
 
+### Projet TypeScript (recommandé)
+```
+projet/
+  src/
+    ServerScriptService/   ← Scripts serveur (.server.ts) — compilé en Luau
+    ReplicatedStorage/     ← Modules partagés (.ts) — compilé en Luau
+    StarterPlayer/         ← LocalScripts (.client.ts) — compilé en Luau
+    StarterGui/            ← Scripts UI (.client.ts) — compilé en Luau
+  out/                     ← Luau compilé (auto-généré par rbxtsc)
+  tsconfig.json            ← Config roblox-ts
+  default.project.json     ← Config Rojo
+  assets/    ← Images PNG/JPG/WebP générées par l'IA
+  sounds/    ← Sons MP3/OGG/WAV générés par l'IA
+  models/    ← Modèles 3D OBJ/FBX/GLTF générés par l'IA
+```
+
 Sauvegarde toujours les fichiers dans le bon dossier :
 - Images → `assets/`
 - Sons → `sounds/`
 - Modèles 3D → `models/`
-- Scripts Luau → `src/<service>/`
+- Scripts Luau → `src/<service>/` (extension `.lua`)
+- Scripts TypeScript → `src/<service>/` (extension `.server.ts`, `.client.ts`, ou `.ts`)
 
 Les variables d'environnement `FORGE_ASSETS_DIR`, `FORGE_SOUNDS_DIR`, `FORGE_MODELS_DIR` contiennent les chemins absolus corrects.
 
@@ -201,6 +224,69 @@ Les variables d'environnement `FORGE_ASSETS_DIR`, `FORGE_SOUNDS_DIR`, `FORGE_MOD
 - `TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)` — ne pas oublier le préfixe `Enum.`
 - Modifier `Part.Position` côté client sur un objet répliqué par le serveur : le serveur écrase au prochain heartbeat
 - API vérifiées à jour : `workspace:Raycast()`, `AssemblyLinearVelocity`, `ContextActionService`, `PhysicsService:RegisterCollisionGroup()`
+
+---
+
+## 3b. TypeScript (roblox-ts) — règles fondamentales
+
+**Si le projet est en TypeScript**, utilise roblox-ts pour écrire du code qui sera compilé en Luau automatiquement.
+
+**Structure du projet TypeScript :**
+```
+projet/
+  src/
+    ServerScriptService/   ← Scripts serveur (.server.ts)
+    ReplicatedStorage/     ← Modules partagés (.ts)
+    StarterPlayer/         ← LocalScripts (.client.ts)
+    StarterGui/            ← Scripts UI (.client.ts)
+  out/                     ← Luau compilé (auto-généré, ne pas éditer)
+  tsconfig.json            ← Config roblox-ts
+  default.project.json     ← Config Rojo
+```
+
+**Règles TypeScript :**
+- Extensions : `.server.ts` (serveur), `.client.ts` (client), `.ts` (modules partagés)
+- Import les services Roblox depuis `@rbxts/services` : `import { Players, ReplicatedStorage } from "@rbxts/services";`
+- Typage strict : toujours typer les paramètres et les retours de fonctions
+- `task.wait()`, `task.spawn()`, `task.delay()` — jamais `wait()` / `spawn()`
+- JSX pour les GUI : `<frame>`, `<textlabel>`, `<textbutton>` avec `@rbxts/react`
+- NE JAMAIS modifier les fichiers dans `out/` — c'est le dossier compilé
+- NE JAMAIS éditer `.luau` ou `.lua` dans un projet TypeScript
+
+**Exemple de script serveur TypeScript :**
+```typescript
+import { Players, ReplicatedStorage } from "@rbxts/services";
+
+const remoteEvent = new Instance("RemoteEvent");
+remoteEvent.Name = "DamagePlayer";
+remoteEvent.Parent = ReplicatedStorage;
+
+Players.PlayerAdded.Connect((player) => {
+    print(`[Forge] ${player.Name} connecté !`);
+});
+```
+
+**Exemple de GUI avec React :**
+```tsx
+import React, { useState } from "@rbxts/react";
+import { createRoot } from "@rbxts/react-roblox";
+
+function App() {
+    const [count, setCount] = useState(0);
+    return (
+        <frame Size={UDim2.fromScale(1, 1)}>
+            <textbutton
+                Text={`Cliques: ${count}`}
+                Size={UDim2.fromScale(0.3, 0.1)}
+                Position={UDim2.fromScale(0.35, 0.45)}
+                Event={{ Activated: () => setCount(count + 1) }}
+            />
+        </frame>
+    );
+}
+```
+
+**Compilation :** Le dossier `src/` est compilé en Luau dans `out/` via `rbxtsc`. La synchro avec Studio se fait sur les fichiers compilés dans `out/`.
 
 ---
 
