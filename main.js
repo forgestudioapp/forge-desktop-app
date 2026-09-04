@@ -3266,7 +3266,10 @@ function stopFileSync() {
 // ============================================
 function compileTypeScript(projectPath) {
   return new Promise((resolve) => {
-    const proc = spawn('npx', ['rbxtsc'], {
+    const isWin = process.platform === 'win32';
+    const rbxtscBin = isWin ? 'node_modules\\.bin\\rbxtsc.cmd' : 'node_modules/.bin/rbxtsc';
+    const rbxtscPath = path.join(projectPath, rbxtscBin);
+    const proc = spawn(rbxtscPath, [], {
       cwd: projectPath,
       shell: true,
       windowsHide: true
