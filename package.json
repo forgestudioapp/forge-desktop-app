@@ -1,6 +1,6 @@
 {
   "name": "forge-desktop-app",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "Forge - Génère ton jeu Roblox avec l'IA",
   "main": "main.js",
   "scripts": {
@@ -84,6 +84,10 @@
       {
         "from": "../robloxstudio-mcp/node_modules",
         "to": "robloxstudio-mcp/node_modules"
+      },
+      {
+        "from": "../robloxstudio-mcp/package.json",
+        "to": "robloxstudio-mcp/package.json"
       },
       {
         "from": "ForgePlugin.rbxmx",
