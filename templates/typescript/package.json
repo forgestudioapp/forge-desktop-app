@@ -1,0 +1,19 @@
+{
+  "name": "forge-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "rbxtsc",
+    "watch": "rbxtsc --watch"
+  },
+  "devDependencies": {
+    "roblox-ts": "^3.0.0",
+    "@rbxts/compiler-types": "^3.0.0-types.0",
+    "@rbxts/types": "^1.0.906"
+  },
+  "dependencies": {
+    "@rbxts/services": "^1.6.0",
+    "@rbxts/react": "^1.0.0",
+    "@rbxts/react-roblox": "^1.0.0"
+  }
+}
