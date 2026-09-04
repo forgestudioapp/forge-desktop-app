@@ -3465,6 +3465,7 @@ autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
 autoUpdater.on('update-available', (info) => {
+  console.log('[Updater] MAJ disponible: v' + info.version);
   dialog.showMessageBox({
     type: 'info',
     title: 'Mise à jour disponible',
@@ -3487,13 +3488,20 @@ autoUpdater.on('update-downloaded', () => {
 });
 
 autoUpdater.on('error', (err) => {
-  console.error('[Updater]', err.message);
+  console.error('[Updater] Erreur:', err.message);
+  console.error('[Updater] Detail:', JSON.stringify(err));
 });
 
 // ============================================
 app.whenReady().then(() => {
   createWindow();
-  autoUpdater.checkForUpdates().catch(() => {});
+  // Verifier les MAJ apres 5s pour laisser le temps au window de se charger
+  setTimeout(() => {
+    console.log('[Updater] Verification des mises a jour...');
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[Updater] Echec verification:', err.message);
+    });
+  }, 5000);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
