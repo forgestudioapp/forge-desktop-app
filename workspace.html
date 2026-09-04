@@ -513,6 +513,12 @@ const AGENT_ICONS={claude:'<svg width="14" height="14" viewBox="0 0 100 100" fil
 let agents=[],agentCounter={claude:1,codex:1,antigravity:1},activeProject=null;
 const agentGrid=document.getElementById('agentGrid'),emptyGrid=document.getElementById('emptyGrid'),agentCount=document.getElementById('agentCount');
 
+function saveAgentState(){
+  if(!window.forgeAPI||!window.forgeAPI.saveAgentState)return;
+  const state=agents.map(function(a){return{id:a.id,name:a.name,agentType:a.agentType,sessionId:a.sessionId};});
+  window.forgeAPI.saveAgentState({agents:state,agentCounter:JSON.parse(JSON.stringify(agentCounter))});
+}
+
 async function loadProject(){
   if(!window.forgeAPI||!window.forgeAPI.getActiveProject) return;
   try{
@@ -526,7 +532,33 @@ async function loadProject(){
     }
   }catch(e){console.error('loadProject',e);}
 }
-loadProject();
+
+async function restoreAgents(){
+  if(!window.forgeAPI||!window.forgeAPI.loadAgentState)return;
+  try{
+    const res=await window.forgeAPI.loadAgentState();
+    if(!res.agents||res.agents.length===0)return;
+    // Restaurer les compteurs
+    if(res.agentCounter)agentCounter=res.agentCounter;
+    for(const saved of res.agents){
+      const meta=AGENT_META[saved.agentType];
+      if(!meta)continue;
+      const a={id:saved.id||genId(),name:saved.name,agentType:saved.agentType,sessionId:saved.sessionId,xterm:null,fitAddon:null,element:null,resizeObserver:null,_fontSize:12,_fullscreen:false,_firstInput:true};
+      agents.push(a);
+      createPanel(a);
+      // Reconnecter au PTY existant
+      if(a.sessionId){
+        if(window.forgeAPI.reconnectPty)await window.forgeAPI.reconnectPty(a.sessionId);
+        a.element.classList.add('running');
+        var dot=document.getElementById('dot-'+a.id);if(dot)dot.classList.add('running-dot');
+        if(a.xterm)a.xterm.writeln('\x1b[90mSession restauree.\x1b[0m');
+      }
+    }
+    updateCount();
+  }catch(e){console.error('restoreAgents',e);}
+}
+
+loadProject().then(function(){restoreAgents();});
 
 function updateCount(){const c=agents.length;    agentCount.textContent = c === 0 ? t('agent_count_zero') : c === 1 ? t('agent_count_one') : t('agent_count_many').replace('{n}', c);emptyGrid.style.display=c===0?'flex':'none';applyGridLayout();}
 function applyGridLayout(){
@@ -550,7 +582,7 @@ function applyGridLayout(){
 }
 
 function genId(){return 'a_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);}
-function createAgent(type){const meta=AGENT_META[type];const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null};agents.push(a);createPanel(a);updateCount();}
+function createAgent(type){const meta=AGENT_META[type];const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null};agents.push(a);createPanel(a);updateCount();saveAgentState();}
 
 function createPanel(agent){
   const meta=AGENT_META[agent.agentType],icon=AGENT_ICONS[agent.agentType];
@@ -622,6 +654,7 @@ async function initPty(agent){
     if(res.fallback){agent.xterm.writeln('\x1b[33mTerminal externe ouvert\x1b[0m');agent.element.classList.add('running');document.getElementById('dot-'+agent.id).classList.add('running-dot');return;}
     agent.sessionId=res.sessionId;agent.element.classList.add('running');
     var dot=document.getElementById('dot-'+agent.id);if(dot)dot.classList.add('running-dot');
+    saveAgentState();
   }catch(err){agent.xterm.writeln('\x1b[31m'+err.message+'\x1b[0m');}
 }
 
@@ -659,6 +692,7 @@ function resetConversation(agent){
   if(nameEl)nameEl.textContent=agent.name;
   if(agent.xterm){agent.xterm.writeln('\x1b[90mNouvelle conversation.\x1b[0m');}
   if(activeProject){initPty(agent);}
+  saveAgentState();
 }
 
 function captureAgentPrompt(agent,firstChar){
@@ -686,10 +720,10 @@ window.closeAgent=function(id){
   if(a.resizeObserver)a.resizeObserver.disconnect();
   if(a.xterm)a.xterm.dispose();
   if(a.element)a.element.remove();
-  agents.splice(i,1);updateCount();
+  agents.splice(i,1);updateCount();saveAgentState();
 };
 if(window.forgeAPI&&window.forgeAPI.onPtyData){window.forgeAPI.onPtyData(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.write(data.data);a._lastPtyActivity=Date.now();}});}
-if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;a.element.classList.remove('running');var dot=document.getElementById('dot-'+a.id);if(dot)dot.classList.remove('running-dot');hideMcpBadge(a.id);}});}
+if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;a.element.classList.remove('running');var dot=document.getElementById('dot-'+a.id);if(dot)dot.classList.remove('running-dot');hideMcpBadge(a.id);saveAgentState();}});}
 
 let mcpActivityTimer=null;
 function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b)b.style.display='none';}
