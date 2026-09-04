@@ -70,6 +70,11 @@
   .tree-card img,.tree-card canvas{display:block;width:150px;height:100px;object-fit:cover;background:var(--char3);}
   .tree-card .tc-badge{position:absolute;top:4px;left:4px;font-size:9px;font-family:'JetBrains Mono';padding:2px 6px;border-radius:4px;background:rgba(0,0,0,.6);color:var(--smoke);}
   .tree-card .tc-badge.base{color:var(--amber);background:rgba(50,40,10,.7);}
+  .tree-card .tc-badge.pending{color:#60A5FA;background:rgba(59,130,246,.25);}
+  @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+  .tc-spinner{width:150px;height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--char3);}
+  .tc-spinner svg{animation:spin 1.2s linear infinite;color:var(--ember-light);}
+  .tc-spinner span{font-size:10px;color:var(--smoke-dim);font-family:'JetBrains Mono';}
 
   .tree-connectors{position:relative;height:30px;}
   .tree-connectors .line-v{position:absolute;width:2px;background:var(--info);opacity:.5;top:0;bottom:0;}
@@ -541,8 +546,10 @@
         });
       }
     } else {
+      // Spinner de chargement pour les items en cours de generation
       const ph = document.createElement('div');
-      ph.style.cssText='width:150px;height:100px;display:flex;align-items:center;justify-content:center;color:var(--smoke-dim);font-size:12px;background:var(--char3);';
+      ph.className = 'tc-spinner';
+      ph.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg><span>Generation...</span>';
       card.appendChild(ph);
     }
     if(!variant){
@@ -650,17 +657,25 @@
 
   // ── Agent scan ──
   function startAgentScan(itemId, kind, variantId){
+    var retries = 0;
+    var maxRetries = 120; // 5 minutes max (120 * 2.5s)
     const scan = async () => {
       try{
         const st = await window.forgeAPI.getAgentStatus(state.agentSession);
         if(st && (st.done || st.status==='done' || st.status==='exited')){
+          // Agent termine — attacher les fichiers generes
           const raw = (await window.forgeAPI.mediaListFiles(state.projectPath)).folders[kind]||[];
           await window.forgeAPI.mediaAttachFiles(state.projectPath, kind, itemId, variantId||null, raw.map(f=>f.name));
           await refresh(); return;
         }
         if(st && st.status==='failed') return;
+        retries++;
+        if(retries >= maxRetries){
+          // Timeout — on force le refresh et on arrete
+          await refresh(); return;
+        }
         setTimeout(scan, 2500);
-      }catch(e){ console.error(e); }
+      }catch(e){ console.error(e); setTimeout(scan, 5000); }
     };
     scan();
   }
