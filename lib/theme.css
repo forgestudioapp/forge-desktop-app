@@ -10,6 +10,7 @@
   --ember:#3B82F6;--ember-light:#60A5FA;--ember-dim:#1E3A5F;
   --success:#5FBE7A;--success-dim:#233327;
   --error:#E35B5B;--error-dim:#2A1515;
+  --ok:#5FBE7A;--ko:#E35B5B;
   --info:#5B9BE3;
 
   /* Card / overlay backgrounds — utilisent les variables au lieu de rgba hardcoded */
@@ -32,6 +33,7 @@ html.light-theme {
   --ember:#2563EB;--ember-light:#60A5FA;--ember-dim:#DBEAFE;
   --success:#3A9A55;--success-dim:#D4F0DC;
   --error:#CC3333;--error-dim:#F5D4D4;
+  --ok:#3A9A55;--ko:#CC3333;
   --info:#3A7ACC;
 
   --card-bg:rgba(237,234,228,0.5);
