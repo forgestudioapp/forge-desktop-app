@@ -19,6 +19,7 @@ const {
   deleteNotification,
 } = require('./lib/notification-store');
 const { syncForgeAgentInstructions } = require('./lib/forge-instructions');
+const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('./lib/file-sync');
 const {
   buildRobloxAuthorizationUrl,
   parseRobloxOAuthCallback,
@@ -876,6 +877,7 @@ ipcMain.handle('logout-forge', async () => {
   // - oublie le token Roblox en mémoire,
   // - efface le flux de connexion GitHub en attente,
   // - supprime la session Forge (on repasse au login).
+  stopFileSync();
   if (mcpServerProcess) {
     mcpServerProcess.kill();
     mcpServerProcess = null;
@@ -1363,6 +1365,7 @@ let syncMcpReady = false;
 let syncMcpRequestId = 0;
 let syncMcpPending = new Map();
 let syncMcpInitialized = false;
+let syncMcpStdoutBuffer = '';
 
 function getBundledResourcePath(...relativeParts) {
   const candidates = [
@@ -1674,10 +1677,14 @@ function startSyncMcpServer() {
   if (userApiKeys.tripo) mcpEnv.TRIPO_API_KEY = userApiKeys.tripo;
   if (userApiKeys.roblox) mcpEnv.ROBLOX_API_KEY = userApiKeys.roblox;
 
+  syncMcpStdoutBuffer = '';
   syncMcpProcess = spawn('node', [finalPath], { env: mcpEnv });
 
   syncMcpProcess.stdout.on('data', (data) => {
-    for (const line of data.toString().split('\n')) {
+    syncMcpStdoutBuffer += data.toString();
+    const lines = syncMcpStdoutBuffer.split('\n');
+    syncMcpStdoutBuffer = lines.pop() || '';
+    for (const line of lines) {
       if (!line.trim()) continue;
       try {
         const msg = JSON.parse(line);
@@ -1691,16 +1698,29 @@ function startSyncMcpServer() {
     }
   });
 
-  syncMcpProcess.stderr.on('data', () => {});
-  syncMcpProcess.on('exit', () => { syncMcpProcess = null; syncMcpInitialized = false; syncMcpReady = false; syncMcpPending.clear(); });
+  syncMcpProcess.stderr.on('data', (data) => {
+    const message = data.toString().trim();
+    if (message) console.error('[SyncMCP]', message);
+  });
+  syncMcpProcess.on('exit', () => {
+    syncMcpProcess = null;
+    syncMcpInitialized = false;
+    syncMcpReady = false;
+    syncMcpStdoutBuffer = '';
+    for (const [, { reject }] of syncMcpPending) reject(new Error('SyncMCP interrompu'));
+    syncMcpPending.clear();
+    scheduleFileSyncRetry();
+  });
   syncMcpProcess.on('error', (err) => { console.error('[SyncMCP] Erreur:', err.message); syncMcpProcess = null; });
 }
 
-async function syncMcpSend(method, params, timeoutMs = 5000) {
+async function syncMcpSend(method, params, timeoutMs = 5000, skipReadyWait = false) {
   if (!syncMcpProcess) startSyncMcpServer();
   if (!syncMcpProcess) throw new Error('SyncMCP non demarre');
-  for (let i = 0; i < 25; i++) { if (syncMcpReady) break; await new Promise(r => setTimeout(r, 200)); }
-  if (!syncMcpReady) throw new Error('SyncMCP ne repond pas');
+  if (!skipReadyWait) {
+    for (let i = 0; i < 25; i++) { if (syncMcpReady) break; await new Promise(r => setTimeout(r, 200)); }
+    if (!syncMcpReady) throw new Error('SyncMCP ne repond pas');
+  }
 
   const id = ++syncMcpRequestId;
   const payload = JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n';
@@ -1713,9 +1733,11 @@ async function syncMcpSend(method, params, timeoutMs = 5000) {
 
 async function syncMcpInitialize() {
   if (syncMcpInitialized) return;
-  await syncMcpSend('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'forge-sync', version: '1.0.0' } });
+  await syncMcpSend('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'forge-sync', version: '1.0.0' } }, 5000, true);
   syncMcpProcess.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+  syncMcpReady = true;
   syncMcpInitialized = true;
+  console.log('[SyncMCP] Serveur dedie pret');
 }
 
 async function syncMcpCallTool(name, args, timeoutMs) {
@@ -3369,8 +3391,13 @@ function createWindow() {
 // ============================================
 let fileWatcher = null;
 let assetWatchers = []; // watchers for assets/, sounds/, models/, root
-let lastSyncTime = 0;
 let currentSyncProjectPath = null;
+let sourceReconcileTimer = null;
+let fileSyncRetryTimer = null;
+let fileSyncFlushInProgress = false;
+const fileSyncDebounceTimers = new Map();
+const pendingScriptSyncs = new Map();
+const knownScriptSignatures = new Map();
 const MCP_HTTP_PORT = 58741;
 
 // Extensions → asset type + target folder
@@ -3613,83 +3640,160 @@ function watchProjectRoot(projectPath) {
   console.log('[AssetWatcher] Surveillance racine :', projectPath);
 }
 
+function collectSourceScripts(srcPath) {
+  const files = [];
+  const visit = (dir) => {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(fullPath);
+      else {
+        const relative = path.relative(srcPath, fullPath);
+        if (isSyncableScript(relative)) files.push(relative);
+      }
+    }
+  };
+  visit(srcPath);
+  return files;
+}
+
+function scheduleSourceFileSync(srcPath, filename, delayMs = 250) {
+  if (!filename || !isSyncableScript(filename)) return;
+  const key = path.resolve(srcPath, filename).toLowerCase();
+  if (fileSyncDebounceTimers.has(key)) clearTimeout(fileSyncDebounceTimers.get(key));
+  const timer = setTimeout(() => {
+    fileSyncDebounceTimers.delete(key);
+    processSourceFile(srcPath, filename);
+  }, delayMs);
+  fileSyncDebounceTimers.set(key, timer);
+}
+
+async function processSourceFile(srcPath, filename) {
+  if (path.dirname(srcPath) !== currentSyncProjectPath) return;
+  const filePath = path.join(srcPath, filename);
+  if (!fs.existsSync(filePath)) return;
+  const ext = path.extname(filename).toLowerCase();
+
+  if (ext === '.ts' || ext === '.tsx') {
+    const projectPath = path.dirname(srcPath);
+    if (fs.existsSync(path.join(projectPath, 'tsconfig.json'))) {
+      console.log('[FileSync] Compilation TypeScript pour:', filename);
+      const result = await compileTypeScript(projectPath);
+      if (!result.success) {
+        console.error('[FileSync] Echec compilation TypeScript:', result.error);
+        return;
+      }
+      const normalized = filename.replace(/\\/g, '/');
+      const compiledRelative = normalized.replace(/\.(?:ts|tsx)$/i, '.luau');
+      const compiledPath = path.join(projectPath, 'out', ...compiledRelative.split('/'));
+      if (!fs.existsSync(compiledPath)) {
+        console.warn('[FileSync] Fichier compile introuvable:', compiledPath);
+        return;
+      }
+      enqueueScriptSync(compiledRelative, fs.readFileSync(compiledPath, 'utf8'));
+      return;
+    }
+  }
+
+  try {
+    enqueueScriptSync(filename, fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    console.error('[FileSync] Erreur lecture:', err.message);
+  }
+}
+
+function reconcileSourceScripts(srcPath, force = false) {
+  if (path.dirname(srcPath) !== currentSyncProjectPath) return;
+  const present = new Set();
+  for (const filename of collectSourceScripts(srcPath)) {
+    const key = filename.replace(/\\/g, '/');
+    present.add(key);
+    try {
+      const stat = fs.statSync(path.join(srcPath, filename));
+      const signature = `${stat.size}:${stat.mtimeMs}`;
+      if (force || knownScriptSignatures.get(key) !== signature) {
+        knownScriptSignatures.set(key, signature);
+        scheduleSourceFileSync(srcPath, filename, force ? 50 : 200);
+      }
+    } catch (_) {}
+  }
+  for (const key of knownScriptSignatures.keys()) {
+    if (!present.has(key)) knownScriptSignatures.delete(key);
+  }
+}
+
+function enqueueScriptSync(filename, source) {
+  const key = filename.replace(/\\/g, '/');
+  pendingScriptSyncs.set(key, { filename: key, source, projectPath: currentSyncProjectPath });
+  flushPendingScriptSyncs();
+}
+
+function scheduleFileSyncRetry() {
+  if (fileSyncRetryTimer || pendingScriptSyncs.size === 0 || !currentSyncProjectPath) return;
+  fileSyncRetryTimer = setTimeout(() => {
+    fileSyncRetryTimer = null;
+    flushPendingScriptSyncs();
+  }, 2000);
+  if (fileSyncRetryTimer.unref) fileSyncRetryTimer.unref();
+}
+
+async function flushPendingScriptSyncs() {
+  if (fileSyncFlushInProgress || pendingScriptSyncs.size === 0) return;
+  fileSyncFlushInProgress = true;
+  try {
+    while (pendingScriptSyncs.size > 0) {
+      const [key, job] = pendingScriptSyncs.entries().next().value;
+      if (!job || job.projectPath !== currentSyncProjectPath) {
+        pendingScriptSyncs.delete(key);
+        continue;
+      }
+      const result = await syncScriptToStudio(job.filename, job.source);
+      if (!result.success) break;
+      if (pendingScriptSyncs.get(key) === job) pendingScriptSyncs.delete(key);
+    }
+  } finally {
+    fileSyncFlushInProgress = false;
+    if (pendingScriptSyncs.size > 0) scheduleFileSyncRetry();
+  }
+}
+
 function startFileSync(projectPath) {
-  if (currentSyncProjectPath === projectPath) {
-    console.log('[FileSync] Deja actif pour:', projectPath);
+  const srcPath = path.join(projectPath, 'src');
+  if (currentSyncProjectPath === projectPath && (fileWatcher || sourceReconcileTimer)) {
+    reconcileSourceScripts(srcPath, true);
+    console.log('[FileSync] Deja actif, verification complete relancee pour:', projectPath);
     return;
   }
-  
-  if (fileWatcher) {
-    fileWatcher.close();
-    fileWatcher = null;
-  }
-  // Stop previous asset watchers
-  assetWatchers.forEach(w => { try { w.close(); } catch(e) {} });
-  assetWatchers = [];
 
-  const srcPath = path.join(projectPath, 'src');
+  stopFileSync();
   if (!fs.existsSync(srcPath)) {
     console.log('[FileSync] Dossier src introuvable, sync desactivee');
-    currentSyncProjectPath = null;
     return;
   }
 
   console.log('[FileSync] Surveillance activee pour:', srcPath);
   currentSyncProjectPath = projectPath;
 
-  fileWatcher = fs.watch(srcPath, { recursive: true }, async (eventType, filename) => {
-    if (!filename) return;
-    const ext = path.extname(filename).toLowerCase();
-    const isLua = ext === '.lua';
-    const isTs = ext === '.ts' || ext === '.tsx';
-    if (!isLua && !isTs) return;
-    const now = Date.now();
-    if (now - lastSyncTime < 400) return;
-    lastSyncTime = now;
-    const filePath = path.join(srcPath, filename);
-    if (!fs.existsSync(filePath)) return;
+  try {
+    fileWatcher = fs.watch(srcPath, { recursive: true }, (eventType, filename) => {
+      if (!filename) return;
+      scheduleSourceFileSync(srcPath, filename.toString());
+    });
+    fileWatcher.on('error', (err) => {
+      console.error('[FileSync] Watcher indisponible, reconciliation periodique conservee:', err.message);
+      try { fileWatcher.close(); } catch (_) {}
+      fileWatcher = null;
+    });
+  } catch (err) {
+    console.error('[FileSync] Watcher indisponible, reconciliation periodique utilisee:', err.message);
+  }
 
-    // TypeScript : compiler d'abord, puis sync le fichier compile
-    if (isTs) {
-      const tsConfigPath = path.join(path.dirname(srcPath), 'tsconfig.json');
-      if (fs.existsSync(tsConfigPath)) {
-        console.log('[FileSync] Compilation TypeScript pour:', filename);
-        const result = await compileTypeScript(path.dirname(srcPath));
-        if (result.success) {
-          // Resolver le fichier compile dans out/
-          const outDir = path.join(path.dirname(srcPath), 'out');
-          const relativeToSrc = filename.replace(/\\/g, '/');
-          const baseName = path.basename(filename, ext);
-          const outExt = '.luau';
-          // Chercher le fichier compile correspondant dans out/
-          const serviceName = relativeToSrc.split('/')[0];
-          const compiledPath = path.join(outDir, serviceName, path.dirname(filename).replace(/\\/g, '/').replace(/^[^/]+\//, ''), baseName + outExt);
-          if (fs.existsSync(compiledPath)) {
-            try {
-              const compiledSource = fs.readFileSync(compiledPath, 'utf8');
-              const compiledFilename = path.relative(srcPath, compiledPath).replace(/\\/g, '/');
-              syncScriptToStudio(compiledFilename, compiledSource);
-            } catch (err) {
-              console.error('[FileSync] Erreur lecture fichier compile:', err.message);
-            }
-          } else {
-            console.warn('[FileSync] Fichier compile introuvable:', compiledPath);
-          }
-        } else {
-          console.error('[FileSync] Echec compilation TypeScript:', result.error);
-        }
-        return;
-      }
-    }
-
-    // Lua : sync direct
-    try {
-      const source = fs.readFileSync(filePath, 'utf8');
-      syncScriptToStudio(filename, source);
-    } catch (err) {
-      console.error('[FileSync] Erreur lecture:', err.message);
-    }
-  });
+  // Un scan régulier rattrape les événements fs.watch manqués, les créations
+  // atomiques et les changements effectués pendant que Studio était fermé.
+  reconcileSourceScripts(srcPath, true);
+  sourceReconcileTimer = setInterval(() => reconcileSourceScripts(srcPath), 1500);
+  if (sourceReconcileTimer.unref) sourceReconcileTimer.unref();
 
   // Watch asset subfolders + project root for any new image/sound/model
   watchProjectRoot(projectPath);
@@ -3705,6 +3809,14 @@ function stopFileSync() {
   }
   assetWatchers.forEach(w => { try { w.close(); } catch(e) {} });
   assetWatchers = [];
+  if (sourceReconcileTimer) clearInterval(sourceReconcileTimer);
+  sourceReconcileTimer = null;
+  if (fileSyncRetryTimer) clearTimeout(fileSyncRetryTimer);
+  fileSyncRetryTimer = null;
+  for (const timer of fileSyncDebounceTimers.values()) clearTimeout(timer);
+  fileSyncDebounceTimers.clear();
+  pendingScriptSyncs.clear();
+  knownScriptSignatures.clear();
   currentSyncProjectPath = null;
   console.log('[FileSync] Surveillance arretee');
 }
@@ -3742,16 +3854,6 @@ function compileTypeScript(projectPath) {
   });
 }
 
-function getScriptClassName(serviceName, relativePath) {
-  if (relativePath.includes('StarterPlayer') || relativePath.includes('StarterGui') || relativePath.includes('StarterPack')) {
-    return 'LocalScript';
-  }
-  if (relativePath.includes('ServerScriptService')) {
-    return 'Script';
-  }
-  return 'ModuleScript';
-}
-
 function httpRequest(hostname, port, path, body) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -3770,64 +3872,22 @@ function httpRequest(hostname, port, path, body) {
 }
 
 async function syncScriptToStudio(filename, source) {
-  const ping = await isStudioConnected();
-  if (!ping.connected) {
-    console.error('[FileSync] Studio deconnecte, sync ignore:', filename);
-    console.error('[FileSync] Detail:', ping.error);
-    console.error('[FileSync] ACTION REQUISE: Ouvre Roblox Studio et verifie que le plugin Forge est charge (Plugins > Forge).');
-    return { error: 'Studio deconnecte — ' + ping.error };
-  }
+  let plan;
+  try { plan = buildStudioSyncCode(filename, source); }
+  catch (err) { return { error: err.message }; }
 
-  const normalized = filename.replace(/\\/g, '/');
-  let relativePath = normalized;
-  const srcIndex = normalized.indexOf('src/');
-  if (srcIndex !== -1) {
-    relativePath = normalized.slice(srcIndex + 4);
-  } else if (normalized.startsWith('src/')) {
-    relativePath = normalized.slice(4);
-  }
-  const pathParts = relativePath.split('/');
-  if (pathParts.length < 2) return { error: 'Chemin trop court' };
-  const serviceName = pathParts[0];
-  const scriptName = pathParts[pathParts.length - 1].replace('.lua', '');
-  const parentParts = pathParts.slice(1, -1);
-  const scriptClass = getScriptClassName(serviceName, normalized);
-
-  let injectCode = `local service = game:GetService("${serviceName}")\n`;
-  injectCode += `local parent = service\n`;
-  parentParts.forEach((part, i) => {
-    injectCode += `local folder${i} = parent:FindFirstChild("${part}") or Instance.new("Folder", parent)\n`;
-    injectCode += `folder${i}.Name = "${part}"\n`;
-    injectCode += `parent = folder${i}\n`;
-  });
-  injectCode += `local script = parent:FindFirstChild("${scriptName}") or Instance.new("${scriptClass}", parent)\n`;
-  injectCode += `script.Name = "${scriptName}"\n`;
-  injectCode += `script.Source = ${JSON.stringify(source)}\n`;
-  const execCode = source;
-  const fullCode = injectCode + "\n" + execCode;
-
-  // Sync prioritaire : utilise le serveur MCP dedie au file sync (pas de queue avec les agents)
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const result = await syncMcpCallTool('execute_luau', {
-        code: fullCode,
-        datamodel_type: 'Edit'
-      }, 5000);
-      console.log('[FileSync] ✓ Sync + exec OK:', relativePath);
-      if (result && result.content) {
-        const text = result.content.map(c => c.text).join('');
-        console.log('[FileSync] Resultat MCP:', text.substring(0, 300));
-      }
-      return { success: true, result };
-    } catch (err) {
-      if (attempt === 0) {
-        console.warn('[FileSync] Tentative 1 echouee, retry dans 2s:', err.message);
-        await new Promise(r => setTimeout(r, 2000));
-      } else {
-        console.error('[FileSync] ✗ MCP Error (2 tentatives):', err.message);
-        return { error: err.message };
-      }
-    }
+  try {
+    const result = await syncMcpCallTool('execute_luau', {
+      code: plan.code,
+      datamodel_type: 'Edit'
+    }, 8000);
+    const toolError = mcpToolResultError(result);
+    if (toolError) throw new Error(toolError);
+    console.log('[FileSync] ✓ Synchronise:', plan.relativePath);
+    return { success: true, result };
+  } catch (err) {
+    console.warn('[FileSync] Studio indisponible, modification gardee en attente:', plan.relativePath, '-', err.message);
+    return { error: err.message };
   }
 }
 
@@ -3891,6 +3951,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  stopFileSync();
   if (mcpServerProcess) { mcpServerProcess.kill(); mcpServerProcess = null; }
   if (syncMcpProcess) { syncMcpProcess.kill(); syncMcpProcess = null; }
   // Nettoyer l'etat des agents a la fermeture
