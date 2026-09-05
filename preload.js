@@ -103,6 +103,10 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   // --- Notifications agents → renderer ---
   onNotification: (callback) => ipcRenderer.on('agent-notification', (event, data) => callback(data)),
   pushNotification: (data) => ipcRenderer.invoke('push-notification', data),
+  listNotifications: () => ipcRenderer.invoke('notifications-list'),
+  clearNotifications: () => ipcRenderer.invoke('notifications-clear'),
+  markNotificationRead: (id) => ipcRenderer.invoke('notifications-mark-read', id),
+  deleteNotification: (id) => ipcRenderer.invoke('notifications-delete', id),
 
   // --- MCP Studio activity ---
   onMcpStudioActivity: (callback) => ipcRenderer.on('mcp-studio-activity', (event, data) => callback(data)),

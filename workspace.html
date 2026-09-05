@@ -40,6 +40,7 @@
   .btn-top{padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-weight:600;font-size:12px;font-family:'Inter',sans-serif;transition:all .2s cubic-bezier(.4,0,.2,1);}
   .btn-top.primary{background:linear-gradient(135deg,var(--ember),var(--ember-light));color:var(--char);box-shadow:0 4px 12px rgba(59,130,246,.2),inset 0 1px 0 rgba(255,255,255,.15);}
   .btn-top.primary:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(59,130,246,.3);}
+  .btn-top.primary:disabled{cursor:not-allowed;opacity:.42;transform:none;box-shadow:none;}
   .btn-top.secondary{background:var(--char3);color:var(--bone);border:1px solid var(--border-light);}
   .btn-top.secondary:hover{border-color:var(--ember);color:var(--ember-light);}
 
@@ -233,7 +234,7 @@
   @keyframes panel-pulse{0%,100%{box-shadow:0 0 0 1px rgba(59,130,246,.05),0 8px 32px rgba(59,130,246,.08);}50%{box-shadow:0 0 0 1px rgba(59,130,246,.1),0 8px 40px rgba(59,130,246,.12);}}
   .agent-header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--header-bg);flex-shrink:0;}
   .agent-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--smoke-dim);transition:all .3s;}
-  .agent-dot.running-dot{background:var(--ember);animation:pulse-dot 1.2s infinite;}
+  .agent-dot.running-dot{background:var(--agent-color,var(--ember));animation:pulse-dot 1.2s infinite;}
   .agent-close{width:22px;height:22px;border-radius:5px;border:none;cursor:pointer;background:transparent;color:var(--smoke-dim);font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
   .agent-close:hover{background:var(--error);color:var(--bone);}
   .agent-hdr-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;margin-left:auto;}
@@ -249,6 +250,12 @@
   .agent-name-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .agent-provider{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--smoke-dim);border:1px solid var(--border-light);padding:2px 8px;border-radius:100px;flex-shrink:0;}
   .xterm-wrap{flex:1;min-height:200px;position:relative;background:var(--char);padding:4px;}
+  .agent-ready{position:absolute;inset:4px;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--char);color:var(--smoke-dim);text-align:center;transition:opacity .18s ease;}
+  .agent-ready.hidden{opacity:0;pointer-events:none;}
+  .agent-ready-icon{font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:600;color:var(--ember-light);line-height:1;}
+  .agent-ready-name{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:var(--bone);}
+  .agent-ready-status{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;}
+  .agent-panel.starting .agent-ready-icon{animation:pulse-dot 1.1s ease-in-out infinite;}
   .agent-panel.fullscreen{grid-column:1/-1!important;grid-row:1/-1!important;z-index:50;}
   .agent-panel.fullscreen .xterm-wrap{min-height:0;}
 
@@ -329,6 +336,7 @@
       <button class="add-agent-btn" onclick="createAgent('antigravity')" data-i18n="add_antigravity">+ Antigravity</button>
   </div>
   <div class="top-actions">
+    <button class="btn-top primary" id="startAgentsBtn" onclick="startPendingAgents()" disabled data-i18n="start_agents">Start</button>
     <!-- NOTIFICATION BELL -->
     <div class="notif-bell-wrap" id="notifWrap">
       <button class="notif-bell" id="notifBell" onclick="toggleNotifPanel()" data-i18n-title="notifications" title="Notifications">
@@ -511,7 +519,7 @@ const AGENT_META={claude:{label:'Claude Code',color:'#CC785C'},codex:{label:'Ope
 const AGENT_ICONS={claude:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none"><path d="M50 10 L50 90" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M50 10 L20 75" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M50 10 L80 75" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>',codex:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M50 15 C50 15 58 38 50 50 C42 62 15 50 15 50 C15 50 42 38 50 15 Z"/><path d="M50 15 C50 15 42 38 50 50 C58 62 85 50 85 50 C85 50 58 38 50 15 Z"/><path d="M50 85 C50 85 42 62 50 50 C58 38 50 15 50 15 C50 15 58 62 50 85 Z"/><path d="M50 85 C50 85 58 62 50 50 C42 38 50 15 50 15 C50 15 42 62 50 85 Z"/></svg>',antigravity:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="6" fill="currentColor"/><g stroke="currentColor" stroke-width="5" stroke-linecap="round"><line x1="50" y1="18" x2="50" y2="34"/><line x1="50" y1="66" x2="50" y2="82"/><line x1="18" y1="50" x2="34" y2="50"/><line x1="66" y1="50" x2="82" y2="50"/><line x1="27" y1="27" x2="38" y2="38"/><line x1="62" y1="62" x2="73" y2="73"/><line x1="73" y1="27" x2="62" y2="38"/><line x1="38" y1="62" x2="27" y2="73"/></g></svg>'};
 
 let agents=[],agentCounter={claude:1,codex:1,antigravity:1},activeProject=null;
-const agentGrid=document.getElementById('agentGrid'),emptyGrid=document.getElementById('emptyGrid'),agentCount=document.getElementById('agentCount');
+const agentGrid=document.getElementById('agentGrid'),emptyGrid=document.getElementById('emptyGrid'),agentCount=document.getElementById('agentCount'),startAgentsBtn=document.getElementById('startAgentsBtn');
 
 function saveAgentState(){
   if(!window.forgeAPI||!window.forgeAPI.saveAgentState)return;
@@ -543,15 +551,19 @@ async function restoreAgents(){
     for(const saved of res.agents){
       const meta=AGENT_META[saved.agentType];
       if(!meta)continue;
-      const a={id:saved.id||genId(),name:saved.name,agentType:saved.agentType,sessionId:saved.sessionId,xterm:null,fitAddon:null,element:null,resizeObserver:null,_fontSize:12,_fullscreen:false,_firstInput:true};
+      const a={id:saved.id||genId(),name:saved.name||meta.label,agentType:saved.agentType,sessionId:saved.sessionId,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false,_fontSize:12,_fullscreen:false,_firstInput:true};
       agents.push(a);
       createPanel(a);
       // Reconnecter au PTY existant
       if(a.sessionId){
-        if(window.forgeAPI.reconnectPty)await window.forgeAPI.reconnectPty(a.sessionId);
-        a.element.classList.add('running');
-        var dot=document.getElementById('dot-'+a.id);if(dot)dot.classList.add('running-dot');
-        if(a.xterm)a.xterm.writeln('\x1b[90mSession restauree.\x1b[0m');
+        var reconnectRes=window.forgeAPI.reconnectPty?await window.forgeAPI.reconnectPty(a.sessionId):{error:'API PTY non disponible'};
+        if(reconnectRes&&reconnectRes.error){a.sessionId=null;setAgentReady(a,t('agent_ready'));}
+        else{
+          a.element.classList.add('running');
+          var dot=document.getElementById('dot-'+a.id);if(dot)dot.classList.add('running-dot');
+          setReadyOverlayVisible(a,false);
+          if(a.xterm)a.xterm.writeln('\x1b[90m'+t('agent_session_restored')+'\x1b[0m');
+        }
       }
     }
     updateCount();
@@ -560,7 +572,7 @@ async function restoreAgents(){
 
 loadProject().then(function(){restoreAgents();});
 
-function updateCount(){const c=agents.length;    agentCount.textContent = c === 0 ? t('agent_count_zero') : c === 1 ? t('agent_count_one') : t('agent_count_many').replace('{n}', c);emptyGrid.style.display=c===0?'flex':'none';applyGridLayout();}
+function updateCount(){const c=agents.length;agentCount.textContent = c === 0 ? t('agent_count_zero') : c === 1 ? t('agent_count_one') : t('agent_count_many').replace('{n}', c);emptyGrid.style.display=c===0?'flex':'none';applyGridLayout();updateStartButton();}
 function applyGridLayout(){
   const c=agents.filter(function(a){return !a._fullscreen;}).length;
   const hasFs=agents.some(function(a){return a._fullscreen;});
@@ -582,7 +594,44 @@ function applyGridLayout(){
 }
 
 function genId(){return 'a_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);}
-function createAgent(type){const meta=AGENT_META[type];const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null};agents.push(a);createPanel(a);updateCount();saveAgentState();}
+function createAgent(type){const meta=AGENT_META[type];const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};agents.push(a);createPanel(a);updateCount();saveAgentState();}
+
+function updateStartButton(){
+  if(!startAgentsBtn)return;
+  const pending=agents.filter(function(a){return !a.sessionId&&!a.starting;}).length;
+  const starting=agents.some(function(a){return a.starting;});
+  startAgentsBtn.disabled=pending===0||starting;
+  startAgentsBtn.textContent=starting?t('starting_agents'):t('start_agents');
+}
+
+function setReadyOverlayVisible(agent,visible){
+  var ready=document.getElementById('ready-'+agent.id);
+  if(ready)ready.classList.toggle('hidden',!visible);
+}
+
+function setAgentReady(agent,status){
+  agent.starting=false;
+  if(agent.element)agent.element.classList.remove('running','starting');
+  var dot=document.getElementById('dot-'+agent.id);if(dot)dot.classList.remove('running-dot');
+  var statusEl=document.getElementById('ready-status-'+agent.id);if(statusEl)statusEl.textContent=status||t('agent_ready');
+  setReadyOverlayVisible(agent,true);
+  updateStartButton();
+}
+
+async function startPendingAgents(){
+  if(!window.forgeAPI||!window.forgeAPI.ptyCreate){showToast(t('start_requires_forge'));return;}
+  if(!activeProject){showToast(t('start_requires_project'));return;}
+  const pending=agents.filter(function(a){return !a.sessionId&&!a.starting;});
+  if(pending.length===0)return;
+  pending.forEach(function(a){
+    a.starting=true;
+    if(a.element)a.element.classList.add('starting');
+    var statusEl=document.getElementById('ready-status-'+a.id);if(statusEl)statusEl.textContent=t('agent_starting');
+  });
+  updateStartButton();
+  await Promise.all(pending.map(function(a){return initPty(a);}));
+  updateStartButton();
+}
 
 function createPanel(agent){
   const meta=AGENT_META[agent.agentType],icon=AGENT_ICONS[agent.agentType];
@@ -596,7 +645,7 @@ function createPanel(agent){
   const svgReset='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>';
 
   hdr.innerHTML=
-    '<span class="agent-dot" id="dot-'+agent.id+'" style="background:'+meta.color+'"></span>'
+    '<span class="agent-dot" id="dot-'+agent.id+'" style="--agent-color:'+meta.color+'"></span>'
     +'<span class="agent-name">'+icon+' <span class="agent-name-text" id="name-'+agent.id+'">'+agent.name+'</span></span>'
     +'<span id="mcp-badge-'+agent.id+'" class="mcp-badge" style="display:none;font-family:\'JetBrains Mono\',monospace;font-size:9px;background:rgba(59,130,246,0.2);color:#60A5FA;border:1px solid rgba(59,130,246,0.3);border-radius:4px;padding:1px 5px;margin-left:6px;">MCP</span>'
     +'<span class="agent-provider">'+meta.label+'</span>'
@@ -630,6 +679,9 @@ function createPanel(agent){
   if(typeof Terminal==='undefined'){wrap.innerHTML='<div style="padding:20px;color:#E35B5B;font-size:12px;">xterm.js non chargé.</div>';return;}
   const term=new Terminal({fontFamily:'"JetBrains Mono","Fira Code",Consolas,monospace',fontSize:agent._fontSize,theme:{background:'#14110E',foreground:'#F3EDE3',cursor:'#3B82F6',selectionBackground:'#3A3024',black:'#14110E',red:'#E35B5B',green:'#5FBE7A',yellow:'#60A5FA',blue:'#5B9BE3',magenta:'#B18AE0',cyan:'#4EC9B0',white:'#F3EDE3',brightBlack:'#6B6255',brightRed:'#E9776B',brightGreen:'#7FD99A',brightYellow:'#F2C65A',brightBlue:'#7AB8F0',brightMagenta:'#C49AE8',brightCyan:'#6ED9C0',brightWhite:'#FFFFFF'},cursorBlink:true,allowProposedApi:true,scrollback:5000,cols:80,rows:24});
   const fit=new FitAddon();term.loadAddon(fit);term.open(wrap);
+  const ready=document.createElement('div');ready.className='agent-ready'+(agent.sessionId?' hidden':'');ready.id='ready-'+agent.id;
+  ready.innerHTML='<div class="agent-ready-icon">&gt;_</div><div class="agent-ready-name">'+meta.label+'</div><div class="agent-ready-status" id="ready-status-'+agent.id+'">'+t('agent_ready')+'</div>';
+  wrap.appendChild(ready);
   requestAnimationFrame(function(){setTimeout(function(){try{fit.fit();term.focus();}catch(e){}},100);});
   const ro=new ResizeObserver(function(){try{fit.fit();}catch(e){}});ro.observe(wrap);agent.resizeObserver=ro;
 
@@ -642,20 +694,25 @@ function createPanel(agent){
   });
   term.onResize(function(ev){if(agent.sessionId&&window.forgeAPI&&window.forgeAPI.ptyResize)window.forgeAPI.ptyResize(agent.sessionId,ev.cols,ev.rows);});
   agent.xterm=term;agent.fitAddon=fit;
-  if(!activeProject){term.writeln('\x1b[33mAucun projet actif.\x1b[0m');}
-  else{term.writeln('\x1b[90mDemarrage de '+meta.label+' dans \x1b[1m'+activeProject.name+'\x1b[0m\x1b[90m...\x1b[0m');initPty(agent);}
+  updateStartButton();
 }
 
 async function initPty(agent){
+  const launchToken=genId();
+  agent._launchToken=launchToken;
   try{
-    if(!window.forgeAPI||!window.forgeAPI.ptyCreate){agent.xterm.writeln('\x1b[31mAPI PTY non disponible.\x1b[0m');return;}
+    if(!window.forgeAPI||!window.forgeAPI.ptyCreate){setAgentReady(agent,t('agent_start_failed'));return;}
+    agent.starting=true;
+    agent.element.classList.add('starting');
+    if(agent.xterm){agent.xterm.clear();agent.xterm.reset();agent.xterm.writeln('\x1b[90m'+t('agent_starting_in').replace('{agent}',AGENT_META[agent.agentType].label).replace('{project}',activeProject.name)+'\x1b[0m');}
     const res=await window.forgeAPI.ptyCreate(agent.agentType,activeProject.path,agent.xterm.cols,agent.xterm.rows);
-    if(res.error){agent.xterm.writeln('\x1b[31m'+res.error+'\x1b[0m');return;}
-    if(res.fallback){agent.xterm.writeln('\x1b[33mTerminal externe ouvert\x1b[0m');agent.element.classList.add('running');document.getElementById('dot-'+agent.id).classList.add('running-dot');return;}
-    agent.sessionId=res.sessionId;agent.element.classList.add('running');
+    if(agent._closed||agent._launchToken!==launchToken){if(res&&res.sessionId&&window.forgeAPI.ptyKill)window.forgeAPI.ptyKill(res.sessionId);return;}
+    if(res.error){if(agent.xterm)agent.xterm.writeln('\x1b[31m'+res.error+'\x1b[0m');setAgentReady(agent,t('agent_start_failed'));return;}
+    agent.sessionId=res.sessionId;agent.starting=false;agent.element.classList.remove('starting');agent.element.classList.add('running');
     var dot=document.getElementById('dot-'+agent.id);if(dot)dot.classList.add('running-dot');
+    setReadyOverlayVisible(agent,false);
     saveAgentState();
-  }catch(err){agent.xterm.writeln('\x1b[31m'+err.message+'\x1b[0m');}
+  }catch(err){if(agent.xterm)agent.xterm.writeln('\x1b[31m'+err.message+'\x1b[0m');setAgentReady(agent,t('agent_start_failed'));}
 }
 
 function toggleFullscreen(agent){
@@ -681,6 +738,7 @@ function zoomAgent(agent,delta){
 }
 
 function resetConversation(agent){
+  agent._launchToken=genId();
   if(agent.sessionId&&window.forgeAPI&&window.forgeAPI.ptyKill)window.forgeAPI.ptyKill(agent.sessionId);
   agent.sessionId=null;agent._firstInput=true;
   agent.element.classList.remove('running');
@@ -691,7 +749,7 @@ function resetConversation(agent){
   agent.name=meta.label+' #'+(agentCounter[agent.agentType]++);
   if(nameEl)nameEl.textContent=agent.name;
   if(agent.xterm){agent.xterm.writeln('\x1b[90mNouvelle conversation.\x1b[0m');}
-  if(activeProject){initPty(agent);}
+  setAgentReady(agent,t('agent_ready'));
   saveAgentState();
 }
 
@@ -716,6 +774,7 @@ function updateAgentName(agent,prompt){
 window.closeAgent=function(id){
   var i=agents.findIndex(function(a){return a.id===id;});if(i===-1)return;
   var a=agents[i];
+  a._closed=true;a._launchToken=genId();
   if(a.sessionId&&window.forgeAPI&&window.forgeAPI.ptyKill)window.forgeAPI.ptyKill(a.sessionId);
   if(a.resizeObserver)a.resizeObserver.disconnect();
   if(a.xterm)a.xterm.dispose();
@@ -723,7 +782,7 @@ window.closeAgent=function(id){
   agents.splice(i,1);updateCount();saveAgentState();
 };
 if(window.forgeAPI&&window.forgeAPI.onPtyData){window.forgeAPI.onPtyData(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.write(data.data);a._lastPtyActivity=Date.now();}});}
-if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;a.element.classList.remove('running');var dot=document.getElementById('dot-'+a.id);if(dot)dot.classList.remove('running-dot');hideMcpBadge(a.id);saveAgentState();}});}
+if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;hideMcpBadge(a.id);setAgentReady(a,t('agent_finished'));saveAgentState();}});}
 
 let mcpActivityTimer=null;
 function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b)b.style.display='none';}
@@ -1391,7 +1450,7 @@ document.addEventListener('click',function(e){
   if(notifPanelOpen && !wrap.contains(e.target)) closeNotifPanel();
 });
 
-function clearAllNotifs(){notifications=[];renderNotifList();updateBadge();}
+function clearAllNotifs(){notifications=[];renderNotifList();updateBadge();if(window.forgeAPI&&window.forgeAPI.clearNotifications)window.forgeAPI.clearNotifications();}
 
 function updateBadge(){
   const unread=notifications.filter(function(n){return !n.read;}).length;
@@ -1410,9 +1469,9 @@ function timeAgo(ts){
   return t('time_ago_j')+(Math.floor(h/24))+'j';
 }
 
-function assetTypeLabel(t){
-  if(t==='image')return {label:t('type_image'),cls:'image'};
-  if(t==='audio')return {label:t('type_sound'),cls:'audio'};
+function assetTypeLabel(type){
+  if(type==='image')return {label:t('type_image'),cls:'image'};
+  if(type==='audio')return {label:t('type_sound'),cls:'audio'};
   return {label:t('type_model'),cls:'model'};
 }
 
@@ -1481,6 +1540,7 @@ function markRead(id){
   const el=document.getElementById('notif-'+id);
   if(el)el.classList.remove('notif-unread');
   updateBadge();
+  if(window.forgeAPI&&window.forgeAPI.markNotificationRead)window.forgeAPI.markNotificationRead(id);
 }
 
 function sendReprompt(notif,text){
@@ -1499,7 +1559,8 @@ function showToast(msg){
 // Push a notification (called from IPC or manually)
 function pushNotification(data){
   // data: {agentName, agentColor, aiMessage, assetType, filePath, fileName}
-  const notif={id:genId(),agentName:data.agentName||'Agent',agentColor:data.agentColor||'#3B82F6',aiMessage:data.aiMessage||'Nouvel asset généré.',assetType:data.assetType||'image',filePath:data.filePath||'',fileName:data.fileName||'asset',timestamp:Date.now(),read:false};
+  const notif={id:data.id||genId(),agentName:data.agentName||'Agent',agentColor:data.agentColor||'#3B82F6',aiMessage:data.aiMessage||'Nouvel asset généré.',assetType:data.assetType||'image',filePath:data.filePath||'',fileName:data.fileName||'asset',timestamp:data.timestamp||Date.now(),read:!!data.read};
+  if(notifications.some(function(item){return item.id===notif.id;}))return notif;
   notifications.push(notif);
   renderNotifList();
   updateBadge();
@@ -1514,6 +1575,17 @@ function pushNotification(data){
 // Listen for IPC notifications from agents
 if(window.forgeAPI&&window.forgeAPI.onNotification){
   window.forgeAPI.onNotification(function(data){pushNotification(data);});
+}
+if(window.forgeAPI&&window.forgeAPI.listNotifications){
+  window.forgeAPI.listNotifications().then(function(res){
+    const stored=res&&Array.isArray(res.notifications)?res.notifications:[];
+    const live=notifications.slice();
+    notifications=[];
+    stored.concat(live).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);}).forEach(function(item){
+      if(!notifications.some(function(existing){return existing.id===item.id;}))notifications.push(item);
+    });
+    renderNotifList();updateBadge();
+  }).catch(function(){});
 }
 
 // ══════════════════════════════════════════════
@@ -1593,6 +1665,7 @@ function rejectAsset(){
   markRead(n.id);
   // remove notification
   notifications=notifications.filter(function(x){return x.id!==n.id;});
+  if(window.forgeAPI&&window.forgeAPI.deleteNotification)window.forgeAPI.deleteNotification(n.id);
   renderNotifList();updateBadge();
   if(window.forgeAPI&&window.forgeAPI.deleteFile){
     window.forgeAPI.deleteFile(n.filePath).catch(function(){});
