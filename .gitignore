@@ -6,5 +6,11 @@ out/
 forge-users/
 active-project.json
 projects-registry.json
+forge-session.json
+forge-license.json
+roblox-token.json
+github-token.json
+api-keys.json
+agents-state.json
 
 releases/
