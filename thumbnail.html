@@ -119,38 +119,6 @@
   .gen-send:hover{background:var(--ember-light);transform:scale(1.05);}
   .gen-send:disabled{opacity:.4;cursor:not-allowed;transform:none;}
 
-  /* ── Section: Conversion (Asset browser) ── */
-  .section-conversion{flex:1;display:none;flex-direction:column;overflow:hidden;}
-  .section-conversion.active{display:flex;}
-  .conv-header{padding:20px 24px 0;flex-shrink:0;}
-  .conv-header h2{font-family:'Space Grotesk';font-size:22px;font-weight:700;color:var(--bone);margin-bottom:4px;}
-  .conv-header p{font-size:13px;color:var(--smoke);line-height:1.5;}
-  .conv-status{display:flex;align-items:center;gap:16px;padding:12px 24px;flex-shrink:0;flex-wrap:wrap;}
-  .conv-badge{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:6px;background:var(--char3);border:1px solid var(--border-light);font-size:11.5px;color:var(--smoke);font-family:'JetBrains Mono',monospace;}
-  .conv-badge .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-  .conv-badge .dot.red{background:var(--error);}
-  .conv-badge .dot.green{background:var(--success);}
-  .conv-badge a{color:var(--ember);text-decoration:none;font-weight:500;}
-  .conv-badge a:hover{text-decoration:underline;}
-  .conv-badge b{color:var(--bone);font-weight:600;}
-  .conv-search{padding:8px 24px 12px;flex-shrink:0;}
-  .conv-search input{width:100%;background:var(--char3);border:1px solid var(--border-light);border-radius:9px;color:var(--bone);font-size:13px;padding:10px 14px 10px 36px;outline:none;transition:border .2s;font-family:'Inter';background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B6255' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:12px center;}
-  .conv-search input::placeholder{color:var(--smoke-dim);}
-  .conv-search input:focus{border-color:var(--ember);}
-  .conv-grid{flex:1;overflow:auto;padding:0 24px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;align-content:start;}
-  .conv-card{position:relative;cursor:pointer;border-radius:10px;overflow:hidden;border:2px solid transparent;background:var(--char3);transition:all .15s;box-shadow:0 2px 12px rgba(0,0,0,.3);}
-  .conv-card:hover{border-color:var(--border-hover);transform:translateY(-2px);}
-  .conv-card.selected{border-color:var(--ember);box-shadow:0 0 0 2px var(--ember),0 4px 16px rgba(59,130,246,.25);}
-  .conv-card .cc-img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--char4);}
-  .conv-card .cc-img.model-placeholder{display:flex;align-items:center;justify-content:center;color:var(--smoke-dim);}
-  .conv-card .cc-info{padding:8px 10px;}
-  .conv-card .cc-name{font-size:12px;font-weight:500;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .conv-card .cc-actions{position:absolute;top:6px;right:6px;display:flex;gap:4px;opacity:0;transition:opacity .15s;}
-  .conv-card:hover .cc-actions{opacity:1;}
-  .conv-card .cc-actions button{width:26px;height:26px;border-radius:6px;border:none;background:rgba(0,0,0,.6);color:var(--smoke);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);transition:all .12s;}
-  .conv-card .cc-actions button:hover{background:var(--ember);color:var(--char);}
-  .conv-card .cc-actions button.liked{color:var(--error);}
-
   /* ── Preview overlay ── */
   .preview-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:none;flex-direction:column;}
   .preview-overlay.open{display:flex;}
@@ -191,32 +159,7 @@
   .edit-bottom .apply-btn{padding:8px 18px;border-radius:8px;border:none;background:var(--ember);color:var(--char);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;}
   .edit-bottom .apply-btn:hover{background:var(--ember-light);}
 
-  /* ── Conversion modal ── */
-  .conv-modal{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:60;display:none;align-items:center;justify-content:center;padding:24px;}
-
-  .conv-modal.open{display:flex;}
-  .conv-modal-card{background:var(--char2);border:1px solid var(--border-light);border-radius:14px;width:480px;max-width:100%;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:slideUp .25s ease;}
-  .cm-head{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--border);}
-  .cm-head .cm-title{font-family:'Space Grotesk';font-size:15px;font-weight:700;color:var(--bone);flex:1;}
-  .cm-close{width:28px;height:28px;border-radius:7px;border:1px solid var(--border-light);background:transparent;color:var(--smoke);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
-  .cm-close:hover{border-color:var(--error);color:var(--error);}
-  .cm-body{padding:18px;}
-  .cm-thumb{width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--char4);display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
-  .cm-thumb img{width:100%;height:100%;object-fit:contain;}
-  .cm-thumb .model-placeholder{color:var(--smoke-dim);}
-  .cm-sub{font-size:12.5px;color:var(--smoke);line-height:1.5;margin-bottom:14px;}
-  .cm-label{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--smoke-dim);margin-bottom:6px;display:block;}
-  .cm-body textarea{width:100%;background:var(--char3);border:1px solid var(--border-light);border-radius:9px;color:var(--bone);font-family:'Inter';font-size:13px;padding:10px 12px;resize:vertical;min-height:58px;outline:none;transition:border .2s;}
-  .cm-body textarea:focus{border-color:var(--ember);}
-  .cm-row{display:flex;align-items:center;gap:10px;margin:14px 0;}
-  .cm-count{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--smoke);}
-  .cm-count button{width:26px;height:26px;border-radius:7px;border:1px solid var(--border-light);background:var(--char3);color:var(--smoke);font-size:14px;cursor:pointer;}
-  .cm-count button:hover{border-color:var(--ember);color:var(--ember-light);}
-  .cm-count .v{font-weight:600;color:var(--bone);min-width:16px;text-align:center;font-family:'JetBrains Mono';}
-  .cm-run{width:100%;padding:11px;border:none;border-radius:9px;background:var(--ember);color:var(--char);font-size:13.5px;font-weight:700;cursor:pointer;font-family:'Inter';transition:all .15s;}
-  .cm-run:hover{background:var(--ember-light);transform:translateY(-1px);}
-  .cm-run:disabled{opacity:.5;cursor:not-allowed;transform:none;}
-  .cm-hint{font-size:11.5px;color:var(--smoke-dim);line-height:1.5;margin-top:12px;border-top:1px dashed var(--border-light);padding-top:10px;}
+  .model-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--smoke-dim);gap:4px;}
 
   @keyframes pageIn{from{opacity:0;}to{opacity:1;}}
   @keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
@@ -244,10 +187,6 @@
       <div class="sidebar-item active" onclick="switchSection('visuels')" id="secVisuels">
         <div class="si-icon cyan">🎨</div>
         <span data-i18n="visuels">Visuels</span>
-      </div>
-      <div class="sidebar-item" onclick="switchSection('img2model')" id="secImg2Model">
-        <div class="si-icon amber">🧊</div>
-        <span data-i18n="image_to_3d">Image → 3D</span>
       </div>
     </aside>
 
@@ -299,32 +238,6 @@
         </div>
       </div>
 
-      <!-- ═══════════ SECTION: IMAGE → 3D ═══════════ -->
-      <div class="section-conversion" id="secViewImg2Model">
-        <div class="conv-header">
-          <h2 data-i18n="image_to_3d">Image → 3D</h2>
-          <p data-i18n="img2model_desc">Convertis n'importe quelle image en modèle 3D via Tripo3D. Choisis une image de la toolbox (assets/) pour démarrer.</p>
-        </div>
-        <div class="conv-status">
-          <div class="conv-badge">
-            <span class="dot red" id="tripoDot"></span>
-            <span data-i18n="tripo_key">Clé Tripo3D</span>
-            <span id="tripoKeyStatus" style="color:var(--error);" data-i18n="detection_in_progress">Vérification de la clé…</span>
-            <a href="api-keys.html" onclick="window.location.href='api-keys.html';return false;" data-i18n="open_settings">Ouvrir les réglages</a>
-          </div>
-          <div class="conv-badge">
-            <span class="dot green"></span>
-            <span data-i18n="toolbox_images">Images de la toolbox</span>
-            <b id="img2modelCount">—</b>
-          </div>
-          <div class="conv-badge" data-i18n="tripo_engine_3d">Moteur 3D : Tripo3D (PNG/JPG → FBX)</div>
-        </div>
-        <div class="conv-search">
-          <input type="text" id="img2modelSearch" placeholder="Rechercher une image (en anglais)…" oninput="filterConversion('img2model')" data-i18n-placeholder="search_image">
-        </div>
-        <div class="conv-grid" id="img2modelGrid"></div>
-      </div>
-
       <!-- Edit modal -->
       <div class="edit-modal" id="editModal">
         <div class="em-label" data-i18n="describe_edit">DÉCRIS LA MODIFICATION À APPLIQUER (OBLIGATOIRE)</div>
@@ -348,35 +261,6 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             <span data-i18n="apply_edit">Appliquer la modification</span>
           </button>
-        </div>
-      </div>
-
-      <!-- Conversion modal -->
-      <div class="conv-modal" id="convModal">
-        <div class="conv-modal-card">
-          <div class="cm-head">
-            <div class="cm-title" id="cmTitle">Conversion</div>
-            <button class="cm-close" onclick="closeConvModal()">×</button>
-          </div>
-          <div class="cm-body">
-            <div class="cm-thumb" id="cmThumb">
-              <canvas id="cmViewCanvas" style="display:none;width:100%;height:100%;"></canvas>
-            </div>
-            <div class="cm-sub" id="cmSub"></div>
-            <label class="cm-label">Description (optionnelle)</label>
-            <textarea id="cmPrompt" placeholder="Ex : une voiture de sport rouge dans un hangar…"></textarea>
-            <div class="cm-row">
-              <div class="cm-count">
-                <button onclick="convCount(-1)">−</button>
-                <span class="v" id="cmCountVal">1</span>
-                <button onclick="convCount(1)">+</button>
-              </div>
-              <span style="font-size:12px;color:var(--smoke-dim);">résultat(s)</span>
-              <div class="spacer"></div>
-            </div>
-            <button class="cm-run" id="cmRunBtn" onclick="runConversion()">Lancer la conversion</button>
-            <div class="cm-hint" id="cmHint"></div>
-          </div>
         </div>
       </div>
 
@@ -423,12 +307,11 @@
   // ── State ──
   const KIND_META = {
     thumb:     { label: 'Miniature', labelEN: 'Thumbnail' },
-    icon:      { label: 'Icône de jeu', labelEN: 'Game icon' },
-    img2model: { label: '2D → modèle 3D', labelEN: '2D → 3D' }
+    icon:      { label: 'Icône de jeu', labelEN: 'Game icon' }
   };
   let state = {
     projectPath: null,
-    section: 'visuels',       // visuels | img2model
+    section: 'visuels',       // visuels
     tab: 'codex',             // codex | icone  (Miniature/Icône toggle)
     kind: 'thumb',            // thumb | icon  (active kind for Visuels)
     genCount: 3,
@@ -440,10 +323,7 @@
     editSource: null,
     polling: null,
     agentSession: null,
-    refFiles: [],
-    // Conversion asset caches
-    img2modelAssets: [],
-    img2modelFiltered: []
+    refFiles: []
   };
 
   // ── Init ──
@@ -458,8 +338,6 @@
         }
       }catch(e){}
     }
-    await loadTripoKey();
-    await loadConversionAssets();
   }
 
   async function refresh(){
@@ -474,14 +352,11 @@
   function switchSection(sec){
     state.section = sec;
     document.querySelectorAll('.sidebar-item').forEach(x=>x.classList.remove('active'));
-    const map = { visuels: 'secVisuels', img2model: 'secImg2Model' };
+    const map = { visuels: 'secVisuels' };
     const el = document.getElementById(map[sec]);
     if(el) el.classList.add('active');
-    // Show/hide views
     document.getElementById('secViewVisuels').style.display = sec==='visuels'?'flex':'none';
-    document.getElementById('secViewImg2Model').classList.toggle('active', sec==='img2model');
-    // Page title
-    const titles = { visuels:'Visuels', img2model:'Image → 3D' };
+    const titles = { visuels:'Visuels' };
     document.getElementById('pageTitle').textContent = titles[sec] || 'Visuels';
     clearSelection();
     closePreview();
@@ -779,365 +654,6 @@
     }finally{send.disabled=false;}
   }
 
-  // ── Conversion: clé Tripo3D + assets de la toolbox ──
-  async function loadTripoKey(){
-    if(!window.forgeAPI.getApiKeys) return;
-    try{
-      const keys = await window.forgeAPI.getApiKeys();
-      const key = keys && keys.tripo;
-      const dot = document.getElementById('tripoDot');
-      const status = document.getElementById('tripoKeyStatus');
-      if(key){
-        dot.className = 'dot green';
-        status.textContent = 'Clé configurée ✓';
-        status.style.color = 'var(--success)';
-      } else {
-        dot.className = 'dot red';
-        status.textContent = 'Aucune clé Tripo3D. Configure-la dans les réglages.';
-        status.style.color = 'var(--error)';
-      }
-    }catch(e){}
-  }
-
-  function flattenTree(tree){
-    const files=[];
-    (tree||[]).forEach(function(n){
-      if(n.type==='file') files.push(n.path||n.name);
-      else if(n.children) files.push.apply(files, flattenTree(n.children));
-    });
-    return files;
-  }
-
-  async function loadConversionAssets(){
-    if(!state.projectPath || !window.forgeAPI.listProjectFiles) return;
-
-    const IMG_RE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
-
-    let localImages = [];
-
-    try{
-      const res = await window.forgeAPI.listProjectFiles(state.projectPath, 'assets');
-      localImages = (res.files||[]).concat(flattenTree(res.tree||[])).filter(f=>IMG_RE.test(f));
-    }catch(e){ console.log('Toolbox images load error:', e); }
-
-    let libImages = [];
-    if(window.forgeAPI.libraryList){
-      try{
-        const libRes = await window.forgeAPI.libraryList();
-        const items = libRes.items || [];
-        libImages = items.filter(it=> it.asset_type==='image' && IMG_RE.test(it.file_name||''));
-      }catch(e){ console.log('Library load error:', e); }
-    }
-
-    state.img2modelAssets = localImages.map(function(f){
-      const rel = 'assets/' + f;
-      return { id: rel, name: String(f).split('/').pop(), path: rel, url: '', favorite: false, source: 'local' };
-    }).concat(libImages.map(function(it){
-      return { id: 'lib-'+it.file_name, name: it.file_name, path: it.public_url, url: it.public_url, favorite: false, source: 'library' };
-    }));
-    state.img2modelFiltered = [...state.img2modelAssets];
-    const elImg = document.getElementById('img2modelCount');
-    if(elImg) elImg.textContent = state.img2modelAssets.length + ' image(s)';
-    renderConversionGrid('img2model');
-  }
-
-  function filterConversion(){
-    const q = document.getElementById('img2modelSearch').value.toLowerCase();
-    state.img2modelFiltered = q ? state.img2modelAssets.filter(a=>a.name.toLowerCase().includes(q)) : [...state.img2modelAssets];
-    renderConversionGrid();
-  }
-
-  const MODEL_THUMB_SVG = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.7"><path d="M12 2l9 4.9V17L12 22l-9-5.1V7z"/><path d="M3 7l9 5 9-5"/><path d="M12 12v10"/></svg>';
-
-  function renderConversionGrid(){
-    const grid = document.getElementById('img2modelGrid');
-    const items = state.img2modelFiltered;
-    grid.innerHTML = '';
-    if(!items.length){
-      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--smoke-dim);padding:40px 0;font-size:13px;">Aucun asset trouvé.</div>';
-      return;
-    }
-    for(const asset of items){
-      const card = document.createElement('div');
-      card.className = 'conv-card';
-      card.innerHTML = '<img class="cc-img" alt="'+escHtml(asset.name)+'" style="display:none">';
-      const info = document.createElement('div');
-      info.className = 'cc-info';
-      const name = document.createElement('div');
-      name.className = 'cc-name';
-      name.textContent = asset.name || 'Asset';
-      info.appendChild(name);
-      card.appendChild(info);
-      card.onclick = () => openConversion('img2model', asset);
-      grid.appendChild(card);
-      const img = card.querySelector('img.cc-img');
-      if(img){
-        if(asset.source==='library' && asset.url){
-          img.src = asset.url; img.style.display = '';
-        } else if(window.forgeAPI.mediaPreview && state.projectPath){
-          window.forgeAPI.mediaPreview(state.projectPath, asset.path).then(r=>{
-            if(r && r.dataUrl){ img.src = r.dataUrl; img.style.display = ''; }
-            else img.parentNode.removeChild(img);
-          }).catch(()=>{ if(img.parentNode) img.parentNode.removeChild(img); });
-        } else { img.parentNode.removeChild(img); }
-      }
-    }
-  }
-
-  // ── Conversion modal ──
-  let convPending = null;
-  let convCountVal = 1;
-
-  function openConversion(section, asset){
-    if(!state.projectPath){ alert('Aucun projet actif.'); return; }
-    convPending = { section, asset };
-    convCountVal = 1;
-    document.getElementById('cmCountVal').textContent = convCountVal;
-    const isImg = section==='img2model';
-    const modal = document.getElementById('convModal');
-    document.getElementById('cmTitle').textContent = isImg ? 'Image → Modèle 3D' : 'Modèle 3D → Image 2D';
-    document.getElementById('cmSub').innerHTML = isImg
-      ? 'Tripo3D analyse <b>' + escHtml(asset.name||'cette image') + '</b> et génère un modèle 3D à partir d\'elle.'
-      : 'Tripo3D rend <b>' + escHtml(asset.name||'ce modèle') + '</b> en image(s) 2D (plusieurs angles).';
-    document.getElementById('cmPrompt').placeholder = isImg
-      ? 'Ex : une voiture de sport rouge, vu de 3/4…'
-      : 'Ex : fond studio noir, légèrement de dessus…';
-    document.getElementById('cmRunBtn').textContent = isImg ? 'Convertir en 3D' : 'Lancer le rendu en 2D';
-    document.getElementById('cmHint').textContent = isImg
-      ? 'Le modèle 3D généré sera enregistré au format FBX dans conversions/ puis détecté par Forge (notification envoyée).'
-      : 'Le modèle est envoyé à Tripo3D qui produit une image 2D mise en scène. Enregistrée dans conversions/ puis détectée par Forge (notification envoyée).';
-    const thumb = document.getElementById('cmThumb');
-    const canvas = document.getElementById('cmViewCanvas');
-    cmStopModelPreview();
-    thumb.querySelectorAll('img, .model-placeholder').forEach(el=>el.remove());
-    canvas.style.display = 'none';
-    if(isImg){
-      const im = document.createElement('img');
-      thumb.appendChild(im);
-      if(asset.source==='library' && asset.url){
-        im.src = asset.url;
-      } else if(window.forgeAPI.mediaPreview && state.projectPath){
-        window.forgeAPI.mediaPreview(state.projectPath, asset.path).then(r=>{
-          if(r && r.dataUrl) im.src = r.dataUrl;
-          else im.remove();
-        }).catch(()=>im.remove());
-      } else im.remove();
-    } else {
-      const ext = String(asset.name||'').split('.').pop().toLowerCase();
-      if((ext==='fbx' || ext==='glb' || ext==='obj') && typeof THREE !== 'undefined'){
-        canvas.style.display = 'block';
-        cmShowModelPreview(canvas, asset);
-      } else {
-        cmModelPlaceholder(asset, 'Aucun aperçu pour ce format (' + ext + ').');
-      }
-    }
-    modal.classList.add('open');
-  }
-
-  function closeConvModal(){
-    cmStopModelPreview();
-    document.getElementById('convModal').classList.remove('open');
-    convPending = null;
-  }
-
-  // ── Aperçu 3D du modèle (FBX/GLB) dans le modal ──
-  let cmViewer = null;
-  function cmStopModelPreview(){
-    if(cmViewer){ try{ cmViewer.stop(); }catch(e){} cmViewer = null; }
-  }
-
-  function cmModelPlaceholder(asset, sub){
-    const canvas = document.getElementById('cmViewCanvas');
-    if(canvas) canvas.style.display = 'none';
-    const thumb = document.getElementById('cmThumb');
-    thumb.querySelectorAll('.model-placeholder').forEach(el=>el.remove());
-    const ph = document.createElement('div');
-    ph.className = 'model-placeholder';
-    ph.innerHTML = MODEL_THUMB_SVG
-      + '<div style="margin-top:6px">' + escHtml(asset.name||'') + '</div>'
-      + (sub ? '<div style="margin-top:4px;font-size:11px;color:var(--smoke-dim);">' + escHtml(sub) + '</div>' : '');
-    thumb.appendChild(ph);
-  }
-
-  function b64ToArrayBuffer(b64){
-    const bin = atob(b64);
-    const buf = new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
-    return buf.buffer;
-  }
-  function b64ToText(b64){
-    const s = atob(b64);
-    try{ return decodeURIComponent(escape(s)); }catch(e){ return s; }
-  }
-
-  // Parser OBJ minimaliste (positions + faces, triplets v/vt/vn, indices positifs ou négatifs).
-  function parseOBJToGroup(text){
-    const P = [];
-    const positions = [];
-    const lines = text.split(/\r?\n/);
-    for(let i=0;i<lines.length;i++){
-      const s = lines[i].trim();
-      if(!s || s[0]==='#') continue;
-      const p = s.split(/\s+/);
-      const c = p[0];
-      if(c === 'v'){
-        P.push(parseFloat(p[1])||0, parseFloat(p[2])||0, parseFloat(p[3])||0);
-      } else if(c === 'f'){
-        const ids = [];
-        let ok = true;
-        for(let k=1;k<p.length;k++){
-          const vi = parseInt(p[k].split('/')[0], 10);
-          if(isNaN(vi)){ ok = false; break; }
-          ids.push(vi < 0 ? Math.floor(P.length/3) + vi : vi - 1);
-        }
-        if(!ok || ids.length < 3) continue;
-        for(let k=2;k<ids.length;k++){
-          for(const id of [ids[0], ids[k-1], ids[k]]){
-            positions.push(P[id*3]||0, P[id*3+1]||0, P[id*3+2]||0);
-          }
-        }
-      }
-    }
-    const group = new THREE.Group();
-    if(positions.length >= 9){
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      g.computeVertexNormals();
-      group.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({
-        color: 0xB18AE0, roughness: 0.6, metalness: 0.1, side: THREE.DoubleSide
-      })));
-    }
-    return group;
-  }
-
-  function cmShowModelPreview(canvas, asset){
-    const W = 480, H = 360;
-    canvas.width = W; canvas.height = H;
-    const exts = /\.(glb|gltf|fbx|obj)$/i;
-    const ext = String(asset.name||'').split('.').pop().toLowerCase();
-    if(!exts.test(asset.name||'') || typeof THREE === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x14110E);
-    const camera = new THREE.PerspectiveCamera(45, W/H, 0.1, 500);
-    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(W, H);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-    const dl = new THREE.DirectionalLight(0xffffff, 1.0); dl.position.set(5,10,7); scene.add(dl);
-    const fl = new THREE.DirectionalLight(0xddeeff, 0.4); fl.position.set(-4,3,-3); scene.add(fl);
-    const controls = new THREE.OrbitControls(camera, canvas);
-    controls.enableDamping = true; controls.dampingFactor = 0.08;
-    controls.autoRotate = true; controls.autoRotateSpeed = 1.6;
-    let animId = null;
-    cmViewer = { stop(){ if(animId) cancelAnimationFrame(animId); try{ controls.dispose(); renderer.dispose(); }catch(e){} } };
-
-    function onModel(model){
-      try{
-        const box = new THREE.Box3().setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z) || 1;
-        const s = 2.4 / maxDim;
-        model.scale.setScalar(s);
-        model.position.sub(center.multiplyScalar(s));
-        if(ext === 'obj'){
-          model.traverse(function(child){ if(child.isMesh){ child.material = child.material || new THREE.MeshStandardMaterial({ color: 0xB18AE0, roughness: 0.6, metalness: 0.1 }); } });
-        } else {
-          model.traverse(function(child){
-            if(child.isMesh){
-              if(!child.material){
-                child.material = new THREE.MeshStandardMaterial({ color: 0xB18AE0, roughness: 0.6, metalness: 0.1 });
-              } else if(child.material.type && child.material.type !== 'MeshStandardMaterial'){
-                const col = child.material.color ? child.material.color.getHex() : 0xB18AE0;
-                child.material = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, metalness: 0.1, map: child.material.map || undefined });
-              }
-            }
-          });
-        }
-        scene.add(model);
-        camera.position.set(1.6, 1.2, 2.6);
-        controls.target.set(0, 0, 0);
-        function animate(){ animId = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
-        animate();
-      }catch(e){ onErr(e); }
-    }
-
-    function onErr(e){
-      console.error('[Conv preview]', e);
-      cmStopModelPreview();
-      cmModelPlaceholder(asset, 'Chargement du modèle impossible.');
-    }
-
-    if(asset.source==='library' && asset.url){
-      fetch(asset.url).then(r=>r.arrayBuffer()).then(buf=>{
-        try{
-          if(ext === 'obj'){
-            const group = parseOBJToGroup(new TextDecoder().decode(buf));
-            onModel(group);
-          } else if(ext === 'glb' || ext === 'gltf'){
-            if(typeof THREE.GLTFLoader === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
-            new THREE.GLTFLoader().parse(buf, '', gltf=>onModel(gltf.scene), onErr);
-          } else {
-            if(typeof THREE.FBXLoader === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
-            const group = new THREE.FBXLoader().parse(buf, '');
-            onModel(group);
-          }
-        }catch(e){ onErr(e); }
-      }).catch(onErr);
-    } else if(!window.forgeAPI.mediaPreview || !state.projectPath){ cmModelPlaceholder(asset, ''); return; }
-    else {
-    window.forgeAPI.mediaPreview(state.projectPath, asset.path).then(r=>{
-      if(!r || !r.dataUrl){ onErr('no data'); return; }
-      const b64 = (r.dataUrl.split(',')[1] || '').trim();
-      if(!b64){ onErr('empty'); return; }
-      try{
-        if(ext === 'obj'){
-          const group = parseOBJToGroup(b64ToText(b64));
-          onModel(group);
-        } else if(ext === 'glb' || ext === 'gltf'){
-          if(typeof THREE.GLTFLoader === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
-          new THREE.GLTFLoader().parse(b64ToArrayBuffer(b64), '', gltf=>onModel(gltf.scene), onErr);
-        } else {
-          if(typeof THREE.FBXLoader === 'undefined'){ cmModelPlaceholder(asset, ''); return; }
-          const group = new THREE.FBXLoader().parse(b64ToArrayBuffer(b64), '');
-          onModel(group);
-        }
-      }catch(e){ onErr(e); }
-    }).catch(onErr);
-    }
-  }
-
-  function convCount(d){
-    convCountVal = Math.min(8, Math.max(1, convCountVal + d));
-    document.getElementById('cmCountVal').textContent = convCountVal;
-  }
-
-  async function runConversion(){
-    if(!convPending){ return; }
-    const { asset } = convPending;
-    if(!state.projectPath){ alert('Aucun projet actif.'); return; }
-    const kind = 'img2model';
-    const prompt = document.getElementById('cmPrompt').value.trim()
-      || "Reproduire ce modèle à partir de l'image source";
-    document.getElementById('cmRunBtn').disabled = true;
-    const name = (asset.name||'asset').replace(/\.[^.]+$/,'');
-    const created = await window.forgeAPI.mediaCreateItem(state.projectPath, kind, name);
-    if(!created || created.error){
-      alert(created.error||'Erreur'); document.getElementById('cmRunBtn').disabled = false; return;
-    }
-    const opts = {
-      projectPath: state.projectPath,
-      kind: kind,
-      prompt: prompt,
-      count: convCountVal,
-      itemId: created.item.id,
-      baseImage: asset.path
-    };
-    const res = await window.forgeAPI.mediaGenerate(opts);
-    if(res && res.error){ alert(res.error); document.getElementById('cmRunBtn').disabled = false; return; }
-    closeConvModal();
-    startPolling();
-    await refresh();
   }
 
   // ── Helpers ──
@@ -1154,8 +670,7 @@
   // ── Keyboard ──
   document.addEventListener('keydown', e=>{
     if(e.key==='Escape'){
-      if(document.getElementById('convModal').classList.contains('open')) closeConvModal();
-      else if(document.getElementById('previewOverlay').classList.contains('open')) closePreview();
+      if(document.getElementById('previewOverlay').classList.contains('open')) closePreview();
       else if(document.getElementById('editModal').classList.contains('open')) closeEditModal();
     }
   });
