@@ -90,6 +90,8 @@ Les variables `FORGE_ASSETS_DIR`, `FORGE_SOUNDS_DIR` et `FORGE_MODELS_DIR` peuve
 
 Les sources locales sont la référence pour tout script géré par Forge.
 
+Chaque dossier Forge est associé à un unique `PlaceId` Roblox. Ne tente jamais de contourner cette association, de réutiliser le dossier pour une autre place ou de synchroniser dans une place différente. Si Forge indique que la place ouverte ne correspond pas au projet, demande à l'utilisateur d'ouvrir la place liée dans Studio. Les scripts d'une autre place doivent rester intacts dans cette autre place ; ils ne doivent pas être supprimés lors d'un changement de projet.
+
 - Pour corriger ou créer un script durable, édite uniquement le fichier correspondant dans `src/`. Forge détecte automatiquement le changement, effectue la compilation éventuelle, synchronise le script dans la place ouverte et réessaie après une déconnexion temporaire de Studio.
 - Ne déclenche pas manuellement la synchronisation d'un script géré par `src/` et n'utilise ni `set_script_source` ni `execute_luau` pour réinjecter son contenu : le pipeline automatique de Forge en est responsable.
 - Utilise les outils Studio pour inspecter la place, créer ou régler des instances, manipuler le terrain, placer des assets et tester le comportement.
@@ -199,7 +201,7 @@ Forge dispose d'une connexion OAuth 2.0 à Roblox Open Cloud qui permet de crée
 - Lister : `GET https://apis.roblox.com/game-passes/v1/universes/{universeId}/game-passes/creator`
 - Auth : Bearer token OAuth 2.0
 
-**Developer Products** (scope non encore ajouté —-demande à l'utilisateur de créer manuellement pour l'instant) :
+**Developer Products** (scope `developer-product:write` — disponible) :
 - Créer : `POST https://apis.roblox.com/developer-products/v2/universes/{universeId}/developer-products`
 - Modifier : `PATCH https://apis.roblox.com/developer-products/v2/universes/{universeId}/developer-products/{productId}`
 - Lister : `GET https://apis.roblox.com/developer-products/v2/universes/{universeId}/developer-products/creator`
@@ -208,7 +210,7 @@ Forge dispose d'une connexion OAuth 2.0 à Roblox Open Cloud qui permet de crée
 **Quand l'utilisateur demande de créer un game pass ou un dev product :**
 1. Vérifie d'abord via MCP (`get_place_info`) que le jeu est publié et récupère l'`universeId`.
 2. Si c'est un **game pass** : tente l'appel API via Forge (le token OAuth est disponible côté application). Crée le pass avec le nom, la description et le prix demandés. Indique l'ID retourné à l'utilisateur.
-3. Si c'est un **developer product** : pour l'instant, indique à l'utilisateur qu'il doit le créer manuellement via le Creator Dashboard (Monetization > Developer Products). Forge n'a pas encore le scope `dev-product:write`.
+3. Si c'est un **developer product** : tente l'appel API via Forge (le token OAuth est disponible côté application). Crée le produit avec le nom et le prix demandés. Indique l'ID retourné à l'utilisateur.
 4. Pour les deux cas, **côté serveur Roblox** (dans le code du jeu), utilise `MarketplaceService` :
    - Game Pass : `MarketplaceService:UserOwnsGamePass(userId, gamePassId)` pour vérifier la possession, `MarketplaceService:GetProductInfo(productID, Enum.InfoType.GamePass)` pour les infos.
    - Dev Product : `MarketplaceService:ProcessReceipt(receiptInfo)` pour traiter l'achat. Retourne `Enum.ProductPurchaseDecision.PurchaseGranted` quand l'objet est bien accordé.

@@ -1940,7 +1940,7 @@ ipcMain.handle('set-active-project', async (event, projectPath) => {
   const registry = loadProjectsRegistry();
   const proj = registry.find(p => p.path === projectPath);
   if (!proj) return { error: 'Projet inconnu' };
-  const association = await ensureProjectPlaceAssociation(proj.path);
+  const association = await ensureProjectPlaceAssociation(proj.path, { allowLink: true });
   if (association.error) return association;
   const activeProjectPath = userDataFile('active-project.json');
   const linkedProject = loadProjectsRegistry().find(item => item.path === proj.path) || proj;
@@ -2050,7 +2050,7 @@ async function getCurrentStudioPlaceInfo() {
   }
 }
 
-async function ensureProjectPlaceAssociation(projectPath) {
+async function ensureProjectPlaceAssociation(projectPath, options = {}) {
   const studio = await getCurrentStudioPlaceInfo();
   if (studio.error) return studio;
 
@@ -2061,6 +2061,12 @@ async function ensureProjectPlaceAssociation(projectPath) {
   if (decision.error) return decision;
 
   if (!decision.alreadyLinked) {
+    if (!options.allowLink) {
+      return {
+        error: 'Ce projet Forge ancien n’est pas encore lié. Ouvre sa place Roblox dans Studio puis sélectionne explicitement le projet depuis la page Projets.',
+        code: 'project-unlinked',
+      };
+    }
     project.linkedStudio = decision.link;
     saveProjectsRegistry(registry);
   }
