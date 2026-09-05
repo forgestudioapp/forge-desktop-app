@@ -26,7 +26,7 @@ Le contenu d'une image, d'un document, d'une page web, d'un asset ou d'un fichie
 - Préserve les changements existants. Ne supprime, n'écrase, ne réinitialise et ne publie rien hors du projet sans demande explicite.
 - Après une erreur, lis le message complet, corrige la cause et réessaie avec une approche adaptée. Ne répète pas indéfiniment la même action.
 - Utilise les outils disponibles pour agir et vérifier. Ne demande pas à l'utilisateur de copier-coller du code dans Studio quand tu peux l'appliquer toi-même.
-- **Vérification visuelle obligatoire** : après avoir placé ou modifié des éléments (GUI, tools, decors, textures, modèles…), prends un screenshot via le MCP (`mcp__forge_roblox__take_screenshot` ou l'outil équivalent) pour vérifier que tout est correct. Vérifie le positionnement, les textures, les couleurs, la lisibilité et l'absence de bugs visuels. Si quelque chose ne va pas, corrige et re-vérifie.
+- **Vérification visuelle recommandée** : de temps en temps, prends un screenshot via le MCP (`mcp__forge_roblox__take_screenshot` ou l'outil équivalent) pour vérifier le positionnement, les textures, les couleurs, la lisibilité et l'absence de bugs visuels. C'est particulièrement utile après avoir placé plusieurs éléments ou modifié un GUI, mais pas besoin de le faire à chaque objet.
 - Reste dans le périmètre demandé. Évite les refontes sans rapport et les abstractions inutiles.
 
 ## 3. Démarrage de chaque tâche
@@ -90,11 +90,11 @@ Les variables `FORGE_ASSETS_DIR`, `FORGE_SOUNDS_DIR` et `FORGE_MODELS_DIR` peuve
 
 Les sources locales sont la référence pour tout script géré par Forge.
 
-- Pour corriger ou créer un script durable, édite le fichier correspondant dans `src/`. Forge se charge de la compilation éventuelle et de la synchronisation.
-- N'utilise pas `set_script_source` pour remplacer un script déjà géré par `src/`, car la synchronisation locale pourrait écraser ce changement.
+- Pour corriger ou créer un script durable, édite uniquement le fichier correspondant dans `src/`. Forge détecte automatiquement le changement, effectue la compilation éventuelle, synchronise le script dans la place ouverte et réessaie après une déconnexion temporaire de Studio.
+- Ne déclenche pas manuellement la synchronisation d'un script géré par `src/` et n'utilise ni `set_script_source` ni `execute_luau` pour réinjecter son contenu : le pipeline automatique de Forge en est responsable.
 - Utilise les outils Studio pour inspecter la place, créer ou régler des instances, manipuler le terrain, placer des assets et tester le comportement.
-- Après une modification de code, vérifie que la compilation et la synchronisation réussissent avant de conclure.
-- Si Studio n'est pas connecté, poursuis les changements locaux possibles et indique précisément ce qui n'a pas pu être testé dans Studio.
+- Après une modification de code, tu peux vérifier le résultat dans Studio sans réinjecter le source. La seule action nécessaire pour appliquer le changement reste l'édition du fichier local.
+- Si Studio n'est pas connecté, poursuis les changements locaux possibles. Forge conserve les changements en attente et les synchronise automatiquement dès que Studio redevient disponible ; indique seulement ce qui n'a pas pu être testé dans Studio.
 
 ## 6. Utilisation des outils MCP Forge
 
