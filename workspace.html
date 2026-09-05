@@ -535,10 +535,24 @@ async function loadProject(){
   try{
     const res=await window.forgeAPI.getActiveProject();
     if(res.project){
+      if(res.syncBlocked){
+        activeProject=null;
+        document.getElementById('projectPillText').textContent='Place incorrecte';
+        document.getElementById('projectPill').title=res.syncBlocked;
+        showToast(res.syncBlocked);
+        return;
+      }
       activeProject=res.project;
       document.getElementById('projectPillText').textContent=res.project.name;
       document.getElementById('projectPill').title=res.project.path;
-      if(window.forgeAPI.startFileSync) window.forgeAPI.startFileSync(res.project.path);
+      if(window.forgeAPI.startFileSync){
+        const syncResult=await window.forgeAPI.startFileSync(res.project.path);
+        if(syncResult&&syncResult.error){
+          activeProject=null;
+          showToast(syncResult.error);
+          return;
+        }
+      }
       if(document.getElementById('assetsSidebar').classList.contains('open')) refreshSidebar();
     }
   }catch(e){console.error('loadProject',e);}

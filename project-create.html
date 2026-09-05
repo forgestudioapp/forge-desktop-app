@@ -159,6 +159,9 @@
       <label>Project Name</label>
       <input type="text" id="projectNameInput" placeholder="my-awesome-project" autocomplete="off">
     </div>
+    <p style="max-width:460px;margin:-6px 0 20px;color:var(--smoke);font-size:12px;line-height:1.6;">
+      Ouvre et publie d’abord la nouvelle place dans Roblox Studio. Forge associera définitivement ce dossier à son PlaceId.
+    </p>
     <button class="create-btn" id="createBtn">Create Project →</button>
   </div>
 
@@ -296,6 +299,7 @@
     const total = 6;
     let projectPath = null;
     let projectAdminUserId = 0;
+    let projectLinkedStudio = null;
     let hasError = false;
 
     // --- Etape 0 : Verifier Roblox Studio ---
@@ -349,6 +353,7 @@
         } else {
           projectPath = result.path;
           projectAdminUserId = result.adminUserId || 0;
+          projectLinkedStudio = result.linkedStudio || null;
           setStepLine('s1', 's1t', 'done', 'Projet cree dans ' + result.path);
           done++; updateProgress(done, total);
         }
@@ -369,9 +374,13 @@
       if(projectPath && window.forgeAPI && window.forgeAPI.getActiveProject){
         const active = await window.forgeAPI.getActiveProject();
         if(active.project && active.project.path === projectPath){
-          const adminLabel = projectAdminUserId
-            ? 'Panneau admin lie a Roblox ID ' + projectAdminUserId
-            : 'Panneau admin lie au createur de la place';
+          const linkedPlace = projectLinkedStudio;
+          const placeLabel = linkedPlace
+            ? linkedPlace.placeName + ' · PlaceId ' + linkedPlace.placeId
+            : 'place Roblox ouverte';
+          const adminLabel = (projectAdminUserId
+            ? 'Admin Roblox ID ' + projectAdminUserId
+            : 'Admin lie au createur de la place') + ' · ' + placeLabel;
           setStepLine('s2', 's2t', 'done', adminLabel);
           done++; updateProgress(done, total);
         } else {
