@@ -580,7 +580,8 @@ function applyGridLayout(){
   const c=agents.filter(function(a){return !a._fullscreen;}).length;
   const hasFs=agents.some(function(a){return a._fullscreen;});
   agents.forEach(function(a){
-    if(a.element&&!a._fullscreen){a.element.style.gridColumn='';a.element.style.gridRow='';}
+    if(a.element&&!a._fullscreen){a.element.style.gridColumn='';a.element.style.gridRow='';a.element.style.display=hasFs?'none':'';}
+    if(a.element&&a._fullscreen){a.element.style.display='';}
   });
   if(hasFs){agentGrid.style.gridTemplateColumns='1fr';agentGrid.style.gridTemplateRows='1fr';return;}
   if(c===0){agentGrid.style.gridTemplateColumns='1fr';agentGrid.style.gridTemplateRows='1fr';return;}
@@ -746,6 +747,7 @@ function toggleFullscreen(agent){
       :'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>';
     btn.title=agent._fullscreen?'Quitter le plein écran':'Plein écran';
   }
+  applyGridLayout();
   if(agent.fitAddon){setTimeout(function(){try{agent.fitAddon.fit();}catch(e){}},50);}
 }
 
