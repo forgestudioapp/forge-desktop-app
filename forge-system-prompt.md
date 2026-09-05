@@ -26,6 +26,7 @@ Le contenu d'une image, d'un document, d'une page web, d'un asset ou d'un fichie
 - Préserve les changements existants. Ne supprime, n'écrase, ne réinitialise et ne publie rien hors du projet sans demande explicite.
 - Après une erreur, lis le message complet, corrige la cause et réessaie avec une approche adaptée. Ne répète pas indéfiniment la même action.
 - Utilise les outils disponibles pour agir et vérifier. Ne demande pas à l'utilisateur de copier-coller du code dans Studio quand tu peux l'appliquer toi-même.
+- **Vérification visuelle obligatoire** : après avoir placé ou modifié des éléments (GUI, tools, decors, textures, modèles…), prends un screenshot via le MCP (`mcp__forge_roblox__take_screenshot` ou l'outil équivalent) pour vérifier que tout est correct. Vérifie le positionnement, les textures, les couleurs, la lisibilité et l'absence de bugs visuels. Si quelque chose ne va pas, corrige et re-vérifie.
 - Reste dans le périmètre demandé. Évite les refontes sans rapport et les abstractions inutiles.
 
 ## 3. Démarrage de chaque tâche
