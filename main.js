@@ -21,6 +21,7 @@ const {
 const { syncForgeAgentInstructions } = require('./lib/forge-instructions');
 const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('./lib/file-sync');
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
+const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
 const {
   buildRobloxAuthorizationUrl,
   parseRobloxOAuthCallback,
@@ -105,7 +106,7 @@ function saveProjectsRegistry(projects) {
   fs.writeFileSync(getProjectsRegistryPath(), JSON.stringify(projects, null, 2));
 }
 
-function addProjectToRegistry(name, projectPath) {
+function addProjectToRegistry(name, projectPath, linkedStudio = null) {
   const registry = loadProjectsRegistry();
   const existing = registry.find(p => p.path === projectPath);
   if (!existing) {
@@ -113,7 +114,7 @@ function addProjectToRegistry(name, projectPath) {
       name,
       path: projectPath,
       createdAt: new Date().toISOString(),
-      linkedStudio: null
+      linkedStudio
     });
     saveProjectsRegistry(registry);
   }
@@ -1805,6 +1806,11 @@ ipcMain.handle('create-project', async (event, projectName, language) => {
     const projectDir = path.join(projectsRoot, projectName);
     if (fs.existsSync(projectDir)) return { error: 'Un dossier avec ce nom existe deja' };
 
+    const studio = await getCurrentStudioPlaceInfo();
+    if (studio.error) return studio;
+    const placeDecision = evaluateProjectPlaceLink(loadProjectsRegistry(), projectDir, studio.place);
+    if (placeDecision.error) return placeDecision;
+
     const isTypeScript = language === 'typescript';
     let robloxAdminUserId = 0;
     try {
@@ -1893,10 +1899,15 @@ print("[Forge] Projet '${projectName}' charge !")
     console.log('[Forge Admin] Panneau personnel initialise pour:', adminScaffold.adminUserId || 'createur de la place');
 
     const activeProjectPath = userDataFile('active-project.json');
-    fs.writeFileSync(activeProjectPath, JSON.stringify({ name: projectName, path: projectDir, language: language || 'lua' }));
+    fs.writeFileSync(activeProjectPath, JSON.stringify({
+      name: projectName,
+      path: projectDir,
+      language: language || 'lua',
+      linkedStudio: placeDecision.link,
+    }));
 
+    addProjectToRegistry(projectName, projectDir, placeDecision.link);
     startFileSync(projectDir);
-    addProjectToRegistry(projectName, projectDir);
 
     return {
       success: true,
@@ -1904,6 +1915,7 @@ print("[Forge] Projet '${projectName}' charge !")
       language: language || 'lua',
       adminUserId: adminScaffold.adminUserId,
       adminAccessMode: adminScaffold.adminUserId > 0 ? 'roblox-user' : 'place-creator',
+      linkedStudio: placeDecision.link,
     };
   } catch (err) { return { error: err.message }; }
 });
@@ -1912,8 +1924,12 @@ ipcMain.handle('get-active-project', async () => {
   const activePath = userDataFile('active-project.json');
   if (!fs.existsSync(activePath)) return { project: null };
   const project = JSON.parse(fs.readFileSync(activePath, 'utf8'));
-  if (project && project.path) startFileSync(project.path);
-  return { project };
+  if (!project || !project.path) return { project: null };
+  const association = await ensureProjectPlaceAssociation(project.path);
+  if (association.error) return { project, syncBlocked: association.error, syncBlockedCode: association.code };
+  startFileSync(project.path);
+  const registered = loadProjectsRegistry().find(item => item.path === project.path);
+  return { project: registered || project };
 });
 
 ipcMain.handle('list-projects', async () => {
@@ -1924,10 +1940,17 @@ ipcMain.handle('set-active-project', async (event, projectPath) => {
   const registry = loadProjectsRegistry();
   const proj = registry.find(p => p.path === projectPath);
   if (!proj) return { error: 'Projet inconnu' };
+  const association = await ensureProjectPlaceAssociation(proj.path);
+  if (association.error) return association;
   const activeProjectPath = userDataFile('active-project.json');
-  fs.writeFileSync(activeProjectPath, JSON.stringify({ name: proj.name, path: proj.path }));
+  const linkedProject = loadProjectsRegistry().find(item => item.path === proj.path) || proj;
+  fs.writeFileSync(activeProjectPath, JSON.stringify({
+    name: linkedProject.name,
+    path: linkedProject.path,
+    linkedStudio: linkedProject.linkedStudio,
+  }));
   startFileSync(proj.path);
-  return { success: true, project: proj };
+  return { success: true, project: linkedProject };
 });
 
 ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
@@ -2003,6 +2026,45 @@ function ensureMediaFolder(projectPath, folder) {
   const dir = path.join(projectPath, folder);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+function parseMcpJsonResult(result) {
+  for (const item of (result && result.content) || []) {
+    if (!item || typeof item.text !== 'string') continue;
+    try { return JSON.parse(item.text); } catch (_) {}
+  }
+  return null;
+}
+
+async function getCurrentStudioPlaceInfo() {
+  try {
+    const result = await syncMcpCallTool('get_place_info', {}, 5000);
+    const place = parseMcpJsonResult(result);
+    if (!place) throw new Error('Réponse de Studio invalide');
+    return { success: true, place };
+  } catch (err) {
+    return {
+      error: 'Impossible d’identifier la place Roblox ouverte. Ouvre la place dans Studio et vérifie que le plugin Forge est connecté. Détail : ' + err.message,
+      code: 'studio-unavailable',
+    };
+  }
+}
+
+async function ensureProjectPlaceAssociation(projectPath) {
+  const studio = await getCurrentStudioPlaceInfo();
+  if (studio.error) return studio;
+
+  const registry = loadProjectsRegistry();
+  const project = registry.find(item => canonicalProjectPath(item.path) === canonicalProjectPath(projectPath));
+  if (!project) return { error: 'Ce dossier n’est pas enregistré comme projet Forge.', code: 'project-unknown' };
+  const decision = evaluateProjectPlaceLink(registry, projectPath, studio.place);
+  if (decision.error) return decision;
+
+  if (!decision.alreadyLinked) {
+    project.linkedStudio = decision.link;
+    saveProjectsRegistry(registry);
+  }
+  return decision;
 }
 
 function resolveMediaSource(projectPath, source) {
@@ -3759,6 +3821,11 @@ async function flushPendingScriptSyncs() {
   if (fileSyncFlushInProgress || pendingScriptSyncs.size === 0) return;
   fileSyncFlushInProgress = true;
   try {
+    const association = await ensureProjectPlaceAssociation(currentSyncProjectPath);
+    if (association.error) {
+      console.warn('[FileSync] Synchronisation bloquee:', association.error);
+      return;
+    }
     while (pendingScriptSyncs.size > 0) {
       const [key, job] = pendingScriptSyncs.entries().next().value;
       if (!job || job.projectPath !== currentSyncProjectPath) {
@@ -3909,8 +3976,10 @@ async function syncScriptToStudio(filename, source) {
 }
 
 ipcMain.handle('start-file-sync', async (event, projectPath) => {
+  const association = await ensureProjectPlaceAssociation(projectPath);
+  if (association.error) return association;
   startFileSync(projectPath);
-  return { success: true };
+  return { success: true, linkedStudio: association.link };
 });
 
 ipcMain.handle('stop-file-sync', async () => {

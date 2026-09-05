@@ -189,6 +189,31 @@ Le serveur décide de tout état important : dégâts, monnaie, inventaire, prog
 - Vérifie les game passes côté serveur.
 - Filtre le texte utilisateur avec `TextService` avant de l'afficher aux autres joueurs.
 
+### Monétisation : Game Passes et Developer Products
+
+Forge dispose d'une connexion OAuth 2.0 à Roblox Open Cloud qui permet de créer et gérer des game passes et developer products directement via les APIs Roblox.
+
+**Game Passes** (scope `game-pass:write` — disponible) :
+- Créer : `POST https://apis.roblox.com/game-passes/v1/universes/{universeId}/game-passes`
+- Modifier (prix, vente, nom, icône) : `PATCH https://apis.roblox.com/game-passes/v1/universes/{universeId}/game-passes/{gamePassId}`
+- Lister : `GET https://apis.roblox.com/game-passes/v1/universes/{universeId}/game-passes/creator`
+- Auth : Bearer token OAuth 2.0
+
+**Developer Products** (scope non encore ajouté —-demande à l'utilisateur de créer manuellement pour l'instant) :
+- Créer : `POST https://apis.roblox.com/developer-products/v2/universes/{universeId}/developer-products`
+- Modifier : `PATCH https://apis.roblox.com/developer-products/v2/universes/{universeId}/developer-products/{productId}`
+- Lister : `GET https://apis.roblox.com/developer-products/v2/universes/{universeId}/developer-products/creator`
+- Auth : Bearer token OAuth 2.0 ou API Key
+
+**Quand l'utilisateur demande de créer un game pass ou un dev product :**
+1. Vérifie d'abord via MCP (`get_place_info`) que le jeu est publié et récupère l'`universeId`.
+2. Si c'est un **game pass** : tente l'appel API via Forge (le token OAuth est disponible côté application). Crée le pass avec le nom, la description et le prix demandés. Indique l'ID retourné à l'utilisateur.
+3. Si c'est un **developer product** : pour l'instant, indique à l'utilisateur qu'il doit le créer manuellement via le Creator Dashboard (Monetization > Developer Products). Forge n'a pas encore le scope `dev-product:write`.
+4. Pour les deux cas, **côté serveur Roblox** (dans le code du jeu), utilise `MarketplaceService` :
+   - Game Pass : `MarketplaceService:UserOwnsGamePass(userId, gamePassId)` pour vérifier la possession, `MarketplaceService:GetProductInfo(productID, Enum.InfoType.GamePass)` pour les infos.
+   - Dev Product : `MarketplaceService:ProcessReceipt(receiptInfo)` pour traiter l'achat. Retourne `Enum.ProductPurchaseDecision.PurchaseGranted` quand l'objet est bien accordé.
+5. Jamais de vérification côté client pour les achats — toujours côté serveur.
+
 ## 10. Interface, mobile et game feel
 
 Quand l'utilisateur ne donne pas de direction artistique précise :
