@@ -199,7 +199,7 @@
     <div class="section-label">MISE EN PLACE DU PROJET</div>
     <div class="steps-box">
       <div class="step-line"><div class="step-icon pending" id="s1">○</div><div class="step-text pending" id="s1t">Synchronisation du code</div></div>
-      <div class="step-line"><div class="step-icon pending" id="s2">○</div><div class="step-text pending" id="s2t">Outils Roblox</div></div>
+      <div class="step-line"><div class="step-icon pending" id="s2">○</div><div class="step-text pending" id="s2t">Panneau admin personnel</div></div>
       <div class="step-line"><div class="step-icon pending" id="s3">○</div><div class="step-text pending" id="s3t">Dependances</div></div>
       <div class="step-line"><div class="step-icon pending" id="s4">○</div><div class="step-text pending" id="s4t">Paquets Roblox</div></div>
       <div class="step-line"><div class="step-icon pending" id="s5">○</div><div class="step-text pending" id="s5t">Compilation</div></div>
@@ -295,6 +295,7 @@
     let done = 0;
     const total = 6;
     let projectPath = null;
+    let projectAdminUserId = 0;
     let hasError = false;
 
     // --- Etape 0 : Verifier Roblox Studio ---
@@ -347,6 +348,7 @@
           hasError = true;
         } else {
           projectPath = result.path;
+          projectAdminUserId = result.adminUserId || 0;
           setStepLine('s1', 's1t', 'done', 'Projet cree dans ' + result.path);
           done++; updateProgress(done, total);
         }
@@ -361,13 +363,16 @@
     }
     await new Promise(r => setTimeout(r, 400));
 
-    // --- Etape 3 : Outils Roblox ---
-    setStepLine('s2', 's2t', 'spin', 'Verification de la structure…');
+    // --- Etape 3 : Panneau admin personnel ---
+    setStepLine('s2', 's2t', 'spin', 'Configuration du panneau admin…');
     try {
       if(projectPath && window.forgeAPI && window.forgeAPI.getActiveProject){
         const active = await window.forgeAPI.getActiveProject();
         if(active.project && active.project.path === projectPath){
-          setStepLine('s2', 's2t', 'done', 'Structure src/ initialisee');
+          const adminLabel = projectAdminUserId
+            ? 'Panneau admin lie a Roblox ID ' + projectAdminUserId
+            : 'Panneau admin lie au createur de la place';
+          setStepLine('s2', 's2t', 'done', adminLabel);
           done++; updateProgress(done, total);
         } else {
           setStepLine('s2', 's2t', 'done', 'Structure verifiee');

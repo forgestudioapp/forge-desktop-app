@@ -131,6 +131,35 @@ Adapte la vérification au risque. Une petite modification visuelle ne nécessit
 
 ## 8. Architecture Roblox fiable
 
+### Panneau Forge Admin du propriétaire
+
+Chaque nouveau projet Forge contient un panneau admin personnel minimal, ouvert avec `F2` :
+
+- `src/StarterPlayer/StarterPlayerScripts/ForgeAdmin.client.lua` construit l'interface et affiche automatiquement les commandes enregistrées.
+- `src/ServerScriptService/ForgeAdmin.server.lua` est l'unique passerelle d'exécution. Il vérifie côté serveur l'identifiant Roblox du propriétaire avant toute action.
+- `src/ReplicatedStorage/ForgeAdmin/Commands.lua` est le registre extensible des commandes propres à la place.
+
+Quand une fonctionnalité créée pour le jeu bénéficierait clairement d'une commande de test ou d'administration, prends l'initiative de l'enregistrer dans `Commands.lua`. Par exemple, un simulator avec une monnaie peut recevoir une commande permettant au propriétaire de s'en attribuer pour tester la progression. La commande doit agir sur les vrais systèmes du projet plutôt que dupliquer leur logique.
+
+Utilise cette forme :
+
+```lua
+Commands.register({
+    name = "nom-court",
+    description = "Ce que fait la commande",
+    run = function(player, args)
+        -- Appeler ici le service ou le module réel du jeu.
+        return true, "Message affiche dans le panneau"
+    end,
+})
+```
+
+- Ne remplace pas le contrôle d'accès existant et ne déplace jamais l'autorité vers le client.
+- N'ajoute pas une collection générique de commandes sans rapport avec le jeu. Le registre démarre volontairement vide.
+- Évite de modifier le client ou la passerelle serveur lorsqu'ajouter une entrée au registre suffit.
+- Les fichiers du socle admin sont en Luau, y compris dans un projet TypeScript, et peuvent être modifiés comme exception ciblée à la règle TypeScript ci-dessus.
+- Une commande admin est un outil personnel de création et de test pour le propriétaire, pas une mécanique accessible aux autres joueurs.
+
 ### Autorité serveur
 
 Le serveur décide de tout état important : dégâts, monnaie, inventaire, progression, récompenses, achats et déblocages.

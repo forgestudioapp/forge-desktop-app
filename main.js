@@ -20,6 +20,7 @@ const {
 } = require('./lib/notification-store');
 const { syncForgeAgentInstructions } = require('./lib/forge-instructions');
 const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('./lib/file-sync');
+const { writeAdminScaffold } = require('./lib/admin-scaffold');
 const {
   buildRobloxAuthorizationUrl,
   parseRobloxOAuthCallback,
@@ -1805,6 +1806,13 @@ ipcMain.handle('create-project', async (event, projectName, language) => {
     if (fs.existsSync(projectDir)) return { error: 'Un dossier avec ce nom existe deja' };
 
     const isTypeScript = language === 'typescript';
+    let robloxAdminUserId = 0;
+    try {
+      const robloxAuth = await getRobloxAuth();
+      robloxAdminUserId = robloxAuth && robloxAuth.userId ? robloxAuth.userId : 0;
+    } catch (authError) {
+      console.warn('[Forge Admin] Identifiant Roblox indisponible, utilisation du createur de la place:', authError.message);
+    }
 
     if (isTypeScript) {
       // Copier le template TypeScript
@@ -1881,13 +1889,22 @@ print("[Forge] Projet '${projectName}' charge !")
       fs.writeFileSync(path.join(projectDir, 'src', 'ServerScriptService', 'main.lua'), mainLua);
     }
 
+    const adminScaffold = writeAdminScaffold(projectDir, robloxAdminUserId);
+    console.log('[Forge Admin] Panneau personnel initialise pour:', adminScaffold.adminUserId || 'createur de la place');
+
     const activeProjectPath = userDataFile('active-project.json');
     fs.writeFileSync(activeProjectPath, JSON.stringify({ name: projectName, path: projectDir, language: language || 'lua' }));
 
     startFileSync(projectDir);
     addProjectToRegistry(projectName, projectDir);
 
-    return { success: true, path: projectDir, language: language || 'lua' };
+    return {
+      success: true,
+      path: projectDir,
+      language: language || 'lua',
+      adminUserId: adminScaffold.adminUserId,
+      adminAccessMode: adminScaffold.adminUserId > 0 ? 'roblox-user' : 'place-creator',
+    };
   } catch (err) { return { error: err.message }; }
 });
 
