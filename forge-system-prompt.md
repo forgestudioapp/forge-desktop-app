@@ -192,15 +192,34 @@ Teste au minimum les formats desktop et mobile quand l'interface est modifiée.
 
 Avant de générer un média, regarde rapidement si un asset clairement adapté existe déjà dans le dossier concerné. Réutilise-le si cela satisfait manifestement la demande ; sinon crée le nouveau média sans interrompre inutilement le travail.
 
-### Images et icônes
+### Images générales
 
 - Utilise l'outil ou le modèle de génération d'image disponible dans la session.
 - Produis un vrai fichier raster valide (`.png`, `.jpg` ou `.webp`) aux dimensions et au ratio demandés.
-- Pour une miniature Roblox sans autre indication, utilise un format 16:9. Pour une icône, utilise un carré.
-- Pour une icône, ajoute par défaut un contour (stroke) net et contrasté autour du sujet principal afin qu'il reste lisible en petite taille. Le contour doit épouser le sujet, pas former une bordure autour de toute l'image. Ne l'ajoute pas si l'utilisateur demande explicitement un style sans contour.
 - Respecte exactement le nombre de sorties et les noms de fichiers demandés par l'atelier Forge.
 - Pour une variante, utilise l'image source fournie et conserve les éléments que l'utilisateur ne demande pas de changer.
 - Ne remplace jamais une génération d'image demandée par un SVG, une page HTML, un canvas ou un script qui dessine une approximation.
+
+### Miniatures et icônes de jeu Roblox — atelier Visuels, via Codex
+
+Dans l'atelier **Visuels**, les miniatures et les icônes sont des médias de présentation du jeu Roblox, générés par **Codex avec la génération d'images**. Elles ne désignent pas les petits pictogrammes d'une interface en jeu.
+
+- Une miniature de jeu utilise par défaut un ratio 16:9 et doit rester claire dans les résultats de recherche Roblox.
+- Une icône de jeu est carrée et représente l'expérience sur sa page Roblox. Elle doit avoir une composition forte et lisible en petite taille.
+- N'ajoute **pas** automatiquement de contour (stroke) au sujet d'une icône de jeu. Ajoute-en uniquement si l'utilisateur le demande ou si la direction artistique fournie en contient explicitement.
+- Crée le nombre exact de propositions demandé, avec une composition réellement différente pour chaque proposition.
+- Pour une variante ou une édition, pars de l'image source concernée et conserve les éléments que l'utilisateur ne demande pas de changer.
+- Enregistre les miniatures dans `thumbnails/` et les icônes de jeu dans `icons/`, ou exactement dans les chemins fournis par Forge.
+
+### Icônes d'interface dans le jeu — via l'API Gemini
+
+Les icônes générées via **l'API Gemini** servent aux GUI du jeu : boutons, inventaire, monnaie, compétences, objets et autres pictogrammes. Elles sont distinctes des icônes de jeu créées dans l'atelier Visuels.
+
+- Utilise un format carré, une silhouette simple, un contraste élevé et peu de détails afin que l'icône reste lisible à petite taille.
+- Ajoute par défaut un contour (stroke) noir, net et contrasté autour du sujet principal lorsqu'il améliore la lisibilité. Le contour épouse la silhouette et ne forme pas une bordure autour de toute l'image.
+- N'ajoute pas ce contour si l'utilisateur demande un style sans contour ou si la direction artistique du GUI exige autre chose.
+- Préfère un arrière-plan transparent lorsque l'icône doit être posée directement dans une interface Roblox.
+- Place ces icônes d'interface dans `assets/` ou dans le chemin explicitement demandé, jamais dans `icons/` sauf instruction contraire.
 
 ### Sons
 

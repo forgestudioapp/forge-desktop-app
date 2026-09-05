@@ -6,10 +6,18 @@ const { spawn, execFile } = require('child_process');
 const { canonicalExistingPath, isPathInside, isExistingDirectoryWithinRoots } = require('./lib/path-security');
 const {
   buildCodexExec,
+  buildCodexMediaInstructions,
   findMediaItem,
   findMediaEntry,
   normalizeMediaPath,
 } = require('./lib/media-generation');
+const {
+  readNotifications,
+  writeNotifications,
+  appendNotification,
+  updateNotification,
+  deleteNotification,
+} = require('./lib/notification-store');
 const { syncForgeAgentInstructions } = require('./lib/forge-instructions');
 const {
   buildRobloxAuthorizationUrl,
@@ -192,6 +200,9 @@ class AgentManager {
         if (sess) {
           sess.exitCode = code;
           sess.endTime = Date.now();
+          // Les générations de l'atelier Visuels doivent se terminer même si
+          // l'utilisateur a quitté la page qui effectuait le polling.
+          setTimeout(() => finalizeCodexMediaSession(sess.projectPath, sessionId), 750);
         }
       });
 
@@ -466,14 +477,12 @@ ipcMain.handle('load-agent-state', async () => {
     const p = userDataFile('agents-state.json');
     if (!fs.existsSync(p)) return { agents: [] };
     const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-    // Verifier que les sessions PTY existent encore
-    const alive = [];
-    for (const a of (data.agents || [])) {
-      if (a.sessionId && PTYS.has(a.sessionId)) {
-        alive.push(a);
-      }
-    }
-    return { agents: alive };
+    // Conserver les panneaux en attente et ne rattacher que les PTY encore actifs.
+    const restored = (data.agents || []).map((agent) => ({
+      ...agent,
+      sessionId: agent.sessionId && PTYS.has(agent.sessionId) ? agent.sessionId : null,
+    }));
+    return { ...data, agents: restored };
   } catch (err) {
     console.error('[Agents] Erreur chargement etat:', err.message);
     return { agents: [] };
@@ -1925,10 +1934,11 @@ ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
 //  - Conversion 2D→3D et 3D→2D : API Tripo3D (clé `tripo`).
 const MEDIA_KINDS = {
   thumb:     { folder: 'thumbnails',  exts: ['.jpg', '.png', '.webp'],      label: 'Miniatures' },
-  icon:      { folder: 'icons',       exts: ['.png', '.jpg', '.webp', '.svg'], label: 'Icônes' },
+  icon:      { folder: 'icons',       exts: ['.png', '.jpg', '.webp', '.svg'], label: 'Icônes de jeu' },
   img2model: { folder: 'conversions', exts: ['.glb', '.fbx', '.obj'],        label: '2D → 3D' },
   model2img: { folder: 'conversions', exts: ['.png', '.jpg', '.webp'],       label: '3D → 2D' }
 };
+const notifiedMediaJobs = new Set();
 
 function mediaManifestPath(projectPath) {
   return path.join(projectPath, '.forge-media', 'manifest.json');
@@ -2051,22 +2061,14 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
   entry.startedAt = Date.now();
   saveMediaManifest(projectPath, manifest);
 
-  const instructions = [
-    `Utilise obligatoirement la compétence imagegen et l'outil de génération d'images de Codex.`,
-    `Tu es l'outil d'illustration de Forge, un éditeur de jeux Roblox.`,
-    `Crée exactement ${n} image(s) distincte(s) de type « ${info.label} ».`,
-    `Sujet demandé : ${prompt || '(sujet libre)'}.`,
-    sourceImage
-      ? `L'image jointe est la source à modifier. Respecte sa composition sauf pour les changements demandés.`
-      : `Il s'agit d'une création originale sans image source.`,
-    kind === 'icon'
-      ? `Chaque résultat doit être une icône carrée, lisible en petit format, en PNG. Ajoute un contour (stroke) net et contrasté autour du sujet principal, qui épouse sa silhouette sans former une bordure autour de toute l'image, sauf si la demande exige explicitement un style sans contour.`
-      : `Chaque résultat doit être une miniature Roblox au format 16:9, en PNG.`,
-    `Enregistre ou copie les résultats exactement vers ces chemins, un fichier différent par chemin :`,
-    ...outputPaths.map((outputPath, index) => `${index + 1}. ${outputPath}`),
-    `Vérifie que les ${n} fichiers existent avant de terminer.`,
-    `Ne crée pas de faux visuel avec SVG, HTML, canvas ou un script de dessin : utilise bien la génération d'images Codex.`
-  ].join('\n');
+  const instructions = buildCodexMediaInstructions({
+    kind,
+    label: info.label,
+    prompt,
+    count: n,
+    sourceImage,
+    outputPaths,
+  });
   const res = await agentManager.launch(agentType, projectPath, instructions, {
     skipMcp: true,
     skipForgeInstructions: true,
@@ -2112,6 +2114,59 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
   if (manifest.jobs.length > 50) manifest.jobs = manifest.jobs.slice(-50);
   saveMediaManifest(projectPath, manifest);
   return { sessionId: res.sessionId, jobId: generationId, method: 'codex', message: 'Génération Codex lancée' };
+}
+
+function generatedFilesForCodexJob(projectPath, job) {
+  const info = MEDIA_KINDS[job.kind];
+  if (!info) return [];
+  return listMediaFiles(projectPath, info.folder, info.exts)
+    .filter(file => file.name.startsWith(job.outputPrefix || ''))
+    .map(file => normalizeMediaPath(path.join(info.folder, file.name)));
+}
+
+function notifyCodexMediaJobOnce(projectPath, job, generated) {
+  if (job.notified || notifiedMediaJobs.has(job.id)) return;
+  notifiedMediaJobs.add(job.id);
+  notifyMediaDone(projectPath, job.kind, generated[generated.length - 1], job.prompt, job.status === 'failed');
+  job.notified = true;
+}
+
+function finalizeCodexMediaSession(projectPath, sessionId) {
+  try {
+    if (!projectPath || !sessionId || !fs.existsSync(projectPath)) return;
+    const manifest = loadMediaManifest(projectPath);
+    const matchingJobs = (manifest.jobs || []).filter(job =>
+      job.method === 'codex' && job.sessionId === sessionId &&
+      job.status !== 'done' && job.status !== 'partial' && job.status !== 'failed'
+    );
+    if (!matchingJobs.length) return;
+
+    for (const job of matchingJobs) {
+      const generated = generatedFilesForCodexJob(projectPath, job);
+      const expected = job.expectedCount || 1;
+      if (generated.length >= expected) job.status = 'done';
+      else if (generated.length) {
+        job.status = 'partial';
+        job.error = `Codex a créé ${generated.length} image(s) sur ${expected}.`;
+      } else {
+        const agentStatus = agentManager.getStatus(sessionId);
+        job.status = 'failed';
+        job.error = agentStatus.error || agentStatus.outputTail || `Codex s'est arrêté sans créer d'image (code ${agentStatus.exitCode ?? 'inconnu'}).`;
+      }
+      job.finishedAt = Date.now();
+      const entry = findMediaEntry(manifest, job.kind, job.itemId, job.variantId);
+      if (entry) {
+        entry.files = Array.from(new Set([...(entry.files || []), ...generated]));
+        entry.status = job.status;
+        entry.error = job.error || null;
+        entry.finishedAt = job.finishedAt;
+      }
+      notifyCodexMediaJobOnce(projectPath, job, generated);
+    }
+    saveMediaManifest(projectPath, manifest);
+  } catch (error) {
+    console.error('[Media] Finalisation Codex en arrière-plan :', error.message);
+  }
 }
 
 // Tripo3D V2 (docs.tripo3d.ai) :
@@ -2292,12 +2347,7 @@ ipcMain.handle('media-poll', async (event, projectPath) => {
         }
 
         const entry = findMediaEntry(manifest, job.kind, job.itemId, job.variantId);
-        const info = MEDIA_KINDS[job.kind];
-        const generated = info
-          ? listMediaFiles(projectPath, info.folder, info.exts)
-            .filter(file => file.name.startsWith(job.outputPrefix || ''))
-            .map(file => normalizeMediaPath(path.join(info.folder, file.name)))
-          : [];
+        const generated = generatedFilesForCodexJob(projectPath, job);
 
         if (entry && generated.length) {
           entry.files = Array.from(new Set([...(entry.files || []), ...generated]));
@@ -2327,10 +2377,7 @@ ipcMain.handle('media-poll', async (event, projectPath) => {
             entry.error = job.error || null;
             entry.finishedAt = job.finishedAt;
           }
-          if (!job.notified) {
-            notifyMediaDone(projectPath, job.kind, generated[generated.length - 1], job.prompt, job.status === 'failed');
-            job.notified = true;
-          }
+          notifyCodexMediaJobOnce(projectPath, job, generated);
         } else if (entry) {
           entry.status = 'running';
         }
@@ -2663,10 +2710,18 @@ ipcMain.handle('media-preview', async (event, projectPath, relPath) => {
 });
 
 ipcMain.handle('push-notification', async (event, data) => {
-  const win = BrowserWindow.getAllWindows()[0];
-  if (win) win.webContents.send('agent-notification', data);
+  return { success: true, notification: emitForgeNotification(data) };
+});
+
+const forgeNotificationsPath = () => userDataFile('notifications.json');
+
+ipcMain.handle('notifications-list', async () => ({ notifications: readNotifications(forgeNotificationsPath()) }));
+ipcMain.handle('notifications-clear', async () => {
+  writeNotifications(forgeNotificationsPath(), []);
   return { success: true };
 });
+ipcMain.handle('notifications-mark-read', async (event, id) => ({ success: updateNotification(forgeNotificationsPath(), id, { read: true }) }));
+ipcMain.handle('notifications-delete', async (event, id) => ({ success: deleteNotification(forgeNotificationsPath(), id) }));
 
 // Notifie toutes les fenêtres (la cloche est dans workspace.html).
 function broadcastNotification(data) {
@@ -2677,6 +2732,18 @@ function broadcastNotification(data) {
   }
 }
 
+function emitForgeNotification(data) {
+  const notification = appendNotification(forgeNotificationsPath(), data || {});
+  broadcastNotification(notification);
+  return notification;
+}
+
+function escapeNotificationHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character]);
+}
+
 // Notification de fin de génération média (Codex ou Tripo3D).
 function notifyMediaDone(projectPath, kind, saved, prompt, failed) {
   try {
@@ -2684,11 +2751,20 @@ function notifyMediaDone(projectPath, kind, saved, prompt, failed) {
     const fileName = saved ? path.basename(String(saved)) : '';
     const type = kind === 'img2model' ? 'model' : 'image';
     const agent = kind === 'thumb' || kind === 'icon' ? { n: 'Codex', c: '#10A37F' } : { n: 'Tripo3D', c: '#9B6BE3' };
-    const kindName = meta.label || kind;
+    const notificationKinds = {
+      thumb: { name: 'Miniature', ready: 'prête' },
+      icon: { name: 'Icône de jeu', ready: 'prête' },
+      img2model: { name: 'Modèle 3D', ready: 'prêt' },
+      model2img: { name: 'Rendu 3D', ready: 'prêt' },
+    };
+    const notificationKind = notificationKinds[kind] || { name: meta.label || kind, ready: 'prêt' };
+    const kindName = escapeNotificationHtml(notificationKind.name);
+    const safeFileName = escapeNotificationHtml(fileName);
+    const safePrompt = escapeNotificationHtml(prompt);
     const aiMessage = failed
       ? '<strong>Échec ' + kindName + '</strong> — la génération n\'a pas abouti.'
-      : '<strong>' + kindName + ' prêt' + (fileName ? ' : ' + fileName : '') + '</strong>' + (prompt ? '<br><span style="opacity:.7">' + String(prompt) + '</span>' : '');
-    broadcastNotification({
+      : '<strong>' + kindName + ' ' + notificationKind.ready + (safeFileName ? ' : ' + safeFileName : '') + '</strong>' + (safePrompt ? '<br><span style="opacity:.7">' + safePrompt + '</span>' : '');
+    emitForgeNotification({
       agentName: agent.n,
       agentColor: agent.c,
       aiMessage,
@@ -2973,27 +3049,7 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows) =
   // Roblox Studio (create_object, insert_asset, execute_luau, ...).
   const launchCmd = buildAgentShellCommand(agentType) || cmd;
 
-  if (!spawnPty) {
-    try {
-      if (process.platform === 'win32') {
-        spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', `cd /d "${projectPath}" && ${launchCmd}`], {
-          shell: false, detached: true, windowsHide: false
-        });
-      } else if (process.platform === 'darwin') {
-        const script = `cd "${projectPath}" && ${launchCmd}`;
-        spawn('osascript', ['-e', `tell application "Terminal" to do script "${script}"`], {
-          shell: false, detached: true
-        });
-      } else {
-        spawn('gnome-terminal', ['--', 'bash', '-c', `cd "${projectPath}" && ${launchCmd}; exec bash`], {
-          shell: false, detached: true
-        });
-      }
-      return { fallback: true, message: 'Terminal externe ouvert. node-pty non disponible.' };
-    } catch (err) {
-      return { error: err.message };
-    }
-  }
+  if (!spawnPty) return { error: 'Terminal intégré indisponible. Réinstalle Forge puis réessaie.' };
 
   const shell = process.platform === 'win32' ? 'cmd.exe' : (process.env.SHELL || 'bash');
 
@@ -3355,9 +3411,6 @@ function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult
   const meta = ASSET_EXT_MAP[ext];
   if (!meta) return;
 
-  const win = BrowserWindow.getAllWindows()[0];
-  if (!win || win.isDestroyed()) return;
-
   const typeLabels = {
     image: 'image',
     audio: 'fichier audio',
@@ -3371,7 +3424,8 @@ function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult
   const label = typeLabels[meta.type] || 'fichier';
   const folder = folderLabels[meta.folder] || meta.folder + '/';
 
-  let aiMessage = `Voilà ce que j'ai généré — un nouveau ${label} est prêt : <strong>${filename}</strong>. Il a été déplacé dans <strong>${folder}</strong>.`;
+  const safeFilename = escapeNotificationHtml(filename);
+  let aiMessage = `Voilà ce que j'ai généré — un nouveau ${label} est prêt : <strong>${safeFilename}</strong>. Il a été déplacé dans <strong>${folder}</strong>.`;
   if (libResult && libResult.success) {
     aiMessage += ` Il est aussi publié dans la <strong>Library</strong> communautaire ✅`;
   } else if (libResult && libResult.error) {
@@ -3379,7 +3433,7 @@ function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult
     aiMessage += ` <span style="color:#948B7C;">(Library : non publié — ${reason})</span>`;
   }
 
-  win.webContents.send('agent-notification', {
+  emitForgeNotification({
     agentName: agentName || 'Agent',
     agentColor: agentColor || '#3B82F6',
     aiMessage,

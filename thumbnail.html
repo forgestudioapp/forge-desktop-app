@@ -423,7 +423,7 @@
   // ── State ──
   const KIND_META = {
     thumb:     { label: 'Miniature', labelEN: 'Thumbnail' },
-    icon:      { label: 'Icône',     labelEN: 'Icon' },
+    icon:      { label: 'Icône de jeu', labelEN: 'Game icon' },
     img2model: { label: '2D → modèle 3D', labelEN: '2D → 3D' }
   };
   let state = {
@@ -494,7 +494,7 @@
     if(state.kind==='thumb'){
       state.kind = 'icon';
       state.tab = 'icone';
-      document.getElementById('tabMini').textContent = 'Icône';
+      document.getElementById('tabMini').textContent = 'Icône de jeu';
       document.getElementById('tabMini').classList.add('active');
     } else {
       state.kind = 'thumb';
@@ -609,7 +609,7 @@
       done:count+' image'+(count>1?'s':'')+' créée'+(count>1?'s':''),
       partial:count+'/'+expected+' image(s) créée(s)', failed:'Échec — clic droit pour sélectionner', draft:'Préparation…'
     };
-    card.innerHTML = '<div class="tr-head"><span class="tr-badge">Codex</span><span class="tr-badge kind">'+(variant?'Variante':(kind==='icon'?'Icône':'Miniature'))+'</span></div>'+
+    card.innerHTML = '<div class="tr-head"><span class="tr-badge">Codex</span><span class="tr-badge kind">'+(variant?'Variante':(kind==='icon'?'Icône de jeu':'Miniature'))+'</span></div>'+
       '<div class="tr-prompt">'+escHtml(entry.prompt||item.name||'Nouvelle génération')+'</div>'+
       '<div class="tr-status '+escHtml(status)+'">'+escHtml(labels[status]||status)+'</div>';
     card.title = entry.error || entry.prompt || item.name || '';
