@@ -314,8 +314,14 @@
 
   document.getElementById('robloxBtn').addEventListener('click', async () => {
     const btn = document.getElementById('robloxBtn');
+    const error = document.getElementById('robloxError');
     btn.textContent = 'Connexion en cours…';
+    btn.classList.remove('connected', 'error');
+    btn.classList.add('primary');
     btn.disabled = true;
+    btn.removeAttribute('title');
+    error.textContent = '';
+    error.style.display = 'none';
     if(window.forgeAPI && window.forgeAPI.connectRoblox){
       const result = await window.forgeAPI.connectRoblox();
       if(result.error){
