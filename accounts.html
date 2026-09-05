@@ -94,6 +94,7 @@
   .acc-btn.connected{background:var(--success-dim); color:var(--success); border:1px solid var(--success); cursor:pointer;}
   .acc-btn.error{background:var(--error); color:var(--char); cursor:pointer;}
   .acc-btn.error:hover{filter:brightness(1.1); transform:translateY(-1px);}
+  .acc-error{display:none;margin:8px 4px 0;color:#ff8f8f;font-size:11px;line-height:1.35;text-align:center;position:relative;z-index:1;}
   .acc-note{text-align:center; font-size:11px; color:var(--smoke-dim); margin-top:8px; position:relative; z-index:1;}
 
   .continue-btn{
@@ -148,6 +149,7 @@
     </div>
     <div class="acc-desc" data-i18n="roblox_desc">Publie tes modeles 3D, images et sons generes directement sur Roblox. Le compte connecte est aussi utilise par les IA (gamepasses, APIs Roblox).</div>
     <button class="acc-btn primary" id="robloxBtn" data-i18n="connect_roblox">Connecter Roblox</button>
+    <div class="acc-error" id="robloxError" role="status"></div>
     <div style="text-align:center;margin-top:6px;"><button class="skip-link" id="robloxDiscBtn" style="display:none;" data-i18n="disconnect_roblox">Deconnecter mon compte Roblox</button></div>
   </div>
 
@@ -199,19 +201,48 @@
 
   function setRobloxConnected(){
     const btn = document.getElementById('robloxBtn');
+    const error = document.getElementById('robloxError');
     btn.textContent = 'Connecté · Reconnecter';
-    btn.classList.remove('primary');
+    btn.classList.remove('primary', 'error');
     btn.classList.add('connected');
     btn.disabled = false;
+    btn.removeAttribute('title');
+    error.textContent = '';
+    error.style.display = 'none';
     document.getElementById('robloxDiscBtn').style.display = 'inline';
+  }
+
+  function setRobloxPermissionWarning(missingScopes){
+    setRobloxConnected();
+    const btn = document.getElementById('robloxBtn');
+    const error = document.getElementById('robloxError');
+    btn.textContent = 'Connecté · Permissions à compléter';
+    error.textContent = 'Roblox n’a pas accordé : ' + (missingScopes || []).join(', ') + '. Clique pour reconnecter.';
+    error.style.display = 'block';
+  }
+
+  function setRobloxError(message){
+    const btn = document.getElementById('robloxBtn');
+    const error = document.getElementById('robloxError');
+    btn.textContent = 'Échec — réessayer';
+    btn.classList.remove('primary', 'connected');
+    btn.classList.add('error');
+    btn.disabled = false;
+    btn.title = message || '';
+    error.textContent = message || 'La connexion Roblox a échoué.';
+    error.style.display = 'block';
   }
 
   function setRobloxDisconnected(){
     const btn = document.getElementById('robloxBtn');
+    const error = document.getElementById('robloxError');
     btn.textContent = 'Connecter Roblox';
-    btn.classList.remove('connected');
+    btn.classList.remove('connected', 'error');
     btn.classList.add('primary');
     btn.disabled = false;
+    btn.removeAttribute('title');
+    error.textContent = '';
+    error.style.display = 'none';
     document.getElementById('robloxDiscBtn').style.display = 'none';
   }
 
@@ -245,7 +276,7 @@
       if(result.connected){
         setRobloxConnected();
         if(result.permissionsReady === false){
-          document.getElementById('robloxBtn').textContent = 'Permissions incomplètes · Reconnecter';
+          setRobloxPermissionWarning(result.missingScopes);
         }
       }
     }
@@ -288,9 +319,12 @@
     if(window.forgeAPI && window.forgeAPI.connectRoblox){
       const result = await window.forgeAPI.connectRoblox();
       if(result.error){
-        btn.textContent = 'Echec — reessayer';
-        btn.disabled = false;
+        setRobloxError(result.error);
         console.error('Erreur connexion Roblox:', result.error);
+        return;
+      }
+      if(result.permissionsReady === false){
+        setRobloxPermissionWarning(result.missingScopes);
         return;
       }
     }

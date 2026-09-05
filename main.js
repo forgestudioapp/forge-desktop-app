@@ -14,7 +14,8 @@ const { syncForgeAgentInstructions } = require('./lib/forge-instructions');
 const {
   buildRobloxAuthorizationUrl,
   parseRobloxOAuthCallback,
-  missingRobloxScopes,
+  normalizeRobloxTokenData,
+  missingRobloxTokenScopes,
 } = require('./lib/roblox-oauth');
 require('dotenv').config({ path: path.join(app.isPackaged ? process.resourcesPath : __dirname, '.env') });
 
@@ -962,19 +963,17 @@ ipcMain.handle('connect-roblox', async () => {
           res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;"><h2>Echec de l\'echange du jeton.</h2></body></html>');
           settle({ error: JSON.stringify(tokenData) }); return;
         }
-        const missingScopes = missingRobloxScopes(tokenData.scope);
-        if (missingScopes.length) {
-          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;"><h2>Permissions Roblox incomplètes. Recommence la connexion et accepte les permissions demandées.</h2></body></html>');
-          settle({ error: `Permissions OAuth Roblox manquantes : ${missingScopes.join(', ')}` });
-          return;
-        }
+        const normalizedToken = normalizeRobloxTokenData(tokenData);
+        const missingScopes = missingRobloxTokenScopes(normalizedToken);
         const tokenPath = userDataFile('roblox-token.json');
-        fs.writeFileSync(tokenPath, JSON.stringify({ ...tokenData, obtained_at: Date.now() }));
-        global.robloxAccessToken = tokenData.access_token;
+        fs.writeFileSync(tokenPath, JSON.stringify({ ...normalizedToken, obtained_at: Date.now() }));
+        global.robloxAccessToken = normalizedToken.access_token;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;"><h2>Connexion Roblox reussie, tu peux fermer cet onglet.</h2></body></html>');
-        settle({ success: true });
+        const permissionNotice = missingScopes.length
+          ? '<p>Certaines permissions n’ont pas été accordées. Tu pourras reconnecter le compte depuis Forge.</p>'
+          : '';
+        res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;"><h2>Connexion Roblox réussie, tu peux fermer cet onglet.</h2>' + permissionNotice + '</body></html>');
+        settle({ success: true, permissionsReady: missingScopes.length === 0, missingScopes });
       } catch (err) {
         res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;"><h2>Erreur technique.</h2></body></html>');
         settle({ error: err.message });
@@ -996,7 +995,7 @@ ipcMain.handle('is-roblox-connected', async () => {
   if (!fs.existsSync(tokenPath)) return { connected: false };
   try {
     const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
-    const missingScopes = missingRobloxScopes(tokenData.scope);
+    const missingScopes = missingRobloxTokenScopes(tokenData);
     return {
       connected: Boolean(tokenData.access_token),
       permissionsReady: missingScopes.length === 0,
@@ -2757,6 +2756,8 @@ async function getRobloxAuth() {
         const fresh = await resp.json();
         // Preserve refresh_token if not returned (some providers omit it on refresh)
         if (!fresh.refresh_token) fresh.refresh_token = tok.refresh_token;
+        if (!fresh.scope) fresh.scope = tok.scope || tok.requested_scope;
+        if (!fresh.requested_scope) fresh.requested_scope = tok.requested_scope;
         saveRobloxToken(fresh);
         tok = fresh;
         console.log('[Roblox] Token rafraîchi avec succès.');
