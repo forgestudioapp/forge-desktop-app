@@ -91,7 +91,7 @@
   .acc-btn.primary:hover::after{transform:translateX(100%);}
   .acc-btn.secondary{background:var(--char3); color:var(--bone); border:1px solid var(--border-light);}
   .acc-btn.secondary:hover{border-color:var(--ember); transform:translateY(-1px);}
-  .acc-btn.connected{background:var(--success-dim); color:var(--success); border:1px solid var(--success); cursor:default;}
+  .acc-btn.connected{background:var(--success-dim); color:var(--success); border:1px solid var(--success); cursor:pointer;}
   .acc-btn.error{background:var(--error); color:var(--char); cursor:pointer;}
   .acc-btn.error:hover{filter:brightness(1.1); transform:translateY(-1px);}
   .acc-note{text-align:center; font-size:11px; color:var(--smoke-dim); margin-top:8px; position:relative; z-index:1;}
@@ -199,10 +199,10 @@
 
   function setRobloxConnected(){
     const btn = document.getElementById('robloxBtn');
-    btn.textContent = 'Connecté';
+    btn.textContent = 'Connecté · Reconnecter';
     btn.classList.remove('primary');
     btn.classList.add('connected');
-    btn.disabled = true;
+    btn.disabled = false;
     document.getElementById('robloxDiscBtn').style.display = 'inline';
   }
 
@@ -242,7 +242,12 @@
   async function checkRobloxConnection(){
     if(window.forgeAPI && window.forgeAPI.isRobloxConnected){
       const result = await window.forgeAPI.isRobloxConnected();
-      if(result.connected) setRobloxConnected();
+      if(result.connected){
+        setRobloxConnected();
+        if(result.permissionsReady === false){
+          document.getElementById('robloxBtn').textContent = 'Permissions incomplètes · Reconnecter';
+        }
+      }
     }
   }
   checkRobloxConnection();

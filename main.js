@@ -11,6 +11,11 @@ const {
   normalizeMediaPath,
 } = require('./lib/media-generation');
 const { syncForgeAgentInstructions } = require('./lib/forge-instructions');
+const {
+  buildRobloxAuthorizationUrl,
+  parseRobloxOAuthCallback,
+  missingRobloxScopes,
+} = require('./lib/roblox-oauth');
 require('dotenv').config({ path: path.join(app.isPackaged ? process.resourcesPath : __dirname, '.env') });
 
 // ---- node-pty (terminal interactif) ----
@@ -902,25 +907,18 @@ function base64url(buffer) {
 }
 
 ipcMain.handle('connect-roblox', async () => {
-  // Supprimer l'ancien token pour forcer un nouveau consentement OAuth
-  // avec les permissions mises a jour cote Roblox Developer Dashboard.
-  const tokenPath = userDataFile('roblox-token.json');
-  if (fs.existsSync(tokenPath)) {
-    try { fs.unlinkSync(tokenPath); } catch {}
-  }
-
   return new Promise((resolve) => {
     const codeVerifier = base64url(crypto.randomBytes(32));
     const codeChallenge = base64url(crypto.createHash('sha256').update(codeVerifier).digest());
     const state = base64url(crypto.randomBytes(16));
-    const authUrl = 'https://apis.roblox.com/oauth/v1/authorize'
-      + `?client_id=${ROBLOX_CLIENT_ID}`
-      + `&redirect_uri=${encodeURIComponent(ROBLOX_REDIRECT_URI)}`
-      + `&scope=${encodeURIComponent('openid profile asset:read asset:write game-pass:read game-pass:write developer-product:read developer-product:write')}`
-      + `&response_type=code`
-      + `&code_challenge=${codeChallenge}`
-      + `&code_challenge_method=S256`
-      + `&state=${state}`;
+    const nonce = base64url(crypto.randomBytes(16));
+    const authUrl = buildRobloxAuthorizationUrl({
+      clientId: ROBLOX_CLIENT_ID,
+      redirectUri: ROBLOX_REDIRECT_URI,
+      codeChallenge,
+      state,
+      nonce,
+    });
 
     let settled = false;
     const settle = (value) => {
@@ -938,19 +936,24 @@ ipcMain.handle('connect-roblox', async () => {
     }, 180000);
 
     const server = http.createServer(async (req, res) => {
-      if (!req.url.startsWith('/oauth/callback')) { res.end('ok'); return; }
-      const url = new URL(req.url, 'http://localhost:3000');
-      const code = url.searchParams.get('code');
-      if (!code) {
-        res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;"><h2>Echec — aucun code recu.</h2></body></html>');
-        settle({ error: 'Aucun code recu de Roblox' }); return;
+      const callback = parseRobloxOAuthCallback(req.url || '/', ROBLOX_REDIRECT_URI, state);
+      if (callback.ignored) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not found');
+        return;
+      }
+      if (callback.error || !callback.code) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;"><h2>Connexion Roblox refusée ou invalide.</h2></body></html>');
+        settle({ error: callback.error || 'Aucun code reçu de Roblox.' });
+        return;
       }
       try {
         const tokenResponse = await fetchWithTimeout('https://apis.roblox.com/oauth/v1/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({
-            client_id: ROBLOX_CLIENT_ID, code, grant_type: 'authorization_code',
+            client_id: ROBLOX_CLIENT_ID, code: callback.code, grant_type: 'authorization_code',
             redirect_uri: ROBLOX_REDIRECT_URI, code_verifier: codeVerifier
           })
         }, 15000);
@@ -959,9 +962,17 @@ ipcMain.handle('connect-roblox', async () => {
           res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;"><h2>Echec de l\'echange du jeton.</h2></body></html>');
           settle({ error: JSON.stringify(tokenData) }); return;
         }
+        const missingScopes = missingRobloxScopes(tokenData.scope);
+        if (missingScopes.length) {
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;"><h2>Permissions Roblox incomplètes. Recommence la connexion et accepte les permissions demandées.</h2></body></html>');
+          settle({ error: `Permissions OAuth Roblox manquantes : ${missingScopes.join(', ')}` });
+          return;
+        }
         const tokenPath = userDataFile('roblox-token.json');
         fs.writeFileSync(tokenPath, JSON.stringify({ ...tokenData, obtained_at: Date.now() }));
         global.robloxAccessToken = tokenData.access_token;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end('<html><body style="background:#14110E;color:#F3EDE3;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;"><h2>Connexion Roblox reussie, tu peux fermer cet onglet.</h2></body></html>');
         settle({ success: true });
       } catch (err) {
@@ -982,7 +993,18 @@ ipcMain.handle('connect-roblox', async () => {
 
 ipcMain.handle('is-roblox-connected', async () => {
   const tokenPath = userDataFile('roblox-token.json');
-  return { connected: fs.existsSync(tokenPath) };
+  if (!fs.existsSync(tokenPath)) return { connected: false };
+  try {
+    const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+    const missingScopes = missingRobloxScopes(tokenData.scope);
+    return {
+      connected: Boolean(tokenData.access_token),
+      permissionsReady: missingScopes.length === 0,
+      missingScopes,
+    };
+  } catch {
+    return { connected: false };
+  }
 });
 
 ipcMain.handle('disconnect-roblox', async () => {
@@ -991,12 +1013,13 @@ ipcMain.handle('disconnect-roblox', async () => {
     if (fs.existsSync(tokenPath)) {
       const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
       // Best-effort : revoque la session cote Roblox, sans bloquer la deconnexion locale.
-      if (tokenData.access_token) {
-        fetch('https://apis.roblox.com/oauth/v1/token/revoke', {
+      const tokenToRevoke = tokenData.refresh_token || tokenData.access_token;
+      if (tokenToRevoke) {
+        await fetchWithTimeout('https://apis.roblox.com/oauth/v1/token/revoke', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: tokenData.access_token, client_id: ROBLOX_CLIENT_ID })
-        }).catch(() => {});
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ token: tokenToRevoke, client_id: ROBLOX_CLIENT_ID })
+        }, 5000).catch(() => {});
       }
       fs.unlinkSync(tokenPath);
     }
