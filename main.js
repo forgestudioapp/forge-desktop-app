@@ -1465,7 +1465,9 @@ function buildAgentShellCommand(agentType) {
   }
   if (agentType === 'codex') {
     ensureCodexMcpEntry(mcpServerPath);
-    return 'codex --dangerously-bypass-approvals-and-sandbox';
+    // Codex ne doit pas tenter de remplacer son propre executable pendant
+    // qu'il est deja utilise par le PTY Forge (EPERM sous Windows).
+    return 'codex --config check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox';
   }
   if (agentType === 'antigravity') {
     if (!ensureAgyMcpEntry(mcpServerPath)) return null;
@@ -3044,25 +3046,51 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows) =
   }
 
   prepareForgeAgentInstructions(projectPath, agentType);
-  const cmd = agentType === 'claude' ? 'claude' : agentType === 'codex' ? 'codex' : 'agy';
+  const cmd = agentType === 'claude'
+    ? 'claude'
+    : agentType === 'codex'
+      ? 'codex --config check_for_update_on_startup=false'
+      : 'agy';
   // Avec le pont MCP quand il est disponible : l'agent herite des tools
   // Roblox Studio (create_object, insert_asset, execute_luau, ...).
   const launchCmd = buildAgentShellCommand(agentType) || cmd;
 
   if (!spawnPty) return { error: 'Terminal intégré indisponible. Réinstalle Forge puis réessaie.' };
 
-  const shell = process.platform === 'win32' ? 'cmd.exe' : (process.env.SHELL || 'bash');
-
   try {
-    const ptyProcess = spawnPty(shell, [], {
+    // Build env vars before spawning the CLI so setup stays invisible. This
+    // avoids showing the Windows banner, `set ...` lines and launch command.
+    const assetsDir = path.join(projectPath, 'assets').replace(/\\/g, '/');
+    const soundsDir = path.join(projectPath, 'sounds').replace(/\\/g, '/');
+    const modelsDir = path.join(projectPath, 'models').replace(/\\/g, '/');
+    const userApiKeys = loadApiKeys();
+    const ptyEnv = {
+      ...process.env,
+      FORCE_COLOR: '1',
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      FORGE_ASSETS_DIR: assetsDir,
+      FORGE_SOUNDS_DIR: soundsDir,
+      FORGE_MODELS_DIR: modelsDir,
+    };
+    if (userApiKeys.gemini) ptyEnv.GEMINI_API_KEY = userApiKeys.gemini;
+    if (userApiKeys.elevenlabs) ptyEnv.ELEVENLABS_API_KEY = userApiKeys.elevenlabs;
+
+    const ptyCommand = process.platform === 'win32'
+      ? 'cmd.exe'
+      : (process.env.SHELL || 'bash');
+    const ptyArgs = process.platform === 'win32'
+      ? ['/d', '/q', '/c', launchCmd]
+      : ['-lc', `exec ${launchCmd}`];
+
+    const sessionId = `pty_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const ptyProcess = spawnPty(ptyCommand, ptyArgs, {
       name: 'xterm-color',
       cols: cols || 80,
       rows: rows || 24,
       cwd: projectPath,
-      env: { ...process.env, FORCE_COLOR: '1', TERM: 'xterm-256color', COLORTERM: 'truecolor' }
+      env: ptyEnv
     });
-
-    const sessionId = `pty_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
     ptyProcess.onData((data) => {
       if (!event.sender.isDestroyed()) {
@@ -3078,29 +3106,6 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows) =
     });
 
     PTYS.set(sessionId, { pty: ptyProcess, agentType, projectPath });
-
-    // Build env vars so the agent knows where to save files.
-    const assetsDir  = path.join(projectPath, 'assets').replace(/\\/g, '/');
-    const soundsDir  = path.join(projectPath, 'sounds').replace(/\\/g, '/');
-    const modelsDir  = path.join(projectPath, 'models').replace(/\\/g, '/');
-
-    // Injecter les cles API medias pour que l'agent puisse les utiliser
-    // (ex: generate_image.py lit GEMINI_API_KEY, etc.)
-    const userApiKeys = loadApiKeys();
-    const apiEnv = {};
-    if (userApiKeys.gemini) apiEnv.GEMINI_API_KEY = userApiKeys.gemini;
-    if (userApiKeys.elevenlabs) apiEnv.ELEVENLABS_API_KEY = userApiKeys.elevenlabs;
-
-    const envInject = process.platform === 'win32'
-      ? `set FORGE_ASSETS_DIR=${assetsDir}\r\nset FORGE_SOUNDS_DIR=${soundsDir}\r\nset FORGE_MODELS_DIR=${modelsDir}\r\n`
-        + Object.entries(apiEnv).map(([k, v]) => `set ${k}=${v}\r\n`).join('')
-      : `export FORGE_ASSETS_DIR="${assetsDir}"; export FORGE_SOUNDS_DIR="${soundsDir}"; export FORGE_MODELS_DIR="${modelsDir}"\n`
-        + Object.entries(apiEnv).map(([k, v]) => `export ${k}="${v}"\n`).join('');
-
-    setTimeout(() => {
-      ptyProcess.write(envInject);
-      ptyProcess.write(`${launchCmd}\r`);
-    }, 800);
 
     return { success: true, sessionId };
   } catch (err) {

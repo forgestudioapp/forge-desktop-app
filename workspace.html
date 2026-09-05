@@ -519,6 +519,9 @@ const AGENT_META={claude:{label:'Claude Code',color:'#CC785C'},codex:{label:'Ope
 const AGENT_ICONS={claude:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none"><path d="M50 10 L50 90" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M50 10 L20 75" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M50 10 L80 75" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>',codex:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M50 15 C50 15 58 38 50 50 C42 62 15 50 15 50 C15 50 42 38 50 15 Z"/><path d="M50 15 C50 15 42 38 50 50 C58 62 85 50 85 50 C85 50 58 38 50 15 Z"/><path d="M50 85 C50 85 42 62 50 50 C58 38 50 15 50 15 C50 15 58 62 50 85 Z"/><path d="M50 85 C50 85 58 62 50 50 C42 38 50 15 50 15 C50 15 42 62 50 85 Z"/></svg>',antigravity:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="6" fill="currentColor"/><g stroke="currentColor" stroke-width="5" stroke-linecap="round"><line x1="50" y1="18" x2="50" y2="34"/><line x1="50" y1="66" x2="50" y2="82"/><line x1="18" y1="50" x2="34" y2="50"/><line x1="66" y1="50" x2="82" y2="50"/><line x1="27" y1="27" x2="38" y2="38"/><line x1="62" y1="62" x2="73" y2="73"/><line x1="73" y1="27" x2="62" y2="38"/><line x1="38" y1="62" x2="27" y2="73"/></g></svg>'};
 
 let agents=[],agentCounter={claude:1,codex:1,antigravity:1},activeProject=null;
+let workspaceStarted=sessionStorage.getItem('forge-agents-started')==='1';
+const earlyPtyData=new Map();
+const earlyPtyExit=new Map();
 const agentGrid=document.getElementById('agentGrid'),emptyGrid=document.getElementById('emptyGrid'),agentCount=document.getElementById('agentCount'),startAgentsBtn=document.getElementById('startAgentsBtn');
 
 function saveAgentState(){
@@ -594,7 +597,16 @@ function applyGridLayout(){
 }
 
 function genId(){return 'a_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);}
-function createAgent(type){const meta=AGENT_META[type];const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};agents.push(a);createPanel(a);updateCount();saveAgentState();}
+function createAgent(type){const meta=AGENT_META[type];const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};agents.push(a);createPanel(a);updateCount();saveAgentState();if(workspaceStarted)startAgentAutomatically(a);}
+
+function startAgentAutomatically(agent){
+  if(!activeProject||!window.forgeAPI||!window.forgeAPI.ptyCreate)return;
+  agent.starting=true;
+  if(agent.element)agent.element.classList.add('starting');
+  var statusEl=document.getElementById('ready-status-'+agent.id);if(statusEl)statusEl.textContent=t('agent_starting');
+  updateStartButton();
+  initPty(agent).finally(updateStartButton);
+}
 
 function updateStartButton(){
   if(!startAgentsBtn)return;
@@ -623,6 +635,8 @@ async function startPendingAgents(){
   if(!activeProject){showToast(t('start_requires_project'));return;}
   const pending=agents.filter(function(a){return !a.sessionId&&!a.starting;});
   if(pending.length===0)return;
+  workspaceStarted=true;
+  sessionStorage.setItem('forge-agents-started','1');
   pending.forEach(function(a){
     a.starting=true;
     if(a.element)a.element.classList.add('starting');
@@ -704,11 +718,17 @@ async function initPty(agent){
     if(!window.forgeAPI||!window.forgeAPI.ptyCreate){setAgentReady(agent,t('agent_start_failed'));return;}
     agent.starting=true;
     agent.element.classList.add('starting');
-    if(agent.xterm){agent.xterm.clear();agent.xterm.reset();agent.xterm.writeln('\x1b[90m'+t('agent_starting_in').replace('{agent}',AGENT_META[agent.agentType].label).replace('{project}',activeProject.name)+'\x1b[0m');}
+    if(agent.xterm){agent.xterm.clear();agent.xterm.reset();}
     const res=await window.forgeAPI.ptyCreate(agent.agentType,activeProject.path,agent.xterm.cols,agent.xterm.rows);
     if(agent._closed||agent._launchToken!==launchToken){if(res&&res.sessionId&&window.forgeAPI.ptyKill)window.forgeAPI.ptyKill(res.sessionId);return;}
     if(res.error){if(agent.xterm)agent.xterm.writeln('\x1b[31m'+res.error+'\x1b[0m');setAgentReady(agent,t('agent_start_failed'));return;}
     agent.sessionId=res.sessionId;agent.starting=false;agent.element.classList.remove('starting');agent.element.classList.add('running');
+    if(earlyPtyData.has(agent.sessionId)&&agent.xterm){agent.xterm.write(earlyPtyData.get(agent.sessionId));earlyPtyData.delete(agent.sessionId);}
+    if(earlyPtyExit.has(agent.sessionId)){
+      var earlyExit=earlyPtyExit.get(agent.sessionId);earlyPtyExit.delete(agent.sessionId);
+      if(agent.xterm)agent.xterm.writeln('\x1b[31m[Processus terminé - code '+earlyExit.exitCode+']\x1b[0m');
+      agent.sessionId=null;hideMcpBadge(agent.id);setAgentReady(agent,t('agent_finished'));saveAgentState();return;
+    }
     var dot=document.getElementById('dot-'+agent.id);if(dot)dot.classList.add('running-dot');
     setReadyOverlayVisible(agent,false);
     saveAgentState();
@@ -751,6 +771,7 @@ function resetConversation(agent){
   if(agent.xterm){agent.xterm.writeln('\x1b[90mNouvelle conversation.\x1b[0m');}
   setAgentReady(agent,t('agent_ready'));
   saveAgentState();
+  if(workspaceStarted)startAgentAutomatically(agent);
 }
 
 function captureAgentPrompt(agent,firstChar){
@@ -781,8 +802,8 @@ window.closeAgent=function(id){
   if(a.element)a.element.remove();
   agents.splice(i,1);updateCount();saveAgentState();
 };
-if(window.forgeAPI&&window.forgeAPI.onPtyData){window.forgeAPI.onPtyData(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.write(data.data);a._lastPtyActivity=Date.now();}});}
-if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;hideMcpBadge(a.id);setAgentReady(a,t('agent_finished'));saveAgentState();}});}
+if(window.forgeAPI&&window.forgeAPI.onPtyData){window.forgeAPI.onPtyData(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.write(data.data);a._lastPtyActivity=Date.now();}else{var buffered=(earlyPtyData.get(data.sessionId)||'')+data.data;earlyPtyData.set(data.sessionId,buffered.slice(-100000));}});}
+if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;hideMcpBadge(a.id);setAgentReady(a,t('agent_finished'));saveAgentState();}else{earlyPtyExit.set(data.sessionId,data);}});}
 
 let mcpActivityTimer=null;
 function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b)b.style.display='none';}
