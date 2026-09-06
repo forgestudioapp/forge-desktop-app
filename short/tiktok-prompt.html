@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Forge Prompt</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0e0c0a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .prompt-bar {
+    width: 680px;
+    max-width: 94vw;
+    background: #1a1714;
+    border: 1px solid #2a2520;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px 0 20px;
+    height: 64px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.6);
+  }
+
+  .prompt-bar textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #e8e0d4;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+    font-size: 16px;
+    resize: none;
+    height: 100%;
+    line-height: 64px;
+    padding: 0;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .prompt-bar textarea::-webkit-scrollbar { display: none; }
+
+  .prompt-bar textarea::placeholder {
+    color: #5a5248;
+  }
+
+  .send-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    border: none;
+    background: #3B82F6;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background .15s, transform .1s;
+  }
+
+  .send-btn:hover {
+    background: #60A5FA;
+  }
+
+  .send-btn:active {
+    transform: scale(.92);
+  }
+
+  .send-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+</style>
+</head>
+<body>
+
+<div class="prompt-bar">
+  <textarea id="prompt" rows="1" placeholder="Ton prompt."></textarea>
+  <button class="send-btn" onclick="document.getElementById('prompt').value=''">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 19V5"/>
+      <path d="M5 12l7-7 7 7"/>
+    </svg>
+  </button>
+</div>
+
+</body>
+</html>
