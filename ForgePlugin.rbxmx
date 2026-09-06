@@ -21,8 +21,9 @@ elements.connectButton.Activated:Connect(function()
 		Communication.activatePlugin(State.getActiveTabIndex())
 	end
 end)
--- Connexion automatique au chargement du plugin, sans clic manuel
+-- Connexion automatique au chargement du plugin, sans afficher le GUI
 Communication.activatePlugin(State.getActiveTabIndex())
+elements.screenGui.Enabled = false
 button.Click:Connect(function()
 	elements.screenGui.Enabled = not elements.screenGui.Enabled
 end)
