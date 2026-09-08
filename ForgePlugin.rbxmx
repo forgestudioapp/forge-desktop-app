@@ -3828,12 +3828,13 @@ local function startPlaytest(requestData)
 	}
 end
 local function stopPlaytest(_requestData)
-	if not testRunning then
-		return {
-			error = "No test is currently running",
-		}
-	end
 	warn(STOP_SIGNAL)
+	if logConnection then
+		logConnection:Disconnect()
+		logConnection = nil
+	end
+	testRunning = false
+	cleanupStopListener()
 	local _object = {
 		success = true,
 	}
