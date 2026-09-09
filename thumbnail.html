@@ -308,14 +308,15 @@
 
   // ── State ──
   const KIND_META = {
-    thumb:     { label: 'Miniature', labelEN: 'Thumbnail' },
-    icon:      { label: 'Icône de jeu', labelEN: 'Game icon' }
+    thumb:      { label: 'Miniature', labelEN: 'Thumbnail' },
+    icon:       { label: 'Icône de jeu', labelEN: 'Game icon' },
+    'gui-icon': { label: 'Icône GUI', labelEN: 'GUI icon' }
   };
   let state = {
     projectPath: null,
-    section: 'visuels',       // visuels
-    tab: 'codex',             // codex | icone  (Miniature/Icône toggle)
-    kind: 'thumb',            // thumb | icon  (active kind for Visuels)
+    section: 'visuels',
+    tab: 'codex',
+    kind: 'thumb',
     genCount: 3,
     editCount: 5,
     previewCount: 3,
@@ -361,24 +362,18 @@
     const titles = { visuels:'Visuels' };
     document.getElementById('pageTitle').textContent = titles[sec] || 'Visuels';
     clearSelection();
-    closePreview();
+closePreview();
     closeEditModal();
     if(sec==='visuels') renderTree();
   }
 
-  // ── Tab: Miniature ↔ Icône (Codex est un indicateur, pas un onglet) ──
-  function toggleMiniIcone(){
-    if(state.kind==='thumb'){
-      state.kind = 'icon';
-      state.tab = 'icone';
-      document.getElementById('tabMini').textContent = 'Icône de jeu';
-      document.getElementById('tabMini').classList.add('active');
-    } else {
-      state.kind = 'thumb';
-      state.tab = 'codex';
-      document.getElementById('tabMini').textContent = 'Miniature';
-      document.getElementById('tabMini').classList.remove('active');
-    }
+  // ── Tab: Miniature / Icône de jeu / Icône GUI ──
+  function setKind(kind){
+    state.kind = kind;
+    // Update active tab button
+    document.getElementById('tabThumb').classList.toggle('active', kind==='thumb');
+    document.getElementById('tabIcon').classList.toggle('active', kind==='icon');
+    document.getElementById('tabGuiIcon').classList.toggle('active', kind==='gui-icon');
   }
 
   // ── Count controls ──
@@ -397,7 +392,7 @@
     const empty = document.getElementById('treeEmpty');
     const categories = state.data.categories || {};
     const allItems = [];
-    for(const kind of ['thumb','icon']){
+    for(const kind of ['thumb','icon','gui-icon']){
       const cat = categories[kind];
       if(!cat || !cat.items) continue;
       for(const item of cat.items){
