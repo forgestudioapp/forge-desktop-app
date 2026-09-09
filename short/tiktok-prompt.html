@@ -65,22 +65,122 @@
     transition: background .15s, transform .1s;
   }
 
-  .send-btn:hover {
-    background: #60A5FA;
-  }
+  .send-btn:hover { background: #60A5FA; }
+  .send-btn:active { transform: scale(.92); }
+  .send-btn svg { width: 20px; height: 20px; }
 
-  .send-btn:active {
-    transform: scale(.92);
+  /* Bouton discret en haut à droite */
+  .auto-toggle {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid #2a2520;
+    background: #1a1714;
+    color: #5a5248;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    opacity: 0.3;
+    transition: opacity 0.2s, color 0.2s;
+    z-index: 100;
   }
+  .auto-toggle:hover { opacity: 0.8; color: #e8e0d4; }
+  .auto-toggle.active { opacity: 0.6; color: #3B82F6; }
 
-  .send-btn svg {
-    width: 20px;
-    height: 20px;
+  /* Panel de configuration */
+  .auto-panel {
+    position: fixed;
+    top: 54px;
+    right: 14px;
+    width: 260px;
+    background: #1a1714;
+    border: 1px solid #2a2520;
+    border-radius: 12px;
+    padding: 16px;
+    display: none;
+    z-index: 99;
+    box-shadow: 0 8px 40px rgba(0,0,0,.8);
   }
+  .auto-panel.show { display: block; }
+  .auto-panel label {
+    display: block;
+    font-size: 11px;
+    color: #5a5248;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  }
+  .auto-panel textarea {
+    width: 100%;
+    height: 60px;
+    background: #0e0c0a;
+    border: 1px solid #2a2520;
+    border-radius: 8px;
+    color: #e8e0d4;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-size: 12px;
+    padding: 10px;
+    resize: none;
+    outline: none;
+    margin-bottom: 12px;
+  }
+  .auto-panel textarea:focus { border-color: #3B82F6; }
+  .auto-panel textarea::placeholder { color: #3f3a34; }
+  .speed-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .speed-chip {
+    flex: 1;
+    padding: 6px 0;
+    background: #0e0c0a;
+    border: 1px solid #2a2520;
+    border-radius: 6px;
+    color: #5a5248;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-size: 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .speed-chip:hover { border-color: #5a5248; color: #e8e0d4; }
+  .speed-chip.active { background: #3B82F6; border-color: #3B82F6; color: #fff; }
+  .auto-go {
+    width: 100%;
+    padding: 8px;
+    background: #3B82F6;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .auto-go:hover { background: #2563eb; }
+  .auto-go:disabled { opacity: 0.4; cursor: not-allowed; }
+  .auto-status {
+    margin-top: 10px;
+    font-size: 10px;
+    color: #3f3a34;
+    font-family: 'JetBrains Mono', 'SF Mono', monospace;
+    text-align: center;
+  }
+  .auto-status.running { color: #3B82F6; }
+  .auto-status.done { color: #22c55e; }
 </style>
 </head>
 <body>
 
+<!-- Barre de prompt visible -->
 <div class="prompt-bar">
   <textarea id="prompt" rows="1" placeholder="Ton prompt."></textarea>
   <button class="send-btn" onclick="document.getElementById('prompt').value=''">
@@ -90,6 +190,78 @@
     </svg>
   </button>
 </div>
+
+<!-- Bouton discret -->
+<button class="auto-toggle" id="autoToggle" onclick="togglePanel()">⌨</button>
+
+<!-- Panel de config (hors zone de crop) -->
+<div class="auto-panel" id="autoPanel">
+  <label>Texte à écrire</label>
+  <textarea id="autoText" placeholder="Écris ici...">Crée un jeu obby avec 10 niveaux, un système de monnaie et un magasin.</textarea>
+  <label>Vitesse</label>
+  <div class="speed-row">
+    <div class="speed-chip" data-speed="80" onclick="setSpeed(this)">Lent</div>
+    <div class="speed-chip active" data-speed="50" onclick="setSpeed(this)">Normal</div>
+    <div class="speed-chip" data-speed="25" onclick="setSpeed(this)">Rapide</div>
+  </div>
+  <button class="auto-go" id="autoGo" onclick="startAutoType()">▶ Lancer</button>
+  <div class="auto-status" id="autoStatus"></div>
+</div>
+
+<script>
+  let autoInterval = null;
+  let autoSpeed = 50;
+  let isRunning = false;
+
+  function togglePanel() {
+    document.getElementById('autoPanel').classList.toggle('show');
+  }
+
+  function setSpeed(el) {
+    document.querySelectorAll('.speed-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    autoSpeed = parseInt(el.dataset.speed);
+  }
+
+  function startAutoType() {
+    if (isRunning) return;
+    const text = document.getElementById('autoText').value;
+    if (!text) return;
+
+    isRunning = true;
+    document.getElementById('autoGo').disabled = true;
+    document.getElementById('autoStatus').textContent = 'Écriture en cours...';
+    document.getElementById('autoStatus').className = 'auto-status running';
+    document.getElementById('autoToggle').classList.add('active');
+
+    const ta = document.getElementById('prompt');
+    ta.value = '';
+    let i = 0;
+
+    function typeNext() {
+      if (i < text.length) {
+        ta.value += text[i];
+        i++;
+
+        let delay = autoSpeed;
+        const ch = text[i - 1];
+        if (ch === ' ') delay *= 0.4;
+        else if ('.,;:!?'.includes(ch)) delay *= 3;
+        else delay += (Math.random() - 0.5) * autoSpeed * 0.6;
+
+        autoInterval = setTimeout(typeNext, Math.max(10, delay));
+      } else {
+        isRunning = false;
+        document.getElementById('autoGo').disabled = false;
+        document.getElementById('autoStatus').textContent = 'Terminé';
+        document.getElementById('autoStatus').className = 'auto-status done';
+        document.getElementById('autoToggle').classList.remove('active');
+      }
+    }
+
+    typeNext();
+  }
+</script>
 
 </body>
 </html>
