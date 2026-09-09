@@ -907,23 +907,26 @@ async function refreshToolbox(){
 
   try {
     if(tbMainTab==='mine'){
-      // Load all local folders in parallel (including thumbnails & icons for generated media)
-      const [imgRes, audRes, modRes, srcRes, thumbRes, iconRes] = await Promise.all([
+      // Load all local folders in parallel (including thumbnails, icons & gui-icons for generated media)
+      const [imgRes, audRes, modRes, srcRes, thumbRes, iconRes, guiIconRes] = await Promise.all([
         window.forgeAPI.listProjectFiles(activeProject.path,'assets'),
         window.forgeAPI.listProjectFiles(activeProject.path,'sounds'),
         window.forgeAPI.listProjectFiles(activeProject.path,'models'),
         window.forgeAPI.listProjectFiles(activeProject.path,'src'),
         window.forgeAPI.listProjectFiles(activeProject.path,'thumbnails'),
         window.forgeAPI.listProjectFiles(activeProject.path,'icons'),
+        window.forgeAPI.listProjectFiles(activeProject.path,'gui-icons'),
       ]);
       const assetImages = (imgRes.files||[]).concat(flattenTree(imgRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
       const thumbImages = (thumbRes.files||[]).concat(flattenTree(thumbRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
       const iconImages = (iconRes.files||[]).concat(flattenTree(iconRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
+      const guiIconImages = (guiIconRes.files||[]).concat(flattenTree(guiIconRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
       // Store images as objects with full path and source folder for correct path resolution
       tbCache = {
         images: assetImages.map(f => ({ name: f, fullPath: activeProject.path + '/assets/' + f, folder: 'assets' }))
           .concat(thumbImages.map(f => ({ name: f, fullPath: activeProject.path + '/thumbnails/' + f, folder: 'thumbnails' })))
-          .concat(iconImages.map(f => ({ name: f, fullPath: activeProject.path + '/icons/' + f, folder: 'icons' }))),
+          .concat(iconImages.map(f => ({ name: f, fullPath: activeProject.path + '/icons/' + f, folder: 'icons' })))
+          .concat(guiIconImages.map(f => ({ name: f, fullPath: activeProject.path + '/gui-icons/' + f, folder: 'gui-icons' }))),
         audios: (audRes.files||[]).filter(function(f){ return /\.(mp3|ogg|wav|flac|aac)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/sounds/' + f })),
         models: (modRes.files||[]).filter(function(f){ return /\.(obj|fbx|gltf|glb|rbxm|rbxmx)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/models/' + f })),
         src: srcRes.tree||[],
@@ -933,6 +936,7 @@ async function refreshToolbox(){
           model: activeProject.path+'/models/',
           thumbnail: activeProject.path+'/thumbnails/',
           icon: activeProject.path+'/icons/',
+          'gui-icon': activeProject.path+'/gui-icons/',
         }
       };
     } else {

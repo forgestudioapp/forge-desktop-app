@@ -415,8 +415,8 @@ Quand les outils Tripo3D Forge sont disponibles et que l'utilisateur demande une
 2. Vérifie le statut à intervalles raisonnables jusqu'au succès ou à une erreur explicite.
 3. Lance la conversion/import FBX et conserve le nouvel identifiant si l'outil en retourne un.
 4. Vérifie la conversion puis télécharge le FBX dans `models/`.
-5. Crée un rendu d'aperçu nommé `<nom-du-modèle>-preview.png` dans `models/`. Cet aperçu est un fichier auxiliaire : ne le présente pas comme une création séparée et ne le publie pas manuellement.
-6. Valide l'existence et la taille du FBX et de son aperçu. Ne crée pas de GLB en plus du FBX.
+5. Télécharge aussi le GLB/PBR dans `models/` pour la prévisualisation Forge, avec un nom de base cohérent.
+6. Valide l'existence et la taille des fichiers.
 
 Pour la qualité du modèle :
 
