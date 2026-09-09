@@ -23,6 +23,12 @@ const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('.
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
 const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
 const {
+  isModelFile,
+  isModelPreviewFile,
+  modelArtifactKey,
+  previewCandidatesForModel,
+} = require('./lib/model-asset-pairing');
+const {
   buildRobloxAuthorizationUrl,
   parseRobloxOAuthCallback,
   normalizeRobloxTokenData,
@@ -152,7 +158,7 @@ class AgentManager {
     });
   }
 
-  async launch(agentType, projectPath, prompt, options = {}) {
+async launch(agentType, projectPath, prompt, options = {}) {
     if (!isPathAllowed(projectPath)) {
       return { error: 'Chemin de projet non autorise. Place ton projet dans Documents, Desktop, ou un dossier de developpement.' };
     }
@@ -168,7 +174,7 @@ class AgentManager {
       if (!options.skipForgeInstructions) {
         prepareForgeAgentInstructions(projectPath, agentType);
       }
-      const { cmd, args, stdin } = this._buildCommand(agentType, safePrompt, options);
+      const { cmd, args, stdin } = this._buildCommand(agentType, safePrompt, { ...options, projectPath });
       const proc = spawn(cmd, args, {
         cwd: projectPath,
         shell: true,
@@ -341,36 +347,31 @@ class AgentManager {
     return map[agentType] || agentType;
   }
 
-  _buildCommand(agentType, prompt, options = {}) {
+_buildCommand(agentType, prompt, options = {}) {
     const mcpServerPath = getMcpServerPath();
     if (!mcpServerPath && !options.skipMcp) {
       throw new Error('Serveur MCP Roblox introuvable. Reinstalle Forge ou reconstruis robloxstudio-mcp.');
     }
+    const projectPath = options.projectPath || null;
 
     switch (agentType) {
       case 'claude': {
-        // Claude charge ce fichier pour cette session uniquement : on ne modifie
-        // pas la configuration MCP personnelle de l'utilisateur.
-        const configPath = writeAgentMcpConfig(mcpServerPath);
+        const configPath = writeAgentMcpConfig(mcpServerPath, projectPath);
         return {
           cmd: 'claude',
           args: [
             '--mcp-config', configPath,
             '--strict-mcp-config',
-            '--allowedTools', 'mcp__forge_roblox,mcp__forge_roblox__*',
+            '--allowedTools', 'mcp__forge_roblox,mcp__forge_roblox__*,mcp__forge_memory,mcp__forge_memory__*',
             '--permission-mode', 'acceptEdits',
             '-p', prompt
           ]
         };
       }
       case 'codex':
-        // Codex 0.150+ utilise 'codex mcp add' pour configurer les serveurs MCP
-        // et --dangerously-bypass-approvals-and-sandbox au lieu de --full-auto.
         if (mcpServerPath && !options.skipMcp) ensureCodexMcpEntry(mcpServerPath);
         return { cmd: 'codex', ...buildCodexExec(prompt, options.images) };
       case 'antigravity':
-        // agy lit ses serveurs MCP dans ~/.gemini/config/mcp_config.json
-        // (pas de flag --mcp-config) : on y enregistre forge_roblox avant.
         ensureAgyMcpEntry(mcpServerPath);
         return { cmd: resolveAgyCommand(), args: ['--dangerously-skip-permissions', prompt] };
       default:
@@ -395,7 +396,7 @@ class AgentManager {
       return { error: 'Chemin de projet non autorise.' };
     }
     prepareForgeAgentInstructions(projectPath, agentType);
-    const cmd = buildAgentShellCommand(agentType) || this._getCommand(agentType);
+    const cmd = buildAgentShellCommand(agentType, projectPath) || this._getCommand(agentType);
     const platform = process.platform;
 
     try {
@@ -1129,6 +1130,11 @@ ipcMain.handle('get-github-device-status', async () => {
   };
 });
 
+ipcMain.handle('clear-github-device', async () => {
+  clearGithubDevice();
+  return { success: true };
+});
+
 if (loadGithubDevice()) { console.log('[GitHub] Reprise du polling au demarrage...'); runGithubPolling(); }
 
 // ============================================
@@ -1616,14 +1622,14 @@ function ensureCodexMcpEntry(mcpServerPath) {
 // Commande shell complete pour lancer un agent avec le pont Roblox Studio.
 // Renvoie null si l'agent n'est pas branche au MCP ou si le serveur MCP est
 // introuvable — l'appelant retombe alors sur la commande nue.
-function buildAgentShellCommand(agentType) {
+function buildAgentShellCommand(agentType, projectPath) {
   const mcpServerPath = getMcpServerPath();
   if (!mcpServerPath) return null;
 
   if (agentType === 'claude') {
-    const configPath = writeAgentMcpConfig(mcpServerPath);
+    const configPath = writeAgentMcpConfig(mcpServerPath, projectPath);
     return 'claude --mcp-config "' + configPath + '" --strict-mcp-config'
-      + ' --allowedTools "mcp__forge_roblox,mcp__forge_roblox__*"'
+      + ' --allowedTools "mcp__forge_roblox,mcp__forge_roblox__*,mcp__forge_memory,mcp__forge_memory__*"'
       + ' --permission-mode acceptEdits';
   }
   if (agentType === 'codex') {
@@ -2220,10 +2226,11 @@ ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
 //  - Miniatures / icônes (images) : générées par l'agent Codex.
 //  - Conversion 2D→3D et 3D→2D : API Tripo3D (clé `tripo`).
 const MEDIA_KINDS = {
-  thumb:     { folder: 'thumbnails',  exts: ['.jpg', '.png', '.webp'],      label: 'Miniatures' },
-  icon:      { folder: 'icons',       exts: ['.png', '.jpg', '.webp', '.svg'], label: 'Icônes de jeu' },
-  img2model: { folder: 'conversions', exts: ['.glb', '.fbx', '.obj'],        label: '2D → 3D' },
-  model2img: { folder: 'conversions', exts: ['.png', '.jpg', '.webp'],       label: '3D → 2D' }
+  thumb:      { folder: 'thumbnails',  exts: ['.jpg', '.png', '.webp'],      label: 'Miniatures' },
+  icon:       { folder: 'icons',       exts: ['.png', '.jpg', '.webp', '.svg'], label: 'Icônes de jeu' },
+  'gui-icon': { folder: 'gui-icons',   exts: ['.png', '.jpg', '.webp', '.svg'], label: 'Icônes GUI' },
+  img2model:  { folder: 'conversions', exts: ['.glb', '.fbx', '.obj'],        label: '2D → 3D' },
+  model2img:  { folder: 'conversions', exts: ['.png', '.jpg', '.webp'],       label: '3D → 2D' }
 };
 const notifiedMediaJobs = new Set();
 
@@ -3383,7 +3390,7 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows) =
       : 'agy';
   // Avec le pont MCP quand il est disponible : l'agent herite des tools
   // Roblox Studio (create_object, insert_asset, execute_luau, ...).
-  const launchCmd = buildAgentShellCommand(agentType) || cmd;
+  const launchCmd = buildAgentShellCommand(agentType, projectPath) || cmd;
 
   if (!spawnPty) return { error: 'Terminal intégré indisponible. Réinstalle Forge puis réessaie.' };
 
@@ -3746,7 +3753,7 @@ function getAgentNameForSession(sessionId) {
   return names[pty.agentType] || 'Agent';
 }
 
-function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult) {
+function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult, options = {}) {
   const ext = filename.split('.').pop().toLowerCase();
   const meta = ASSET_EXT_MAP[ext];
   if (!meta) return;
@@ -3773,16 +3780,42 @@ function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult
     aiMessage += ` <span style="color:#948B7C;">(Library : non publié — ${reason})</span>`;
   }
 
-  emitForgeNotification({
+  const notification = emitForgeNotification({
+    id: options.id,
     agentName: agentName || 'Agent',
     agentColor: agentColor || '#3B82F6',
     aiMessage,
     assetType: meta.type,
     filePath,
     fileName: filename,
+    previewPath: options.previewPath || '',
   });
 
   console.log('[AssetWatcher] Nouvelle notif →', filename, '(', meta.type, ')');
+  return notification;
+}
+
+function findModelNotification(filePath) {
+  const key = modelArtifactKey(filePath);
+  return readNotifications(forgeNotificationsPath()).slice().reverse().find(item =>
+    (item.assetType === 'model3d' || item.assetType === 'model')
+      && item.filePath
+      && modelArtifactKey(item.filePath) === key
+  ) || null;
+}
+
+function attachPreviewToModelNotification(previewPath) {
+  const notification = findModelNotification(previewPath);
+  if (!notification) return false;
+  const updated = { ...notification, previewPath };
+  updateNotification(forgeNotificationsPath(), notification.id, { previewPath });
+  broadcastNotification(updated);
+  console.log('[AssetWatcher] Aperçu associé au modèle →', notification.fileName);
+  return true;
+}
+
+function findModelPreview(modelPath) {
+  return previewCandidatesForModel(modelPath).find(candidate => fs.existsSync(candidate)) || '';
 }
 
 // Move a file from anywhere in the project to the right subfolder
@@ -3792,7 +3825,8 @@ function autoMoveAsset(filePath, filename) {
   const meta = ASSET_EXT_MAP[ext];
   if (!meta || !currentSyncProjectPath) return filePath;
 
-  const targetDir = path.join(currentSyncProjectPath, meta.folder);
+  const targetFolder = isModelPreviewFile(filename) ? 'models' : meta.folder;
+  const targetDir = path.join(currentSyncProjectPath, targetFolder);
   if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
   const targetPath = path.join(targetDir, filename);
@@ -3800,14 +3834,14 @@ function autoMoveAsset(filePath, filename) {
 
   try {
     fs.renameSync(filePath, targetPath);
-    console.log('[AssetWatcher] Déplacé :', filename, '→', meta.folder + '/');
+    console.log('[AssetWatcher] Déplacé :', filename, '→', targetFolder + '/');
     return targetPath;
   } catch (err) {
     // rename across drives fails — fallback to copy+delete
     try {
       fs.copyFileSync(filePath, targetPath);
       fs.unlinkSync(filePath);
-      console.log('[AssetWatcher] Copié+Supprimé :', filename, '→', meta.folder + '/');
+      console.log('[AssetWatcher] Copié+Supprimé :', filename, '→', targetFolder + '/');
       return targetPath;
     } catch (e) {
       console.error('[AssetWatcher] Impossible de déplacer :', e.message);
@@ -3863,6 +3897,25 @@ function handleNewAssetFile(filePath, filename) {
     const meta = ASSET_EXT_MAP[ext];
     if (!meta) return;
 
+    // Un rendu Blender *-preview.png est la vignette du modèle, pas un asset
+    // image autonome : on le garde dans models/, sans publication ni notification.
+    if (isModelPreviewFile(filename)) {
+      const previewPath = autoMoveAsset(resolvedPath, filename);
+      attachPreviewToModelNotification(previewPath);
+      return;
+    }
+
+    let existingModelNotification = null;
+    if (isModelFile(filename)) {
+      existingModelNotification = findModelNotification(resolvedPath);
+      // Si les deux formats ont malgré tout été produits, FBX est la livraison
+      // canonique. Le GLB ne doit pas créer une seconde carte.
+      if (ext !== 'fbx') {
+        const siblingFbx = path.join(path.dirname(resolvedPath), path.basename(resolvedPath, path.extname(resolvedPath)) + '.fbx');
+        if (fs.existsSync(siblingFbx) || (existingModelNotification && /\.fbx$/i.test(existingModelNotification.fileName))) return;
+      }
+    }
+
     const { agentName, agentColor } = resolveAgent();
 
     // RÉFLEXE SYSTÉMATIQUE : publication automatique dans la Library
@@ -3877,7 +3930,12 @@ function handleNewAssetFile(filePath, filename) {
       libResult = { error: e.message };
     }
 
-    notifyAssetCreated(resolvedPath, filename, agentName, agentColor, libResult);
+    notifyAssetCreated(resolvedPath, filename, agentName, agentColor, libResult, {
+      id: existingModelNotification && existingModelNotification.id,
+      previewPath: isModelFile(filename)
+        ? (findModelPreview(resolvedPath) || (existingModelNotification && existingModelNotification.previewPath) || '')
+        : '',
+    });
   }, 800);
 }
 
@@ -4076,6 +4134,8 @@ function startFileSync(projectPath) {
   if (currentSyncProjectPath === projectPath && (fileWatcher || sourceReconcileTimer)) {
     reconcileSourceScripts(srcPath, true);
     console.log('[FileSync] Deja actif, verification complete relancee pour:', projectPath);
+    // Ensure memory MCP is running for this project
+    startMemoryMcpServer(projectPath);
     return;
   }
 
@@ -4087,6 +4147,9 @@ function startFileSync(projectPath) {
 
   console.log('[FileSync] Surveillance activee pour:', srcPath);
   currentSyncProjectPath = projectPath;
+
+  // Start Memory MCP for this project
+  startMemoryMcpServer(projectPath);
 
   try {
     fileWatcher = fs.watch(srcPath, { recursive: true }, (eventType, filename) => {

@@ -137,6 +137,11 @@
         <span data-i18n="login_license_store">Achetée sur le store ? — </span><a id="buyLink" style="color:var(--ember-light); text-decoration:underline; cursor:pointer;" data-i18n="login_buy_license">💳 Acheter une licence</a>
       </div>
     </div>
+    <div class="field" id="forgotField" style="display:none; margin-top:-10px; margin-bottom:10px;">
+      <div style="text-align:right;">
+        <a id="forgotLink" style="color:var(--ember-light); text-decoration:underline; cursor:pointer; font-size:13px;" data-i18n="login_forgot_password">Mot de passe oublié ?</a>
+      </div>
+    </div>
     <button class="submit-btn" id="submitBtn" data-i18n="login_signup_btn">Créer mon compte</button>
     <div class="switch-mode">
       <span id="switchText" data-i18n="login_have_account">Déjà un compte ?</span> <a id="switchLink" data-i18n="login_signin">Se connecter</a>
@@ -180,8 +185,10 @@
     mode = newMode;
     errBox.classList.remove('show');
     submitBtn.disabled = false;
+    const forgotField = document.getElementById('forgotField');
     if(mode === 'signup'){
       licenseField.style.display = 'block';
+      forgotField.style.display = 'none';
       formTitle.textContent = t('login_signup_title');
       formSub.textContent = t('login_signup_sub');
       submitBtn.textContent = t('login_signup_btn');
@@ -189,6 +196,7 @@
       switchLinkEl.textContent = t('login_signin');
     } else {
       licenseField.style.display = 'none';
+      forgotField.style.display = 'block';
       formTitle.textContent = t('login_signin_title');
       formSub.textContent = t('login_signin_sub');
       submitBtn.textContent = t('login_signin');
@@ -201,6 +209,46 @@
     e.preventDefault();
     errBox.classList.remove('show');
     setMode(mode === 'signup' ? 'signin' : 'signup');
+  });
+
+  document.getElementById('forgotLink').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = emailInput.value.trim();
+    if(!email){
+      showError(t('login_err_fill'));
+      emailInput.focus();
+      return;
+    }
+    if(!window.forgeAPI || !window.forgeAPI.supabaseAuth){
+      showError(t('login_err_unavailable'));
+      return;
+    }
+    const link = document.getElementById('forgotLink');
+    link.textContent = t('login_sending_reset');
+    link.style.pointerEvents = 'none';
+    try {
+      const { url: supabaseUrl, serviceKey: supabaseKey } = getSupabaseConfig ? getSupabaseConfig() : {url: '', serviceKey: ''};
+      if(!supabaseUrl || !supabaseKey){
+        showError('Configuration Supabase manquante');
+        return;
+      }
+      const response = await fetch(`${supabaseUrl}/auth/v1/recover`, {
+        method: 'POST',
+        headers: { 'apikey': supabaseKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if(response.ok){
+        showError(t('login_reset_sent'));
+      } else {
+        const data = await response.json();
+        showError(data.error_description || t('login_reset_failed'));
+      }
+    } catch(err) {
+      showError(t('login_err_unavailable'));
+    } finally {
+      link.textContent = t('login_forgot_password');
+      link.style.pointerEvents = 'auto';
+    }
   });
 
   setMode('signup');

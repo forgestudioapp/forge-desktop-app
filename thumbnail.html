@@ -222,7 +222,9 @@
               <svg width="12" height="12" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"><path d="M50 10 L50 90" stroke-linecap="round"/><path d="M50 10 L20 75" stroke-linecap="round"/><path d="M50 10 L80 75" stroke-linecap="round"/></svg>
               Codex
             </span>
-            <button class="gen-tab active" id="tabMini" onclick="toggleMiniIcone()">Miniature</button>
+            <button class="gen-tab active" id="tabThumb" onclick="setKind('thumb')">Miniature</button>
+            <button class="gen-tab" id="tabIcon" onclick="setKind('icon')">Icône de jeu</button>
+            <button class="gen-tab" id="tabGuiIcon" onclick="setKind('gui-icon')">Icône GUI</button>
           </div>
           <div class="gen-row">
             <input class="gen-input" id="genPrompt" data-i18n-placeholder="placeholder_prompt" placeholder="Un samouraï dans une forêt enneigée…">
@@ -680,8 +682,8 @@
   // page on affiche un toast léger car la cloche vit dans workspace.html.
   function showToast(msg, color){
     const t=document.createElement('div');
-    t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--char3);border:1px solid '+(color||'var(--ember)')+';border-radius:8px;padding:8px 16px;font-size:12px;color:var(--bone);z-index:9999;pointer-events:none;animation:slideUp .2s ease;box-shadow:0 8px 24px rgba(0,0,0,.4);';
-    t.innerHTML=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},4200);
+    t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--char3);border:1px solid '+(color||'var(--ember)')+';border-radius:8px;padding:10px 18px;font-size:13px;color:var(--bone);z-index:10000;pointer-events:none;animation:slideUp .2s ease;box-shadow:0 8px 24px rgba(0,0,0,.4);';
+    t.innerHTML=msg;document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(10px)';setTimeout(function(){t.remove();},200);},4000);
   }
   if(window.forgeAPI&&window.forgeAPI.onNotification){
     window.forgeAPI.onNotification(function(data){
@@ -690,7 +692,8 @@
         const plain=m.replace(/<[^>]+>/g,'').slice(0,120);
         const c=(data&&data.agentColor)||'var(--ember)';
         showToast('<span style="color:'+(data&&data.agentColor||'var(--ember-light)')+';font-weight:700;">● '+(data&&data.agentName||'Agent')+'</span> · '+plain, c);
-      }catch(e){}
+        console.log('[Thumbnail] Notification received:', data);
+      }catch(e){console.error('[Thumbnail] Notification error:', e);}
     });
   }
 

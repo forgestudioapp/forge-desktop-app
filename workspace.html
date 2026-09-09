@@ -614,7 +614,16 @@ function applyGridLayout(){
 }
 
 function genId(){return 'a_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);}
-function createAgent(type){const meta=AGENT_META[type];try{var s=JSON.parse(localStorage.getItem('forge_settings')||'{}');var max=s.maxAgents||3;if(agents.length>=max){showToast('Limite atteinte ('+max+' agents max)','warning');return;}}catch(e){}const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};agents.push(a);createPanel(a);updateCount();saveAgentState();if(workspaceStarted)startAgentAutomatically(a);}
+let createAgentLock = false;
+function createAgent(type){
+  if(createAgentLock) return;
+  createAgentLock = true;
+  setTimeout(() => { createAgentLock = false; }, 300);
+  const meta=AGENT_META[type];
+  try{var s=JSON.parse(localStorage.getItem('forge_settings')||'{}');var max=s.maxAgents||3;if(agents.length>=max){showToast('Limite atteinte ('+max+' agents max)','warning');createAgentLock=false;return;}}catch(e){}
+  const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};
+  agents.push(a);createPanel(a);updateCount();saveAgentState();if(workspaceStarted)startAgentAutomatically(a);
+}
 
 function startAgentAutomatically(agent){
   if(!activeProject||!window.forgeAPI||!window.forgeAPI.ptyCreate)return;
@@ -898,22 +907,32 @@ async function refreshToolbox(){
 
   try {
     if(tbMainTab==='mine'){
-      // Load all local folders in parallel
-      const [imgRes, audRes, modRes, srcRes] = await Promise.all([
+      // Load all local folders in parallel (including thumbnails & icons for generated media)
+      const [imgRes, audRes, modRes, srcRes, thumbRes, iconRes] = await Promise.all([
         window.forgeAPI.listProjectFiles(activeProject.path,'assets'),
         window.forgeAPI.listProjectFiles(activeProject.path,'sounds'),
         window.forgeAPI.listProjectFiles(activeProject.path,'models'),
         window.forgeAPI.listProjectFiles(activeProject.path,'src'),
+        window.forgeAPI.listProjectFiles(activeProject.path,'thumbnails'),
+        window.forgeAPI.listProjectFiles(activeProject.path,'icons'),
       ]);
+      const assetImages = (imgRes.files||[]).concat(flattenTree(imgRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
+      const thumbImages = (thumbRes.files||[]).concat(flattenTree(thumbRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
+      const iconImages = (iconRes.files||[]).concat(flattenTree(iconRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
+      // Store images as objects with full path and source folder for correct path resolution
       tbCache = {
-        images: (imgRes.files||[]).concat(flattenTree(imgRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); }),
-        audios: (audRes.files||[]).filter(function(f){ return /\.(mp3|ogg|wav|flac|aac)$/i.test(f); }),
-        models: (modRes.files||[]).filter(function(f){ return /\.(obj|fbx|gltf|glb|rbxm|rbxmx)$/i.test(f); }),
+        images: assetImages.map(f => ({ name: f, fullPath: activeProject.path + '/assets/' + f, folder: 'assets' }))
+          .concat(thumbImages.map(f => ({ name: f, fullPath: activeProject.path + '/thumbnails/' + f, folder: 'thumbnails' })))
+          .concat(iconImages.map(f => ({ name: f, fullPath: activeProject.path + '/icons/' + f, folder: 'icons' }))),
+        audios: (audRes.files||[]).filter(function(f){ return /\.(mp3|ogg|wav|flac|aac)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/sounds/' + f })),
+        models: (modRes.files||[]).filter(function(f){ return /\.(obj|fbx|gltf|glb|rbxm|rbxmx)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/models/' + f })),
         src: srcRes.tree||[],
         basePaths: {
           image: activeProject.path+'/assets/',
           audio: activeProject.path+'/sounds/',
           model: activeProject.path+'/models/',
+          thumbnail: activeProject.path+'/thumbnails/',
+          icon: activeProject.path+'/icons/',
         }
       };
     } else {
@@ -995,16 +1014,16 @@ function renderToolbox(){
   // Collect items to show
   let items=[];
   const q=tbSearch;
-  function addItems(list, type, baseDir){
+  function addItems(list, type){
     list.forEach(function(f){
-      if(q && f.toLowerCase().indexOf(q)===-1) return;
-      items.push({ name:f, type:type, path:baseDir+f });
+      if(q && f.name.toLowerCase().indexOf(q)===-1) return;
+      items.push({ name:f.name, type:type, path:f.fullPath });
     });
   }
 
-  if(tbFilter==='all'||tbFilter==='image') addItems(tbCache.images,'image', tbCache.basePaths.image||'');
-  if(tbFilter==='all'||tbFilter==='audio') addItems(tbCache.audios,'audio', tbCache.basePaths.audio||'');
-  if(tbFilter==='all'||tbFilter==='model') addItems(tbCache.models,'model', tbCache.basePaths.model||'');
+  if(tbFilter==='all'||tbFilter==='image') addItems(tbCache.images,'image');
+  if(tbFilter==='all'||tbFilter==='audio') addItems(tbCache.audios,'audio');
+  if(tbFilter==='all'||tbFilter==='model') addItems(tbCache.models,'model');
 
   if(items.length===0){
     const label = tbMainTab==='library'
@@ -1525,6 +1544,10 @@ function buildNotifThumb(notif){
   if(notif.assetType==='audio'){
     return '<div class="notif-preview-audio"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#5B9BE3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/></svg><span style="color:var(--smoke);font-size:12px;">'+notif.fileName+'</span></div>';
   }
+  if(notif.previewPath){
+    const src='file:///'+notif.previewPath.replace(/\\/g,'/').replace(/^\/+/, '');
+    return '<img class="notif-preview-img" src="'+src+'" alt="Aperçu de '+notif.fileName+'" onerror="this.style.display=\'none\'">';
+  }
   return '<div class="notif-preview-model">'+WIREFRAME_SVG.replace('viewBox','width="32" height="32" viewBox')+'<span style="color:var(--smoke);font-size:12px;">'+notif.fileName+'</span></div>';
 }
 
@@ -1605,8 +1628,9 @@ function showToast(msg){
 // Push a notification (called from IPC or manually)
 function pushNotification(data){
   // data: {agentName, agentColor, aiMessage, assetType, filePath, fileName}
-  const notif={id:data.id||genId(),agentName:data.agentName||'Agent',agentColor:data.agentColor||'#3B82F6',aiMessage:data.aiMessage||'Nouvel asset généré.',assetType:data.assetType||'image',filePath:data.filePath||'',fileName:data.fileName||'asset',timestamp:data.timestamp||Date.now(),read:!!data.read};
-  if(notifications.some(function(item){return item.id===notif.id;}))return notif;
+  const notif={id:data.id||genId(),agentName:data.agentName||'Agent',agentColor:data.agentColor||'#3B82F6',aiMessage:data.aiMessage||'Nouvel asset généré.',assetType:data.assetType||'image',filePath:data.filePath||'',fileName:data.fileName||'asset',previewPath:data.previewPath||'',timestamp:data.timestamp||Date.now(),read:!!data.read};
+  const existingIndex=notifications.findIndex(function(item){return item.id===notif.id;});
+  if(existingIndex!==-1){notifications[existingIndex]=notif;renderNotifList();updateBadge();return notif;}
   notifications.push(notif);
   renderNotifList();
   updateBadge();
