@@ -248,6 +248,8 @@
     </div>
   </div>
 
+  <div id="savedToast" style="position:fixed;top:20px;right:20px;background:var(--ember);color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:500;opacity:0;transition:opacity 0.2s;z-index:999;pointer-events:none;">Enregistré ✓</div>
+
 <script src="./lib/i18n.js"></script>
 <script>
   const SETTINGS_KEY = 'forge_settings';
@@ -255,7 +257,11 @@
   function loadSettings() {
     try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch(e) { return {}; }
   }
-  function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+  function saveSettings(s) {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    var el=document.getElementById('savedToast');
+    if(el){el.style.opacity='1';setTimeout(function(){el.style.opacity='0';},1500);}
+  }
 
   // ── Theme ──
   function applyTheme() {
