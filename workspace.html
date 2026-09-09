@@ -348,6 +348,7 @@
         <div class="notif-panel-header">
           <span class="notif-panel-title" data-i18n="notifications">Notifications</span>
           <div class="notif-panel-actions">
+            <button class="notif-clear-btn" onclick="markAllRead()" style="font-size:10px;padding:3px 8px;" data-i18n="mark_all_read">Tout lire</button>
             <button class="notif-clear-btn" onclick="clearAllNotifs()" data-i18n="clear_all">Tout effacer</button>
             <button class="notif-panel-close" onclick="closeNotifPanel()">×</button>
           </div>
@@ -415,6 +416,7 @@
       <div class="tb-empty">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
         <span>Aucun projet actif</span>
+        <a href="projects.html" style="color:var(--ember);font-size:11px;margin-top:4px;text-decoration:none;opacity:.8;">Ouvrir ou créer un projet →</a>
       </div>
     </div>
 
@@ -612,7 +614,7 @@ function applyGridLayout(){
 }
 
 function genId(){return 'a_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);}
-function createAgent(type){const meta=AGENT_META[type];const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};agents.push(a);createPanel(a);updateCount();saveAgentState();if(workspaceStarted)startAgentAutomatically(a);}
+function createAgent(type){const meta=AGENT_META[type];try{var s=JSON.parse(localStorage.getItem('forge_settings')||'{}');var max=s.maxAgents||3;if(agents.length>=max){showToast('Limite atteinte ('+max+' agents max)','warning');return;}}catch(e){}const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};agents.push(a);createPanel(a);updateCount();saveAgentState();if(workspaceStarted)startAgentAutomatically(a);}
 
 function startAgentAutomatically(agent){
   if(!activeProject||!window.forgeAPI||!window.forgeAPI.ptyCreate)return;
@@ -686,7 +688,7 @@ function createPanel(agent){
     +'</div>'
     +'<button class="agent-close" title="Fermer">\xd7</button>';
 
-  hdr.querySelector('.agent-close').addEventListener('click',function(){closeAgent(agent.id);});
+  hdr.querySelector('.agent-close').addEventListener('click',function(){if(!confirm('Fermer cet agent ? Le processus en cours sera arrêté.'))return;closeAgent(agent.id);});
 
   const wrap=document.createElement('div');wrap.className='xterm-wrap';wrap.id='xterm-'+agent.id;
   panel.appendChild(hdr);panel.appendChild(wrap);agentGrid.appendChild(panel);agent.element=panel;
@@ -696,7 +698,7 @@ function createPanel(agent){
     e.stopPropagation();toggleFullscreen(agent);
   });
   hdr.querySelector('#reset-'+agent.id).addEventListener('click',function(e){
-    e.stopPropagation();resetConversation(agent);
+    e.stopPropagation();if(!confirm('Redémarrer la conversation ? L\'historique sera perdu.'))return;resetConversation(agent);
   });
   hdr.querySelector('#zoomin-'+agent.id).addEventListener('click',function(e){
     e.stopPropagation();zoomAgent(agent,1);
@@ -784,7 +786,7 @@ function resetConversation(agent){
   var nameEl=document.getElementById('name-'+agent.id);
   agent.name=meta.label+' #'+(agentCounter[agent.agentType]++);
   if(nameEl)nameEl.textContent=agent.name;
-  if(agent.xterm){agent.xterm.writeln('\x1b[90mNouvelle conversation.\x1b[0m');}
+  if(agent.xterm){agent.xterm.writeln('\x1b[90m'+t('new_conversation')+'\x1b[0m');}
   setAgentReady(agent,t('agent_ready'));
   saveAgentState();
   if(workspaceStarted)startAgentAutomatically(agent);
@@ -822,8 +824,8 @@ if(window.forgeAPI&&window.forgeAPI.onPtyData){window.forgeAPI.onPtyData(functio
 if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;hideMcpBadge(a.id);setAgentReady(a,t('agent_finished'));saveAgentState();}else{earlyPtyExit.set(data.sessionId,data);}});}
 
 let mcpActivityTimer=null;
-function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b)b.style.display='none';}
-function showMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b)b.style.display='inline';}
+function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b){b.style.opacity='0';setTimeout(function(){b.style.display='none';},200);}}
+function showMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b){b.style.display='inline';b.style.opacity='0';b.style.transition='opacity 0.2s';requestAnimationFrame(function(){b.style.opacity='1';});}}
 function showMcpBadgeAll(){agents.forEach(function(a){if(a.element&&a.element.classList.contains('running'))showMcpBadge(a.id);});}
 function hideAllMcpBadges(){agents.forEach(function(a){hideMcpBadge(a.id);});}
 function getMostRecentActiveAgent(){
@@ -1488,6 +1490,7 @@ document.addEventListener('click',function(e){
 });
 
 function clearAllNotifs(){notifications=[];renderNotifList();updateBadge();if(window.forgeAPI&&window.forgeAPI.clearNotifications)window.forgeAPI.clearNotifications();}
+function markAllRead(){notifications.forEach(function(n){n.read=true;});renderNotifList();updateBadge();}
 
 function updateBadge(){
   const unread=notifications.filter(function(n){return !n.read;}).length;
@@ -1582,9 +1585,13 @@ function markRead(id){
 
 function sendReprompt(notif,text){
   if(!text||!text.trim())return;
-  // Forward to agent PTY if available — for now show a toast
-  console.log('[Reprompt]',notif.agentName,text);
-  showToast('Retour envoyé à '+notif.agentName);
+  var agent=agents.find(function(a){return a.name===notif.agentName||a.agentType===notif.agentName;});
+  if(agent&&agent.sessionId&&window.forgeAPI&&window.forgeAPI.ptyInput){
+    window.forgeAPI.ptyInput(agent.sessionId,text.trim()+'\n');
+    showToast('Retour envoyé à '+agent.name);
+  }else{
+    showToast('Agent non actif — impossible d\'envoyer');
+  }
 }
 
 function showToast(msg){
@@ -1601,6 +1608,8 @@ function pushNotification(data){
   notifications.push(notif);
   renderNotifList();
   updateBadge();
+  // play sound if enabled
+  try{var s=JSON.parse(localStorage.getItem('forge_settings')||'{}');if(s.notifSound!==false){var audio=new Audio('data:audio/wav;base64,UklGRl9vT19teleQBAABABABAAEARBYAAABhYWRkYXRlAgAACKAAAPhUkQAA');audio.volume=0.3;audio.play().catch(function(){});}}catch(e){}
   // auto-open panel briefly
   if(!notifPanelOpen){
     document.getElementById('notifPanel').classList.add('open');
@@ -1698,6 +1707,7 @@ function acceptAsset(){
 
 function rejectAsset(){
   if(!reviewNotif)return;
+  if(!confirm('Rejeter cet asset ? Le fichier sera supprimé définitivement.'))return;
   const n=reviewNotif;
   markRead(n.id);
   // remove notification
@@ -2070,22 +2080,12 @@ function loadFBXViewer(canvas, filePath) {
 }
 
 // ══════════════════════════════════════════════
-// DEMO: push a test notification on Alt+N
-// (Remove in production — for dev testing only)
+// Keyboard shortcuts
 // ══════════════════════════════════════════════
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){
     var fsAgent=agents.find(function(a){return a._fullscreen;});
     if(fsAgent){toggleFullscreen(fsAgent);e.preventDefault();return;}
-  }
-  if(e.altKey&&e.key==='n'){
-    pushNotification({
-      agentName:'Claude Code',agentColor:'#CC785C',
-      aiMessage:'Voilà ce que tu m\'as demandé pour l\'icône principale du jeu — j\'ai appliqué un style cartoon avec des contours épais et une palette vibrante.',
-      assetType:'image',
-      filePath:(activeProject?activeProject.path+'/assets/':'C:/ForgeProjects/')+'icon.png',
-      fileName:'icon.png'
-    });
   }
 });
 </script>
