@@ -433,6 +433,33 @@ N'envoie le modèle sur Roblox que si l'utilisateur le demande explicitement.
 
 Forge surveille ses dossiers médias et peut gérer automatiquement leur indexation ou leur publication dans la Library. Ne déclenche pas une seconde publication manuelle. Indique simplement les fichiers créés et leur emplacement.
 
+### Blender (gratuit, headless)
+
+Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arrière-plan (sans interface) pour créer, modifier et exporter des modèles 3D. L'outil est disponible même sans Roblox Studio ouvert.
+
+**Pour vérifier si Blender est installé :** appelle `blender_check`. Si non disponible, indique à l'utilisateur de l'installer gratuitement sur blender.org.
+
+**Outils disponibles :**
+- `blender_check` — vérifie l'installation
+- `blender_new_scene` — crée une scène avec caméra et lumière
+- `blender_add_object` — ajoute un objet (cube, sphere, cylinder, plane, torus, cone, monkey)
+- `blender_set_material` — applique couleur, métallicité, rugosité
+- `blender_list_objects` — liste les objets de la scène
+- `blender_delete_object` — supprime un objet
+- `blender_export_glb` — exporte en GLB (pour Roblox ou web)
+- `blender_export_fbx` — exporte en FBX
+- `blender_render` — rendu image
+- `blender_exec` — exécute du Python bpy libre
+
+**Quand l'utilisateur demande de créer un modèle 3D avec Blender :**
+1. Vérifie d'abord que Blender est installé (`blender_check`).
+2. Crée une scène (`blender_new_scene`).
+3. Ajoute les objets, applique les matériaux.
+4. Exporte en GLB ou FBX selon l'usage.
+5. Indique le chemin du fichier exporté.
+
+**Blender exec** permet d'écrire du Python bpy libre pour tout : modélisation procédurale, animation, simulation, rendu, import/export de formats spécifiques, etc. Le script tourne en headless sans timeout.
+
 ## 15. Règles Luau utiles
 
 - Attends les instances nécessaires au démarrage avec `WaitForChild` lorsque leur réplication n'est pas garantie.

@@ -692,7 +692,8 @@ function createPanel(agent){
 
   const wrap=document.createElement('div');wrap.className='xterm-wrap';wrap.id='xterm-'+agent.id;
   panel.appendChild(hdr);panel.appendChild(wrap);agentGrid.appendChild(panel);agent.element=panel;
-  agent._fontSize=12;agent._fullscreen=false;agent._firstInput=true;
+  try { agent._fontSize = parseInt(localStorage.getItem('forge_agent_fontsize_'+agent.id),10) || 12; } catch(e) { agent._fontSize = 12; }
+  agent._fullscreen=false;agent._firstInput=true;
 
   hdr.querySelector('#fullscreen-'+agent.id).addEventListener('click',function(e){
     e.stopPropagation();toggleFullscreen(agent);
@@ -769,6 +770,7 @@ function toggleFullscreen(agent){
 
 function zoomAgent(agent,delta){
   agent._fontSize=Math.max(8,Math.min(24,agent._fontSize+delta));
+  try { localStorage.setItem('forge_agent_fontsize_'+agent.id, agent._fontSize); } catch(e) {}
   if(agent.xterm){
     agent.xterm.options.fontSize=agent._fontSize;
     if(agent.fitAddon)setTimeout(function(){try{agent.fitAddon.fit();}catch(e){}},50);

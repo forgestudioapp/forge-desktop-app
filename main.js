@@ -308,6 +308,7 @@ class AgentManager {
 
       proc.on('close', (code) => {
         if (code === 0) {
+          refreshPathEnv();
           this._emitInstall(agentType, 'done', 'Installation terminee');
           resolve({ success: true });
         } else {
@@ -1353,6 +1354,152 @@ function runNpmGlobalInstall(item, pkg) {
 }
 
 // ============================================
+// MEMORY MCP — Index local par projet (codebase-memory-mcp)
+// ============================================
+let memoryMcpProcess = null;
+let memoryMcpReady = false;
+let memoryMcpRequestId = 0;
+let memoryMcpPending = new Map();
+let memoryMcpInitialized = false;
+
+function getMemoryMcpPath() {
+  return getBundledResourcePath('codebase-memory-mcp', 'codebase-memory-mcp.exe');
+}
+
+function getMemoryIndexDir(projectPath) {
+  return path.join(projectPath, '.forge-memory');
+}
+
+function startMemoryMcpServer(projectPath) {
+  if (memoryMcpProcess) return;
+
+  const memoryMcpPath = getMemoryMcpPath();
+  if (!memoryMcpPath || !fs.existsSync(memoryMcpPath)) {
+    console.log('[MemoryMCP] Binaire introuvable (optionnel)');
+    return;
+  }
+
+  const indexDir = getMemoryIndexDir(projectPath);
+  fs.mkdirSync(indexDir, { recursive: true });
+
+  console.log('[MemoryMCP] Demarrage pour:', projectPath);
+  memoryMcpProcess = spawn(memoryMcpPath, [
+    'serve',
+    '--project', projectPath,
+    '--index-dir', indexDir
+  ], { env: process.env });
+
+  memoryMcpProcess.stdout.on('data', (data) => {
+    const lines = data.toString().split('\n');
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.id !== undefined && memoryMcpPending.has(msg.id)) {
+          const { resolve, reject } = memoryMcpPending.get(msg.id);
+          memoryMcpPending.delete(msg.id);
+          if (msg.error) reject(new Error(msg.error.message || JSON.stringify(msg.error)));
+          else resolve(msg.result);
+        }
+      } catch (e) {
+        console.log('[MemoryMCP] JSON parse:', e.message, line.substring(0, 200));
+      }
+    }
+  });
+
+  memoryMcpProcess.stderr.on('data', (data) => {
+    const text = data.toString().trim();
+    if (text) console.error('[MemoryMCP]', text);
+  });
+
+  memoryMcpProcess.on('exit', (code) => {
+    console.log('[MemoryMCP] Processus termine, code:', code);
+    memoryMcpProcess = null;
+    memoryMcpInitialized = false;
+    memoryMcpReady = false;
+    for (const [, { reject }] of memoryMcpPending) reject(new Error('MemoryMCP crashed'));
+    memoryMcpPending.clear();
+  });
+
+  memoryMcpProcess.on('error', (err) => {
+    console.error('[MemoryMCP] Erreur demarrage:', err.message);
+    memoryMcpProcess = null;
+  });
+}
+
+async function waitForMemoryMcpServer(maxWaitMs = 10000) {
+  startMemoryMcpServer(currentSyncProjectPath || getUserProjectsRoot());
+  if (!memoryMcpProcess) return false;
+  if (memoryMcpReady) return true;
+
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    if (memoryMcpProcess.killed || memoryMcpProcess.exitCode !== null) return false;
+    try {
+      await memoryMcpSend('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'forge-memory', version: '1.0.0' }
+      }, 2000, true);
+      memoryMcpProcess.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+      memoryMcpReady = true;
+      memoryMcpInitialized = true;
+      console.log('[MemoryMCP] Pret');
+      return true;
+    } catch {
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+  return false;
+}
+
+async function memoryMcpSend(method, params, timeoutMs = 15000, skipReadyWait = false) {
+  if (!memoryMcpProcess) startMemoryMcpServer(currentSyncProjectPath || getUserProjectsRoot());
+  if (!memoryMcpProcess) throw new Error('MemoryMCP non demarre — binaire manquant ?');
+  if (!skipReadyWait) {
+    for (let i = 0; i < 50; i++) { if (memoryMcpReady) break; await new Promise(r => setTimeout(r, 200)); }
+    if (!memoryMcpReady) throw new Error('MemoryMCP ne repond pas');
+  }
+  const id = ++memoryMcpRequestId;
+  const payload = JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n';
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (memoryMcpPending.has(id)) { memoryMcpPending.delete(id); reject(new Error(`Timeout MemoryMCP (${timeoutMs}ms)`)); }
+    }, timeoutMs);
+    memoryMcpPending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); }, method });
+    try { memoryMcpProcess.stdin.write(payload); } catch (err) { clearTimeout(timer); memoryMcpPending.delete(id); reject(err); }
+  });
+}
+
+async function memoryMcpInitialize() {
+  if (memoryMcpInitialized) return;
+  await memoryMcpSend('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'forge-memory', version: '1.0.0' } });
+  memoryMcpProcess.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+  memoryMcpInitialized = true;
+}
+
+async function memoryMcpCallTool(name, args, timeoutMs) {
+  await memoryMcpInitialize();
+  return await memoryMcpSend('tools/call', { name, arguments: args }, timeoutMs || 15000);
+}
+
+async function indexProjectMemory(projectPath) {
+  const memoryMcpPath = getMemoryMcpPath();
+  if (!memoryMcpPath || !fs.existsSync(memoryMcpPath)) return { error: 'MemoryMCP binaire manquant' };
+  const indexDir = getMemoryIndexDir(projectPath);
+  fs.mkdirSync(indexDir, { recursive: true });
+  return new Promise((resolve) => {
+    const proc = spawn(memoryMcpPath, ['index', '--project', projectPath, '--index-dir', indexDir], { env: process.env, shell: true });
+    let stderr = '';
+    proc.stderr.on('data', d => stderr += d.toString());
+    proc.on('close', (code) => {
+      resolve({ success: code === 0, error: code !== 0 ? stderr.slice(-500) : null });
+    });
+    proc.on('error', (e) => resolve({ error: e.message }));
+  });
+}
+
+// ============================================
 // MCP SERVER — CORRIGE
 // ============================================
 let mcpServerProcess = null;
@@ -1388,13 +1535,24 @@ function getForgePluginPath() {
   return getBundledResourcePath('ForgePlugin.rbxmx');
 }
 
-function writeAgentMcpConfig(mcpServerPath) {
+function writeAgentMcpConfig(mcpServerPath, projectPath) {
   const configDir = path.join(app.getPath('userData'), 'mcp');
   fs.mkdirSync(configDir, { recursive: true });
-  const configPath = path.join(configDir, 'forge-roblox.json');
+  const configName = projectPath ? `forge-roblox-${path.basename(projectPath)}.json` : 'forge-roblox.json';
+  const configPath = path.join(configDir, configName);
+  
+  const memoryMcpPath = getMemoryMcpPath();
+  const indexDir = projectPath ? getMemoryIndexDir(projectPath) : null;
+  
   const config = {
     mcpServers: {
-      forge_roblox: { command: 'node', args: [mcpServerPath] }
+      forge_roblox: { command: 'node', args: [mcpServerPath] },
+      ...(projectPath && memoryMcpPath && fs.existsSync(memoryMcpPath) ? {
+        forge_memory: { 
+          command: memoryMcpPath, 
+          args: ['serve', '--project', projectPath, '--index-dir', indexDir] 
+        }
+      } : {})
     }
   };
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
@@ -1776,6 +1934,71 @@ ipcMain.handle('check-plugin-connection', async () => {
   return { connected: true, studioConnected: false, message: 'Serveur MCP pret. Ouvre Roblox Studio pour te connecter.' };
 });
 
+// ============================================
+// MEMORY MCP IPC HANDLERS
+// ============================================
+ipcMain.handle('memory-index-project', async (event, projectPath) => {
+  if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
+  return await indexProjectMemory(projectPath);
+});
+
+ipcMain.handle('memory-search', async (event, projectPath, query) => {
+  if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
+  try {
+    await waitForMemoryMcpServer(10000);
+    const result = await memoryMcpCallTool('search_graph', { 
+      name_pattern: query, 
+      file_pattern: '**/*.{lua,luau,ts,tsx}', 
+      limit: 20 
+    });
+    return { success: true, result };
+  } catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('memory-trace', async (event, projectPath, entry, direction, depth) => {
+  if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
+  try {
+    await waitForMemoryMcpServer(10000);
+    const result = await memoryMcpCallTool('trace_path', { 
+      entry, 
+      direction: direction || 'down', 
+      depth: depth || 3 
+    });
+    return { success: true, result };
+  } catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('memory-impact', async (event, projectPath, target) => {
+  if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
+  try {
+    await waitForMemoryMcpServer(10000);
+    const result = await memoryMcpCallTool('detect_changes', { 
+      target, 
+      project: path.basename(projectPath) 
+    });
+    return { success: true, result };
+  } catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('memory-architecture', async (event, projectPath) => {
+  if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
+  try {
+    await waitForMemoryMcpServer(10000);
+    const result = await memoryMcpCallTool('get_architecture', {});
+    return { success: true, result };
+  } catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('memory-get-snippet', async (event, projectPath, qualifiedName) => {
+  if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
+  try {
+    await waitForMemoryMcpServer(10000);
+    const result = await memoryMcpCallTool('get_code_snippet', { qualified_name: qualifiedName });
+    return { success: true, result };
+  } catch (err) { return { error: err.message }; }
+});
+
+// ============================================
 ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
   try {
     const ping = await isStudioConnected();
