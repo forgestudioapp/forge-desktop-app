@@ -415,8 +415,8 @@ Quand les outils Tripo3D Forge sont disponibles et que l'utilisateur demande une
 2. Vérifie le statut à intervalles raisonnables jusqu'au succès ou à une erreur explicite.
 3. Lance la conversion/import FBX et conserve le nouvel identifiant si l'outil en retourne un.
 4. Vérifie la conversion puis télécharge le FBX dans `models/`.
-5. Télécharge aussi le GLB/PBR dans `models/` pour la prévisualisation Forge, avec un nom de base cohérent.
-6. Valide l'existence et la taille des fichiers.
+5. Crée un rendu d'aperçu nommé `<nom-du-modèle>-preview.png` dans `models/`. Cet aperçu est un fichier auxiliaire : ne le présente pas comme une création séparée et ne le publie pas manuellement.
+6. Valide l'existence et la taille du FBX et de son aperçu. Ne crée pas de GLB en plus du FBX.
 
 Pour la qualité du modèle :
 
@@ -446,7 +446,7 @@ Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arri
 - `blender_set_material` — applique couleur, métallicité, rugosité
 - `blender_list_objects` — liste les objets de la scène
 - `blender_delete_object` — supprime un objet
-- `blender_export_glb` — exporte en GLB (pour Roblox ou web)
+- `blender_export_glb` — exporte en GLB uniquement si l'utilisateur demande explicitement ce format
 - `blender_export_fbx` — exporte en FBX
 - `blender_render` — rendu image
 - `blender_exec` — exécute du Python bpy libre
@@ -455,8 +455,10 @@ Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arri
 1. Vérifie d'abord que Blender est installé (`blender_check`).
 2. Crée une scène (`blender_new_scene`).
 3. Ajoute les objets, applique les matériaux.
-4. Exporte en GLB ou FBX selon l'usage.
-5. Indique le chemin du fichier exporté.
+4. Exporte exactement un modèle final en FBX dans `models/`. Ne génère pas de copie GLB.
+5. Produis un rendu propre dans `models/<nom-du-modèle>-preview.png`, cadré pour montrer clairement le modèle.
+6. Considère ce PNG comme la vignette du FBX : ne l'annonce pas comme un second asset et ne demande pas à Forge de le publier séparément.
+7. Dans ta réponse, parle uniquement du modèle FBX livré. Forge affichera naturellement son aperçu sur la même carte.
 
 **Blender exec** permet d'écrire du Python bpy libre pour tout : modélisation procédurale, animation, simulation, rendu, import/export de formats spécifiques, etc. Le script tourne en headless sans timeout.
 

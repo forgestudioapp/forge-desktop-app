@@ -165,6 +165,7 @@
     <div id="githubCodeBox" style="display:none; margin-top:12px; text-align:center; background:rgba(0,0,0,0.2); border-radius:8px; padding:12px; position:relative; z-index:1;">
       <div style="font-size:11px; color:var(--smoke-dim); margin-bottom:6px;"><span data-i18n="github_code_info">Va sur le site et entre ce code :</span> <b id="ghUrl"></b></div>
       <div id="ghCode" style="font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; letter-spacing:2px; color:var(--ember-light);"></div>
+      <button class="acc-btn secondary" id="githubCancelBtn" style="margin-top:10px;" data-i18n="cancel">Annuler</button>
     </div>
   </div>
 
@@ -375,6 +376,21 @@
     const pollResult = await window.forgeAPI.githubPoll();
     if(pollResult.error){ setGithubError('reessayer'); return; }
     setGithubConnected();
+  });
+
+  document.getElementById('githubCancelBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('githubCancelBtn');
+    btn.disabled = true;
+    if(window.forgeAPI && window.forgeAPI.clearGithubDevice){
+      await window.forgeAPI.clearGithubDevice();
+    }
+    document.getElementById('githubCodeBox').style.display = 'none';
+    const githubBtn = document.getElementById('githubBtn');
+    githubBtn.textContent = t('connect_github');
+    githubBtn.classList.remove('connected', 'error');
+    githubBtn.classList.add('secondary');
+    githubBtn.disabled = false;
+    btn.disabled = false;
   });
 
   document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('agents.html'));

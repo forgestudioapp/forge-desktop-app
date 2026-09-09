@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   githubPoll: () => ipcRenderer.invoke('github-poll'),
   isGithubConnected: () => ipcRenderer.invoke('is-github-connected'),
   getGithubDeviceStatus: () => ipcRenderer.invoke('get-github-device-status'),
+  clearGithubDevice: () => ipcRenderer.invoke('clear-github-device'),
   onGithubAuthSuccess: (callback) => ipcRenderer.on('github-auth-success', callback),
   onGithubAuthError: (callback) => ipcRenderer.on('github-auth-error', callback),
 
@@ -63,6 +64,14 @@ contextBridge.exposeInMainWorld('forgeAPI', {
 
   // --- MCP ---
   executeLuau: (code, datamodelType) => ipcRenderer.invoke('execute-luau', code, datamodelType),
+
+  // --- Memory MCP ---
+  memoryIndexProject: (projectPath) => ipcRenderer.invoke('memory-index-project', projectPath),
+  memorySearch: (projectPath, query) => ipcRenderer.invoke('memory-search', projectPath, query),
+  memoryTrace: (projectPath, entry, direction, depth) => ipcRenderer.invoke('memory-trace', projectPath, entry, direction, depth),
+  memoryImpact: (projectPath, target) => ipcRenderer.invoke('memory-impact', projectPath, target),
+  memoryArchitecture: (projectPath) => ipcRenderer.invoke('memory-architecture', projectPath),
+  memoryGetSnippet: (projectPath, qualifiedName) => ipcRenderer.invoke('memory-get-snippet', projectPath, qualifiedName),
 
   // --- File Sync ---
   startFileSync: (projectPath) => ipcRenderer.invoke('start-file-sync', projectPath),

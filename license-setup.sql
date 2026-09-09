@@ -35,13 +35,13 @@ create policy "license_verify_public"
   for select
   using (true);
 
--- only service_role can insert/update (Edge Function uses service key)
+-- only service_role can insert/update/delete (Edge Function uses service key)
 drop policy if exists "license_admin_service" on public.license_keys;
 create policy "license_admin_service"
   on public.license_keys
   for all
-  using (true)
-  with check (true);
+  using (auth.role() = 'service_role')
+  with check (auth.role() = 'service_role');
 
 -- 3) Fonction pour vérifier une clé -------------------------
 create or replace function public.verify_license(key text)
@@ -65,6 +65,9 @@ as $$
 $$;
 
 -- 4) Fonction pour marquer une cle comme utilisee (apres creation de compte) ----
+-- ATTENTION: Cette fonction est security definer et peut être appelée via l'API publique.
+-- Elle ne devrait être appelée que par l'Edge Function (qui utilise le service_role).
+-- On ajoute une vérification que le statut est bien 'active' avant consommation.
 create or replace function public.consume_license(key text, user_email text default null)
 returns table (
   valid boolean,
@@ -84,6 +87,11 @@ as $$
     true as valid,
     'License consumed' as message;
 $$;
+
+-- Restreindre l'appel de consume_license aux rôles autorisés uniquement
+revoke execute on function public.consume_license(text, text) from anon;
+revoke execute on function public.consume_license(text, text) from authenticated;
+grant execute on function public.consume_license(text, text) to service_role;
 
 -- 5) Vérification -------------------------------------------
 select count(*) as license_table_ok from public.license_keys;

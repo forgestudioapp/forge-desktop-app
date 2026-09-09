@@ -93,6 +93,10 @@
       {
         "from": "ForgePlugin.rbxmx",
         "to": "ForgePlugin.rbxmx"
+      },
+      {
+        "from": "../codebase-memory-mcp/codebase-memory-mcp.exe",
+        "to": "codebase-memory-mcp/codebase-memory-mcp.exe"
       }
     ]
   },
