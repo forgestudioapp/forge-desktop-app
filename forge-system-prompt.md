@@ -468,6 +468,7 @@ Les outils Blender retournent le chemin `blendFile` de la scène de travail sauv
 
 ## 15. Règles Luau utiles
 
+
 - Attends les instances nécessaires au démarrage avec `WaitForChild` lorsque leur réplication n'est pas garantie.
 - Appelle les méthodes du `Humanoid`, pas du modèle Character.
 - Le serveur peut écraser une position modifiée seulement côté client ; place la logique autoritaire au bon endroit.
