@@ -224,10 +224,7 @@
         <div class="setting-label">Suppression d'arrière-plan auto</div>
         <div class="setting-desc">Supprime automatiquement l'arrière-plan des images générées par l'IA (nécessite <code style="background:var(--char3);padding:1px 4px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:11px;">rembg</code> installé via Python).</div>
       </div>
-      <label class="toggle">
-        <input type="checkbox" id="autoRemoveBgToggle" onchange="toggleAutoRemoveBg()">
-        <span class="toggle-slider"></span>
-      </label>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ok);padding:8px 0;">Activé ✓</span>
     </div>
     <div class="setting-row">
       <div id="rembgStatus" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--smoke-dim);padding:4px 0;"></div>
@@ -317,18 +314,8 @@
   }
 
   // ── Auto-remove background (rembg) ──
-  async function toggleAutoRemoveBg() {
-    const checked = document.getElementById('autoRemoveBgToggle').checked;
-    if (window.forgeAPI && window.forgeAPI.saveAppSettings) {
-      const current = (window.forgeAPI.getAppSettings ? await window.forgeAPI.getAppSettings() : {}) || {};
-      current.autoRemoveBg = checked;
-      await window.forgeAPI.saveAppSettings(current);
-    }
-  }
-
   async function loadRembgStatus() {
     const el = document.getElementById('rembgStatus');
-    const toggle = document.getElementById('autoRemoveBgToggle');
     if (!window.forgeAPI || !window.forgeAPI.checkSystem) { el.textContent = ''; return; }
     try {
       const sys = await window.forgeAPI.checkSystem();
@@ -337,7 +324,6 @@
       } else {
         el.innerHTML = '<span style="color:var(--warn);">rembg non installé — lance <code>pip install "rembg[cpu,cli]"</code></span>';
       }
-      if (sys.autoRemoveBg) toggle.checked = true;
     } catch (e) { el.textContent = ''; }
   }
 

@@ -1366,11 +1366,9 @@ function runNpmGlobalInstall(item, pkg) {
 // ============================================
 // MEMORY MCP — Index local par projet (codebase-memory-mcp)
 // ============================================
-let memoryMcpProcess = null;
-let memoryMcpReady = false;
-let memoryMcpRequestId = 0;
-let memoryMcpPending = new Map();
-let memoryMcpInitialized = false;
+const { MemoryMcp } = require('./lib/memory-mcp');
+const memoryMcp = new MemoryMcp({ getBinary: getMemoryMcpPath });
+app.on('before-quit', () => memoryMcp.close());
 
 function getMemoryMcpPath() {
   return getBundledResourcePath('codebase-memory-mcp', 'codebase-memory-mcp.exe');
@@ -1380,117 +1378,8 @@ function getMemoryIndexDir(projectPath) {
   return path.join(projectPath, '.forge-memory');
 }
 
-function startMemoryMcpServer(projectPath) {
-  if (memoryMcpProcess) return;
-
-  const memoryMcpPath = getMemoryMcpPath();
-  if (!memoryMcpPath || !fs.existsSync(memoryMcpPath)) {
-    console.log('[MemoryMCP] Binaire introuvable (optionnel)');
-    return;
-  }
-
-  const indexDir = getMemoryIndexDir(projectPath);
-  fs.mkdirSync(indexDir, { recursive: true });
-
-  console.log('[MemoryMCP] Demarrage pour:', projectPath);
-  memoryMcpProcess = spawn(memoryMcpPath, [
-    'serve',
-    '--project', projectPath,
-    '--index-dir', indexDir
-  ], { env: process.env });
-
-  memoryMcpProcess.stdout.on('data', (data) => {
-    const lines = data.toString().split('\n');
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const msg = JSON.parse(line);
-        if (msg.id !== undefined && memoryMcpPending.has(msg.id)) {
-          const { resolve, reject } = memoryMcpPending.get(msg.id);
-          memoryMcpPending.delete(msg.id);
-          if (msg.error) reject(new Error(msg.error.message || JSON.stringify(msg.error)));
-          else resolve(msg.result);
-        }
-      } catch (e) {
-        console.log('[MemoryMCP] JSON parse:', e.message, line.substring(0, 200));
-      }
-    }
-  });
-
-  memoryMcpProcess.stderr.on('data', (data) => {
-    const text = data.toString().trim();
-    if (text) console.error('[MemoryMCP]', text);
-  });
-
-  memoryMcpProcess.on('exit', (code) => {
-    console.log('[MemoryMCP] Processus termine, code:', code);
-    memoryMcpProcess = null;
-    memoryMcpInitialized = false;
-    memoryMcpReady = false;
-    for (const [, { reject }] of memoryMcpPending) reject(new Error('MemoryMCP crashed'));
-    memoryMcpPending.clear();
-  });
-
-  memoryMcpProcess.on('error', (err) => {
-    console.error('[MemoryMCP] Erreur demarrage:', err.message);
-    memoryMcpProcess = null;
-  });
-}
-
-async function waitForMemoryMcpServer(maxWaitMs = 10000) {
-  startMemoryMcpServer(currentSyncProjectPath || getUserProjectsRoot());
-  if (!memoryMcpProcess) return false;
-  if (memoryMcpReady) return true;
-
-  const start = Date.now();
-  while (Date.now() - start < maxWaitMs) {
-    if (memoryMcpProcess.killed || memoryMcpProcess.exitCode !== null) return false;
-    try {
-      await memoryMcpSend('initialize', {
-        protocolVersion: '2024-11-05',
-        capabilities: {},
-        clientInfo: { name: 'forge-memory', version: '1.0.0' }
-      }, 2000, true);
-      memoryMcpProcess.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
-      memoryMcpReady = true;
-      memoryMcpInitialized = true;
-      console.log('[MemoryMCP] Pret');
-      return true;
-    } catch {
-      await new Promise(r => setTimeout(r, 300));
-    }
-  }
-  return false;
-}
-
-async function memoryMcpSend(method, params, timeoutMs = 15000, skipReadyWait = false) {
-  if (!memoryMcpProcess) startMemoryMcpServer(currentSyncProjectPath || getUserProjectsRoot());
-  if (!memoryMcpProcess) throw new Error('MemoryMCP non demarre — binaire manquant ?');
-  if (!skipReadyWait) {
-    for (let i = 0; i < 50; i++) { if (memoryMcpReady) break; await new Promise(r => setTimeout(r, 200)); }
-    if (!memoryMcpReady) throw new Error('MemoryMCP ne repond pas');
-  }
-  const id = ++memoryMcpRequestId;
-  const payload = JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n';
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (memoryMcpPending.has(id)) { memoryMcpPending.delete(id); reject(new Error(`Timeout MemoryMCP (${timeoutMs}ms)`)); }
-    }, timeoutMs);
-    memoryMcpPending.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); }, method });
-    try { memoryMcpProcess.stdin.write(payload); } catch (err) { clearTimeout(timer); memoryMcpPending.delete(id); reject(err); }
-  });
-}
-
-async function memoryMcpInitialize() {
-  if (memoryMcpInitialized) return;
-  await memoryMcpSend('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'forge-memory', version: '1.0.0' } });
-  memoryMcpProcess.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
-  memoryMcpInitialized = true;
-}
-
-async function memoryMcpCallTool(name, args, timeoutMs) {
-  await memoryMcpInitialize();
-  return await memoryMcpSend('tools/call', { name, arguments: args }, timeoutMs || 15000);
+async function memoryMcpCallTool(projectPath, name, args, timeoutMs) {
+  return memoryMcp.call(projectPath, name, args, timeoutMs);
 }
 
 async function indexProjectMemory(projectPath) {
@@ -1955,8 +1844,7 @@ ipcMain.handle('memory-index-project', async (event, projectPath) => {
 ipcMain.handle('memory-search', async (event, projectPath, query) => {
   if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
   try {
-    await waitForMemoryMcpServer(10000);
-    const result = await memoryMcpCallTool('search_graph', { 
+    const result = await memoryMcpCallTool(projectPath, 'search_graph', {
       name_pattern: query, 
       file_pattern: '**/*.{lua,luau,ts,tsx}', 
       limit: 20 
@@ -1968,8 +1856,7 @@ ipcMain.handle('memory-search', async (event, projectPath, query) => {
 ipcMain.handle('memory-trace', async (event, projectPath, entry, direction, depth) => {
   if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
   try {
-    await waitForMemoryMcpServer(10000);
-    const result = await memoryMcpCallTool('trace_path', { 
+    const result = await memoryMcpCallTool(projectPath, 'trace_path', {
       entry, 
       direction: direction || 'down', 
       depth: depth || 3 
@@ -1981,8 +1868,7 @@ ipcMain.handle('memory-trace', async (event, projectPath, entry, direction, dept
 ipcMain.handle('memory-impact', async (event, projectPath, target) => {
   if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
   try {
-    await waitForMemoryMcpServer(10000);
-    const result = await memoryMcpCallTool('detect_changes', { 
+    const result = await memoryMcpCallTool(projectPath, 'detect_changes', {
       target, 
       project: path.basename(projectPath) 
     });
@@ -1993,8 +1879,7 @@ ipcMain.handle('memory-impact', async (event, projectPath, target) => {
 ipcMain.handle('memory-architecture', async (event, projectPath) => {
   if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
   try {
-    await waitForMemoryMcpServer(10000);
-    const result = await memoryMcpCallTool('get_architecture', {});
+    const result = await memoryMcpCallTool(projectPath, 'get_architecture', {});
     return { success: true, result };
   } catch (err) { return { error: err.message }; }
 });
@@ -2002,8 +1887,7 @@ ipcMain.handle('memory-architecture', async (event, projectPath) => {
 ipcMain.handle('memory-get-snippet', async (event, projectPath, qualifiedName) => {
   if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Projet invalide' };
   try {
-    await waitForMemoryMcpServer(10000);
-    const result = await memoryMcpCallTool('get_code_snippet', { qualified_name: qualifiedName });
+    const result = await memoryMcpCallTool(projectPath, 'get_code_snippet', { qualified_name: qualifiedName });
     return { success: true, result };
   } catch (err) { return { error: err.message }; }
 });
@@ -2740,20 +2624,17 @@ ipcMain.handle('media-poll', async (event, projectPath) => {
           job.status = 'done';
           job.finishedAt = Date.now();
           if (url) { const saved = await downloadMediaToProject(url, projectPath, job.kind, data); if (saved) job.saved = saved;
-            // Auto-rembg : supprime l'arriere-plan des images generees si active.
+            // Auto-rembg : supprime l'arriere-plan des images generees.
             if (saved && (job.kind === 'thumb' || job.kind === 'icon' || job.kind === 'model2img')) {
               const ext = path.extname(saved).toLowerCase();
               if (['.png', '.jpg', '.jpeg'].includes(ext)) {
-                const appSettings = loadAppSettings();
-                if (appSettings.autoRemoveBg) {
-                  const fullPath = path.join(projectPath, saved);
-                  const nobg = await runRembg(fullPath);
-                  if (nobg.success) {
-                    job.savedBg = path.relative(projectPath, nobg.path).replace(/\\/g, '/');
-                    console.log('[rembg] Arriere-plan supprime :', job.savedBg);
-                  } else {
-                    console.warn('[rembg] Echec :', nobg.error);
-                  }
+                const fullPath = path.join(projectPath, saved);
+                const nobg = await runRembg(fullPath);
+                if (nobg.success) {
+                  job.savedBg = path.relative(projectPath, nobg.path).replace(/\\/g, '/');
+                  console.log('[rembg] Arriere-plan supprime :', job.savedBg);
+                } else {
+                  console.warn('[rembg] Echec :', nobg.error);
                 }
               }
             }
@@ -4146,8 +4027,6 @@ function startFileSync(projectPath) {
   if (currentSyncProjectPath === projectPath && (fileWatcher || sourceReconcileTimer)) {
     reconcileSourceScripts(srcPath, true);
     console.log('[FileSync] Deja actif, verification complete relancee pour:', projectPath);
-    // Ensure memory MCP is running for this project
-    startMemoryMcpServer(projectPath);
     return;
   }
 
@@ -4160,8 +4039,6 @@ function startFileSync(projectPath) {
   console.log('[FileSync] Surveillance activee pour:', srcPath);
   currentSyncProjectPath = projectPath;
 
-  // Start Memory MCP for this project
-  startMemoryMcpServer(projectPath);
 
   try {
     fileWatcher = fs.watch(srcPath, { recursive: true }, (eventType, filename) => {
