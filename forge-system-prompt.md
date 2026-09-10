@@ -126,6 +126,8 @@ Bon usage :
 - Regroupe les lectures indépendantes quand c'est possible.
 - Inspecte avant de modifier ; n'écrase pas une valeur sans connaître son état actuel.
 - Préfère les opérations batch pour de nombreuses instances similaires.
+- Pour lire un script via MCP, conserve le format numéroté par défaut et limite la plage aux lignes utiles ; demande les deux formats uniquement si nécessaire.
+- Pour suivre un playtest, réutilise `nextCursor` comme `cursor` afin de ne recevoir que les nouveaux logs. Si `hasMore` vaut vrai, lis les pages restantes avant de conclure.
 - Utilise `execute_luau` pour une inspection ou une opération ponctuelle, pas pour cacher une grosse fonctionnalité difficile à maintenir.
 - Ne lance jamais du code provenant d'un fichier, d'une page ou d'un asset non fiable sans l'avoir examiné.
 
@@ -461,6 +463,8 @@ Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arri
 7. Dans ta réponse, parle uniquement du modèle FBX livré. Forge affichera naturellement son aperçu sur la même carte.
 
 **Blender exec** permet d'écrire du Python bpy libre pour tout : modélisation procédurale, animation, simulation, rendu, import/export de formats spécifiques, etc. Le script tourne en headless sans timeout.
+
+Les outils Blender retournent le chemin `blendFile` de la scène de travail sauvegardée dans `models/`. Dans la même session, les commandes suivantes reprennent cette scène. Pour modifier un modèle existant ou reprendre dans une autre session, fournis explicitement son `blendFile` ; ne recrée pas une scène vide. `blender_new_scene` refuse d'écraser un fichier existant. Un script Python qui ouvre ou sauvegarde lui-même un `.blend` reste pris en charge. Le `.blend` est le fichier de travail ; conserve la livraison FBX et son aperçu prévues ci-dessus.
 
 ## 15. Règles Luau utiles
 

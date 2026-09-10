@@ -18,7 +18,9 @@ const {
   updateNotification,
   deleteNotification,
 } = require('./lib/notification-store');
-const { syncForgeAgentInstructions } = require('./lib/forge-instructions');
+const { syncForgeContext } = require('./lib/forge-context');
+const { scheduleProjectIndex } = require('./lib/project-index');
+const { importMediaReferences } = require('./lib/media-references');
 const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('./lib/file-sync');
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
 const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
@@ -87,7 +89,9 @@ function loadForgeSystemPrompt() {
 
 function prepareForgeAgentInstructions(projectPath, agentType) {
   try {
-    return syncForgeAgentInstructions(projectPath, agentType, loadForgeSystemPrompt());
+    const result = syncForgeContext(projectPath, agentType, loadForgeSystemPrompt());
+    if (!result.skipped) scheduleProjectIndex(projectPath);
+    return result;
   } catch (err) {
     console.error(`[Agents] Instructions Forge non installees pour ${agentType}:`, err.message);
     return { error: err.message };
@@ -2382,7 +2386,7 @@ ipcMain.handle('media-generate', async (event, options) => {
 
 // Codex : lance l'agent avec une consigne pour créer les images à l'endroit
 // exact du dossier du projet. On retourne l'id de session pour le suivi.
-async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, itemId, variantId, folder, baseImage }) {
+async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, itemId, variantId, folder, baseImage, referenceImages = [] }) {
   const agentType = 'codex';
   const generationId = mediaGenId('codex');
   const outputPrefix = `${kind}_${generationId}_`;
@@ -2406,12 +2410,13 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
     prompt,
     count: n,
     sourceImage,
+    referenceImages,
     outputPaths,
   });
   const res = await agentManager.launch(agentType, projectPath, instructions, {
     skipMcp: true,
     skipForgeInstructions: true,
-    images: sourceImage ? [sourceImage] : [],
+    images: [...new Set([sourceImage, ...referenceImages].filter(Boolean))],
   });
   if (!res || res.error) {
     manifest = loadMediaManifest(projectPath);
@@ -2963,7 +2968,7 @@ async function removeMediaJobs(manifest, predicate) {
 // Crée des variantes : Codex ré-utilise les fichiers existants pour
 // décliner l'image ; Tripo relance une génération similaire.
 ipcMain.handle('media-variants', async (event, options) => {
-  const { projectPath, kind, itemId, variantId, prompt, count, baseImage } = options || {};
+  const { projectPath, kind, itemId, variantId, prompt, count, baseImage, referencePaths = [] } = options || {};
   try {
     if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Aucun projet actif' };
     const info = MEDIA_KINDS[kind];
@@ -2978,6 +2983,7 @@ ipcMain.handle('media-variants', async (event, options) => {
       const sourceFile = baseImage || (entry.files && entry.files[0]);
       const seed = resolveMediaSource(projectPath, sourceFile);
       if (!seed) return { error: 'Image source introuvable pour créer la variante' };
+      const referenceImages = importMediaReferences(projectPath, referencePaths);
       const newVariantId = mediaGenId('v');
       item.variants = item.variants || [];
       item.variants.push({
@@ -2994,7 +3000,7 @@ ipcMain.handle('media-variants', async (event, options) => {
       saveMediaManifest(projectPath, manifest);
       const res = await generateMediaWithCodex({
         projectPath, kind, info, prompt, n, itemId,
-        variantId: newVariantId, folder, baseImage: seed
+        variantId: newVariantId, folder, baseImage: seed, referenceImages
       });
       return { ...res, method: 'codex', variant: true, seed: seed, newVariantId };
     }
@@ -4072,21 +4078,27 @@ async function processSourceFile(srcPath, filename) {
 function reconcileSourceScripts(srcPath, force = false) {
   if (path.dirname(srcPath) !== currentSyncProjectPath) return;
   const present = new Set();
+  let indexChanged = force;
   for (const filename of collectSourceScripts(srcPath)) {
     const key = filename.replace(/\\/g, '/');
     present.add(key);
     try {
       const stat = fs.statSync(path.join(srcPath, filename));
-      const signature = `${stat.size}:${stat.mtimeMs}`;
+      const signature = `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.ino}`;
       if (force || knownScriptSignatures.get(key) !== signature) {
+        indexChanged = true;
         knownScriptSignatures.set(key, signature);
         scheduleSourceFileSync(srcPath, filename, force ? 50 : 200);
       }
     } catch (_) {}
   }
   for (const key of knownScriptSignatures.keys()) {
-    if (!present.has(key)) knownScriptSignatures.delete(key);
+    if (!present.has(key)) {
+      knownScriptSignatures.delete(key);
+      indexChanged = true;
+    }
   }
+  if (indexChanged) scheduleProjectIndex(path.dirname(srcPath));
 }
 
 function enqueueScriptSync(filename, source) {
