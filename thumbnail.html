@@ -224,7 +224,6 @@
             </span>
             <button class="gen-tab active" id="tabThumb" onclick="setKind('thumb')">Miniature</button>
             <button class="gen-tab" id="tabIcon" onclick="setKind('icon')">Icône de jeu</button>
-            <button class="gen-tab" id="tabGuiIcon" onclick="setKind('gui-icon')">Icône GUI</button>
           </div>
           <div class="gen-row">
             <input class="gen-input" id="genPrompt" data-i18n-placeholder="placeholder_prompt" placeholder="Un samouraï dans une forêt enneigée…">
@@ -308,9 +307,8 @@
 
   // ── State ──
   const KIND_META = {
-    thumb:      { label: 'Miniature', labelEN: 'Thumbnail' },
-    icon:       { label: 'Icône de jeu', labelEN: 'Game icon' },
-    'gui-icon': { label: 'Icône GUI', labelEN: 'GUI icon' }
+    thumb: { label: 'Miniature', labelEN: 'Thumbnail' },
+    icon:  { label: 'Icône de jeu', labelEN: 'Game icon' }
   };
   let state = {
     projectPath: null,
@@ -367,13 +365,11 @@ closePreview();
     if(sec==='visuels') renderTree();
   }
 
-  // ── Tab: Miniature / Icône de jeu / Icône GUI ──
+  // ── Tab: Miniature / Icône de jeu ──
   function setKind(kind){
     state.kind = kind;
-    // Update active tab button
     document.getElementById('tabThumb').classList.toggle('active', kind==='thumb');
     document.getElementById('tabIcon').classList.toggle('active', kind==='icon');
-    document.getElementById('tabGuiIcon').classList.toggle('active', kind==='gui-icon');
   }
 
   // ── Count controls ──
@@ -392,7 +388,7 @@ closePreview();
     const empty = document.getElementById('treeEmpty');
     const categories = state.data.categories || {};
     const allItems = [];
-    for(const kind of ['thumb','icon','gui-icon']){
+    for(const kind of ['thumb','icon']){
       const cat = categories[kind];
       if(!cat || !cat.items) continue;
       for(const item of cat.items){
