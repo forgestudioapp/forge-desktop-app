@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('forgeAPI', {
   // --- PTY (terminals interactifs in-app) ---
@@ -100,7 +100,14 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   mediaDownload: (projectPath, relPath) => ipcRenderer.invoke('media-download', projectPath, relPath),
   mediaPreview: (projectPath, relPath) => ipcRenderer.invoke('media-preview', projectPath, relPath),
   mediaDelete: (projectPath, kind, itemId, variantId, relPath) => ipcRenderer.invoke('media-delete', projectPath, kind, itemId, variantId, relPath),
-  mediaVariants: (options) => ipcRenderer.invoke('media-variants', options),
+  mediaVariants: async (options, referenceFiles = []) => {
+    const referencePaths = referenceFiles.map(file => {
+      const filePath = webUtils.getPathForFile(file);
+      if (!filePath) throw new Error('Cette référence ne correspond pas à un fichier enregistré.');
+      return filePath;
+    });
+    return ipcRenderer.invoke('media-variants', { ...options, referencePaths });
+  },
   mediaAttachFiles: (projectPath, kind, itemId, variantId, fileNames) => ipcRenderer.invoke('media-attach-files', projectPath, kind, itemId, variantId, fileNames),
   mediaRename: (projectPath, kind, itemId, newName) => ipcRenderer.invoke('media-rename', projectPath, kind, itemId, newName),
 

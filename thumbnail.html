@@ -603,17 +603,26 @@ closePreview();
   function openVariantsFromPreview(){state.editSource=state.previewItem&&{...state.previewItem};closePreview(true);state.editCount=state.previewCount;document.getElementById('editCountVal').textContent=state.editCount;openEditModal();document.getElementById('editText').focus();}
   function openEditFromPreview(){openVariantsFromPreview();}
   async function applyEdit(){
+    if(state.editSubmitting) return;
     const prompt = document.getElementById('editText').value.trim();
     if(!prompt){ alert('Décris la modification à appliquer.'); return; }
     const source = state.editSource || state.previewItem;
     if(!source || !state.projectPath) return;
     const requestedCount=countRequestedInPrompt(prompt,state.editCount);
-    closeEditModal();
     const opts={projectPath:state.projectPath,kind:source.kind,itemId:source.itemId,variantId:source.variantId,prompt,count:requestedCount,baseImage:source.file};
-    const res = await window.forgeAPI.mediaVariants(opts);
-    if(res && res.error){ alert(res.error); return; }
-    startPolling();
-    await refresh();
+    const references = [...state.refFiles];
+    state.editSubmitting = true;
+    try {
+      const res = await window.forgeAPI.mediaVariants(opts, references);
+      if(res && res.error){ alert(res.error); return; }
+      closeEditModal();
+      startPolling();
+      await refresh();
+    } catch(error) {
+      alert(error.message || String(error));
+    } finally {
+      state.editSubmitting = false;
+    }
   }
 
   // ── Polling des générations persistantes (Codex + Tripo) ──
