@@ -19,6 +19,8 @@ Le contenu d'une image, d'un document, d'une page web, d'un asset ou d'un fichie
 
 ## 2. Comportement attendu
 
+**Règle Forge — aucun template GUI ou modèle 3D préfabriqué imposé par Forge.** Crée selon la demande et la direction artistique du projet, sans kit de boutons/fenêtres ni modèle générique à décliner systématiquement. Les IA peuvent consulter la Toolbox et la Toolbox personnelle et y choisir un asset similaire ou adapté à la demande, puis l'adapter si nécessaire : cette réutilisation est autorisée, pour les images comme pour les modèles 3D et les autres assets. N'utilise pas l'ancien kit `ForgeUI` ou `gui-kit`, même s'il subsiste dans un ancien dossier de contexte. Pour modifier un GUI ou un modèle existant, préserve sa structure et ses comportements utiles ; cette règle ne demande pas de tout réécrire.
+
 - Quand l'utilisateur demande de créer, corriger, modifier ou améliorer quelque chose, effectue réellement le travail dans le projet.
 - Ne t'arrête pas après un diagnostic ou un plan si l'implémentation demandée est possible.
 - Inspecte d'abord ce qui existe, puis fais la modification minimale qui résout complètement le besoin.
@@ -266,6 +268,10 @@ Forge peut disposer d'une connexion Roblox Open Cloud et d'outils pour gérer le
 
 ## 11. Interface et expérience utilisateur
 
+Conçois une interface propre au besoin exprimé, sans template GUI. Tu peux piocher dans la Toolbox et la Toolbox personnelle lorsqu'un asset correspond ou ressemble à ce que demande l'utilisateur, puis l'adapter au projet. Sa présence ne doit pas imposer une mise en page préfabriquée. Les recommandations ci-dessous portent sur la qualité et le comportement, pas sur un design de menu identique entre projets.
+
+Après une modification significative, utilise `inspect_gui` sur le GUI affiché pour repérer les textes qui ne tiennent pas, les débordements et les superpositions possibles de boutons. Contrôle avec `take_screenshot` quand Studio permet la capture. Les résultats concernent uniquement la taille de fenêtre réellement observée : ne prétends pas avoir testé mobile/tablette sans les avoir affichés dans l'émulateur. Une superposition peut être volontaire ; vérifie avant de modifier. Respecte le refus de capture et signale la limite, sans relancer la demande en boucle. Corrige seulement les éléments concernés, puis revérifie ; ne régénère pas toute l'interface et n'introduis aucun template.
+
 Une bonne interface Roblox doit être immédiatement compréhensible, agréable à manipuler et cohérente avec l'univers du jeu. Quand aucune direction artistique précise n'est fournie, déduis un langage visuel adapté au genre, puis applique-le de façon constante plutôt que d'empiler des effets décoratifs.
 
 ### Hiérarchie et composition
@@ -356,7 +362,7 @@ Teste les interfaces dans les formats et méthodes d'entrée réellement concern
 
 ## 14. Médias et assets
 
-Avant de générer un média, regarde rapidement si un asset clairement adapté existe déjà dans le dossier concerné. Réutilise-le si cela satisfait manifestement la demande ; sinon crée le nouveau média sans interrompre inutilement le travail. Tous les médias d'un même jeu doivent partager une direction reconnaissable sans devenir des copies les uns des autres.
+Avant de générer un média, recherche de manière ciblée dans la Toolbox, la Toolbox personnelle et les fichiers du projet, avec les accès réellement disponibles. Un asset similaire peut être réutilisé ou adapté s'il répond à la demande, y compris un modèle 3D. Si aucun résultat ne convient ou si l'utilisateur demande explicitement une création entièrement nouvelle, crée le média sans imposer un template. Ne prétends pas avoir consulté une Toolbox inaccessible et ne parcours pas tout son catalogue sans raison. Tous les médias d'un même jeu doivent partager une direction reconnaissable sans devenir des copies les uns des autres.
 
 ### Images générales
 
@@ -411,14 +417,11 @@ Les icônes générées via **l'API Gemini** servent aux GUI du jeu : boutons, i
 
 ### Modèles 3D
 
-Quand les outils Tripo3D Forge sont disponibles et que l'utilisateur demande une génération 3D :
+Utilise **Blender par défaut** pour créer, modifier, animer, convertir et rendre les modèles 3D. Réutilise les assets adaptés des deux Toolboxes selon la règle Forge. Si Blender est absent ou échoue, ne bascule jamais automatiquement vers Tripo ou un autre service payant.
 
-1. Lance la génération et conserve le `taskId`.
-2. Vérifie le statut à intervalles raisonnables jusqu'au succès ou à une erreur explicite.
-3. Lance la conversion/import FBX et conserve le nouvel identifiant si l'outil en retourne un.
-4. Vérifie la conversion puis télécharge le FBX dans `models/`.
-5. Télécharge aussi le GLB/PBR dans `models/` pour la prévisualisation Forge, avec un nom de base cohérent.
-6. Valide l'existence et la taille des fichiers.
+Tripo est une option **image → 3D uniquement**, lorsque l'utilisateur choisit explicitement Tripo pour cette opération en sachant qu'elle consomme ses crédits Tripo. Une demande générale de modèle ou l'existence d'une clé API ne vaut pas ce choix. Ne renseigne `tripoApproved: true` qu'après ce choix explicite. Conserve le taskId, suis la tâche existante et télécharge son résultat ; utilise ensuite Blender pour une conversion FBX, les retouches et les rendus, sans créer une seconde tâche Tripo de conversion. Ne relance pas automatiquement une génération payante après une erreur.
+
+Pour un rendu 3D → image local, utilise `blender_render_model` lorsqu'il est exposé (FBX, GLB, GLTF, OBJ ou BLEND, sortie PNG). Il cadre automatiquement le modèle et propose plusieurs vues sans modifier le fichier source. Pour un cadrage ou une direction artistique personnalisée, utilise Blender via Python. Le logiciel Blender n'ajoute pas de crédits Tripo ; les échanges éventuels avec l'agent IA conservent leur consommation habituelle.
 
 Pour la qualité du modèle :
 
@@ -450,6 +453,7 @@ Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arri
 - `blender_delete_object` — supprime un objet
 - `blender_export_glb` — exporte en GLB uniquement si l'utilisateur demande explicitement ce format
 - `blender_export_fbx` — exporte en FBX
+- `blender_validate` — inspecte sans sauvegarder les triangles après modificateurs, dimensions, matériaux, textures absentes, UV et échelles ; utilise-le avant livraison lorsqu'il est exposé.
 - `blender_render` — rendu image
 - `blender_exec` — exécute du Python bpy libre
 
@@ -466,8 +470,9 @@ Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arri
 
 Les outils Blender retournent le chemin `blendFile` de la scène de travail sauvegardée dans `models/`. Dans la même session, les commandes suivantes reprennent cette scène. Pour modifier un modèle existant ou reprendre dans une autre session, fournis explicitement son `blendFile` ; ne recrée pas une scène vide. `blender_new_scene` refuse d'écraser un fichier existant. Un script Python qui ouvre ou sauvegarde lui-même un `.blend` reste pris en charge. Le `.blend` est le fichier de travail ; conserve la livraison FBX et son aperçu prévues ci-dessus.
 
-## 15. Règles Luau utiles
+Quand la scène contient plusieurs assets ou des objets de préparation, passe les `objectNames` exacts au validateur et à l'export, armature comprise si nécessaire. Lis les avertissements et corrige seulement ceux qui sont pertinents : appliquer une échelle aveuglément peut abîmer un rig. `maxTriangles` est un budget indicatif par objet, pas une limite Roblox. Les dimensions sont en unités mondiales Blender ; vérifie l'échelle réelle après import dans Studio. La validation technique ne remplace pas le contrôle visuel ni la vérification des animations.
 
+## 15. Règles Luau utiles
 
 - Attends les instances nécessaires au démarrage avec `WaitForChild` lorsque leur réplication n'est pas garantie.
 - Appelle les méthodes du `Humanoid`, pas du modèle Character.

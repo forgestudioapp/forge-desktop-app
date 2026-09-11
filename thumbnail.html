@@ -346,7 +346,7 @@
     const data = await window.forgeAPI.mediaListFiles(state.projectPath);
     state.data = data || { folders: {}, categories: {} };
     renderTree();
-    if((state.data.jobs||[]).some(job=>job.status==='running'||job.status==='pending'||job.status==='starting')) startPolling();
+    if((state.data.jobs||[]).some(job=>['running','pending','starting','retry_wait','download_wait','downloading'].includes(job.status))) startPolling();
   }
 
   // ── Section switching ──
@@ -433,7 +433,7 @@ closePreview();
 
     const nextAncestry = new Set(ancestry); nextAncestry.add(entry.id);
     const files = (entry.files||[]).filter(f=>/\.(png|jpe?g|webp|svg)$/i.test(f));
-    const running = entry.status==='running'||entry.status==='starting'||entry.status==='pending';
+    const running = ['running','starting','pending','retry_wait','download_wait','downloading'].includes(entry.status);
     const expected = Math.max(files.length, running ? (Number(entry.expectedCount)||1) : 0);
     if(!expected) return branch;
 
@@ -473,7 +473,8 @@ closePreview();
     const count = (entry.files||[]).length;
     const expected = Number(entry.expectedCount)||count;
     const labels = {
-      running:'Codex génère '+count+'/'+expected+'…', starting:'Démarrage de Codex…', pending:'En attente…',
+      running:'Génération en cours '+count+'/'+expected+'…', starting:'Démarrage…', pending:'En attente…',
+      retry_wait:'Connexion interrompue — suivi conservé', download_wait:'Génération prête — téléchargement à reprendre', downloading:'Téléchargement…',
       done:count+' image'+(count>1?'s':'')+' créée'+(count>1?'s':''),
       partial:count+'/'+expected+' image(s) créée(s)', failed:'Échec — clic droit pour sélectionner', draft:'Préparation…'
     };

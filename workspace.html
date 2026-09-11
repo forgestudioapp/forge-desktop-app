@@ -908,7 +908,7 @@ async function refreshToolbox(){
   try {
     if(tbMainTab==='mine'){
       // Load all local folders in parallel (including thumbnails, icons & gui-icons for generated media)
-      const [imgRes, audRes, modRes, srcRes, thumbRes, iconRes, guiIconRes] = await Promise.all([
+      const [imgRes, audRes, modRes, srcRes, thumbRes, iconRes, guiIconRes, conversionRes] = await Promise.all([
         window.forgeAPI.listProjectFiles(activeProject.path,'assets'),
         window.forgeAPI.listProjectFiles(activeProject.path,'sounds'),
         window.forgeAPI.listProjectFiles(activeProject.path,'models'),
@@ -916,19 +916,23 @@ async function refreshToolbox(){
         window.forgeAPI.listProjectFiles(activeProject.path,'thumbnails'),
         window.forgeAPI.listProjectFiles(activeProject.path,'icons'),
         window.forgeAPI.listProjectFiles(activeProject.path,'gui-icons'),
+        window.forgeAPI.listProjectFiles(activeProject.path,'conversions'),
       ]);
       const assetImages = (imgRes.files||[]).concat(flattenTree(imgRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
       const thumbImages = (thumbRes.files||[]).concat(flattenTree(thumbRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
       const iconImages = (iconRes.files||[]).concat(flattenTree(iconRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
       const guiIconImages = (guiIconRes.files||[]).concat(flattenTree(guiIconRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
+      const converted = [...new Set((conversionRes.files || []).concat(flattenTree(conversionRes.tree || [])))];
       // Store images as objects with full path and source folder for correct path resolution
       tbCache = {
         images: assetImages.map(f => ({ name: f, fullPath: activeProject.path + '/assets/' + f, folder: 'assets' }))
           .concat(thumbImages.map(f => ({ name: f, fullPath: activeProject.path + '/thumbnails/' + f, folder: 'thumbnails' })))
           .concat(iconImages.map(f => ({ name: f, fullPath: activeProject.path + '/icons/' + f, folder: 'icons' })))
-          .concat(guiIconImages.map(f => ({ name: f, fullPath: activeProject.path + '/gui-icons/' + f, folder: 'gui-icons' }))),
+          .concat(guiIconImages.map(f => ({ name: f, fullPath: activeProject.path + '/gui-icons/' + f, folder: 'gui-icons' })))
+          .concat(converted.filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f)).map(f => ({ name: f, fullPath: activeProject.path + '/conversions/' + f, folder: 'conversions' }))),
         audios: (audRes.files||[]).filter(function(f){ return /\.(mp3|ogg|wav|flac|aac)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/sounds/' + f })),
-        models: (modRes.files||[]).filter(function(f){ return /\.(obj|fbx|gltf|glb|rbxm|rbxmx)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/models/' + f })),
+        models: (modRes.files||[]).filter(function(f){ return /\.(obj|fbx|gltf|glb|rbxm|rbxmx)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/models/' + f }))
+          .concat(converted.filter(f => /\.(obj|fbx|gltf|glb)$/i.test(f)).map(f => ({ name: f, fullPath: activeProject.path + '/conversions/' + f }))),
         src: srcRes.tree||[],
         basePaths: {
           image: activeProject.path+'/assets/',
@@ -1417,6 +1421,43 @@ function openPreview(filePath,fileName,type){
     const a=document.createElement('a');a.href=url;a.download=fileName;a.click();
   };
   footer.appendChild(dlBtn);
+
+  if (activeProject && !/^https?:/i.test(filePath) && ((type === 'image' && /\.(png|jpe?g|webp)$/i.test(filePath)) || /\.(blend|fbx|glb|gltf|obj)$/i.test(filePath))) {
+    const convertBtn = document.createElement('button');
+    const projectPath = activeProject.path;
+    const isImage = type === 'image';
+    convertBtn.className = 'btn-top secondary';
+    convertBtn.textContent = isImage ? 'Image → 3D · Tripo (payant)' : 'Rendu PNG · Blender local';
+    convertBtn.onclick = async function() {
+      if (isImage && !confirm('Convertir cette image avec Tripo ? Cette opération consomme les crédits de ta clé API Tripo.')) return;
+      convertBtn.disabled = true;
+      const label = convertBtn.textContent;
+      convertBtn.textContent = isImage ? 'Conversion en cours…' : 'Rendu en cours…';
+      try {
+        const kind = isImage ? 'img2model' : 'model2img';
+        const item = await window.forgeAPI.mediaCreateItem(projectPath, kind, fileName);
+        if (!item || item.error) throw new Error(item?.error || 'Création impossible');
+        const result = await window.forgeAPI.mediaGenerate({ projectPath, kind, itemId: item.item.id,
+          count: 1, baseImage: filePath, provider: isImage ? 'tripo' : 'blender', tripoApproved: isImage });
+        if (!result || result.error) throw new Error(result?.error || 'Conversion impossible');
+        if (isImage) {
+          let finished = false;
+          while (!finished) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            const status = await window.forgeAPI.mediaPoll(projectPath);
+            if (status?.error) throw new Error(status.error);
+            const jobs = (status?.jobs || []).filter(job => result.jobIds.includes(job.id));
+            const failed = jobs.find(job => job.status === 'failed');
+            if (failed) throw new Error(failed.error || 'Conversion Tripo échouée');
+            finished = jobs.length === result.jobIds.length && jobs.every(job => job.status === 'done');
+          }
+        }
+        await refreshToolbox();
+      } catch (err) { alert(err.message); }
+      finally { convertBtn.disabled = false; convertBtn.textContent = label; }
+    };
+    footer.appendChild(convertBtn);
+  }
 
   // Upload to Roblox + copy ID — images and models
   if(isUploadable){

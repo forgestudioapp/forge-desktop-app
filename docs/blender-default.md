@@ -1,0 +1,13 @@
+# Blender par défaut — 11 septembre 2026
+
+Les instructions des agents utilisent Blender par défaut pour création, retouches, animation, conversion et rendu. Aucun template de modèle n'est ajouté. Tripo reste disponible pour image → 3D avec choix explicite de l'utilisateur. Une clé présente ou une demande générale de modèle ne suffit pas.
+
+L'API média route model2img exclusivement vers Blender local. Les variantes suivent la même règle et nécessitent le modèle source, pas une image rendue. Le nouveau rendu importe FBX, GLB, GLTF ou OBJ, ou ouvre un BLEND, calcule le cadre sur les sommets évalués, installe caméra et éclairage temporaires et écrit un PNG transparent de 768 × 768. Il ne sauvegarde pas le modèle source. Les vues proposées sont perspective, face, côté et dessus ; ce rendu automatique n'interprète pas un prompt artistique. Les agents peuvent utiliser Python Blender pour une mise en scène personnalisée.
+
+Dans l'aperçu des assets locaux de la Toolbox : les modèles compatibles ont une action de rendu PNG local ; les images PNG/JPEG/WebP ont une action Tripo payante avec confirmation. Les conversions sont incluses dans la Toolbox personnelle. Les assets communautaires distants doivent d'abord être récupérés dans le projet pour ces actions locales.
+
+Les garde-fous s'appliquent aussi au backend : img2model exige provider=tripo et tripoApproved=true ; l'outil MCP de génération exige une image HTTPS et tripoApproved=true. Ce champ encode le choix utilisateur ; les consignes interdisent à l'agent de l'inventer. Les générations texte → 3D et conversions distantes FBX ne déclenchent plus de requête Tripo. Le suivi des anciennes tâches reste disponible. Aucun repli automatique vers Tripo si Blender manque.
+
+Validation : suites de tests app et MCP, tests du routage réel IPC et des refus avant accès API, requête image_to_model simulée, test du bouton de confirmation et syntaxe JavaScript des scripts de workspace. Le rendu réel est enregistré dans tools/forge-local-render-JhZBjC/verification.json : FBX source inchangé, PNG valide 768 × 768, aucun BLEND créé. Image inspectée : sujet entier et cadré. Aucun crédit Tripo utilisé pour les tests.
+
+Limites : les formats FBX ont été testés en rendu réel ; les autres imports suivent leurs opérateurs Blender mais ne sont pas encore vérifiés avec des fixtures représentatives. La conversion payante a été simulée, pas exécutée chez Tripo. Le suivi Tripo depuis le nouveau bouton utilise la page ouverte ; le travail de reprise après fermeture/reconnexion reste à améliorer. Aucune installation ni publication effectuée par cette intervention.

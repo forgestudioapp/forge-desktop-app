@@ -21,6 +21,8 @@ const {
 const { syncForgeContext } = require('./lib/forge-context');
 const { scheduleProjectIndex } = require('./lib/project-index');
 const { importMediaReferences } = require('./lib/media-references');
+const { isActiveJob, retainJobs, advanceRemoteJob, mergePolledJobs } = require('./lib/media-jobs');
+const { createMediaLaunchGuard } = require('./lib/media-launch-guard');
 const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('./lib/file-sync');
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
 const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
@@ -2112,7 +2114,7 @@ ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
 // conversions/). L'ARBRE (catégories → éléments → variantes) est décrit
 // dans .forge-media/manifest.json à la racine du projet.
 //  - Miniatures / icônes (images) : générées par l'agent Codex.
-//  - Conversion 2D→3D et 3D→2D : API Tripo3D (clé `tripo`).
+//  - 2D→3D : Tripo uniquement sur choix explicite ; 3D→2D : Blender local.
 const MEDIA_KINDS = {
   thumb:      { folder: 'thumbnails',  exts: ['.jpg', '.png', '.webp'],      label: 'Miniatures' },
   icon:       { folder: 'icons',       exts: ['.png', '.jpg', '.webp', '.svg'], label: 'Icônes de jeu' },
@@ -2247,26 +2249,67 @@ ipcMain.handle('media-create-item', async (event, projectPath, kind, name) => {
   } catch (err) { return { error: err.message }; }
 });
 
-// Génère des fichiers pour un élément (images via Codex, 3D via Tripo3D).
+// Génère des fichiers pour un élément (Codex, Blender local ou Tripo explicite).
 // kind : thumb | icon | img2model | model2img
+const guardMediaLaunch = createMediaLaunchGuard(loadMediaManifest);
 ipcMain.handle('media-generate', async (event, options) => {
-  const { projectPath, kind, prompt, count, itemId, variantId, baseImage } = options || {};
+  const { projectPath, kind, prompt, count, itemId, variantId, baseImage, provider, tripoApproved = false, view } = options || {};
   try {
     if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Aucun projet actif' };
     const info = MEDIA_KINDS[kind];
     if (!info) return { error: 'Type inconnu' };
-    const n = Math.max(1, Math.min(parseInt(count, 10) || 1, 8));
-    const folder = ensureMediaFolder(projectPath, info.folder);
+    return await guardMediaLaunch({ projectPath, kind, itemId, variantId }, async () => {
+      const n = Math.max(1, Math.min(parseInt(count, 10) || 1, 8));
+      const folder = ensureMediaFolder(projectPath, info.folder);
 
-    // --- Images (miniatures / icônes) : via l'agent Codex ---
-    if (kind === 'thumb' || kind === 'icon') {
-      return await generateMediaWithCodex({ projectPath, kind, info, prompt, n, itemId, variantId, folder });
-    }
+      // --- Images (miniatures / icônes) : via l'agent Codex ---
+      if (kind === 'thumb' || kind === 'icon') {
+        return await generateMediaWithCodex({ projectPath, kind, info, prompt, n, itemId, variantId, folder });
+      }
 
-    // --- 3D : via l'API Tripo3D ---
-    return await generateMediaWithTripo({ projectPath, kind, info, prompt, n, itemId, variantId, baseImage, folder });
+      if (kind === 'model2img') return await generateMediaWithBlender({ projectPath, kind, n, itemId, variantId, baseImage, folder, view });
+      return await generateMediaWithTripo({ projectPath, kind, info, prompt, n, itemId, variantId, baseImage, folder, provider, tripoApproved });
+    });
   } catch (err) { return { error: err.message }; }
 });
+
+const activeBlenderRenders = new Set();
+async function generateMediaWithBlender({ projectPath, kind, n, itemId, variantId, baseImage, folder, view = 'perspective' }) {
+  const source = resolveMediaSource(projectPath, baseImage);
+  if (!source) return { error: 'Sélectionne un modèle local du projet pour le rendu Blender.' };
+  const modulePath = getBundledResourcePath('robloxstudio-mcp', 'dist', 'tools', 'blender-tools.js');
+  if (!modulePath) return { error: 'Service Blender absent de cette installation. Aucun appel Tripo effectué.' };
+  const { BlenderTools } = await import(require('url').pathToFileURL(modulePath).href);
+  const renderer = new BlenderTools(path.join(projectPath, 'models'));
+  const job = { id: mediaGenId('blender'), kind, method: 'blender', status: 'running', itemId, variantId,
+    startedAt: Date.now(), source: baseImage, files: [] };
+  let manifest = loadMediaManifest(projectPath);
+  manifest.jobs = manifest.jobs || [];
+  manifest.jobs.push(job);
+  activeBlenderRenders.add(job.id);
+  saveMediaManifest(projectPath, manifest);
+  let failure;
+  try {
+    const views = ['perspective', 'front', 'side', 'top'];
+    for (let i = 0; i < n; i++) {
+      const output = path.join(folder, `${job.id}_${i + 1}.png`);
+      const response = await renderer.renderModel(source, output, i === 0 ? view : views[i % views.length]);
+      if (response.isError) throw new Error(response.content[0]?.text || 'Échec du rendu Blender');
+      if (!fs.existsSync(output) || !fs.statSync(output).size) throw new Error('Blender ne retourne aucun fichier image.');
+      job.files.push(path.relative(projectPath, output).replace(/\\/g, '/'));
+    }
+  } catch (err) { failure = err.message; }
+  finally { activeBlenderRenders.delete(job.id); }
+  manifest = loadMediaManifest(projectPath);
+  const savedJob = (manifest.jobs || []).find(j => j.id === job.id);
+  const status = failure ? (job.files.length ? 'partial' : 'failed') : 'done';
+  if (savedJob) Object.assign(savedJob, { status, files: job.files, error: failure || null, finishedAt: Date.now() });
+  const entry = findMediaEntry(manifest, kind, itemId, variantId);
+  if (entry) Object.assign(entry, { status, files: [...new Set([...(entry.files || []), ...job.files])], error: failure || null });
+  saveMediaManifest(projectPath, manifest);
+  notifyMediaDone(projectPath, kind, job.files.at(-1), 'Rendu Blender local', !job.files.length);
+  return { success: !failure, error: failure, method: 'blender', files: job.files, jobIds: [job.id] };
+}
 
 // Codex : lance l'agent avec une consigne pour créer les images à l'endroit
 // exact du dossier du projet. On retourne l'id de session pour le suivi.
@@ -2339,7 +2382,7 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
     finishedAt: null,
     notified: false,
   });
-  if (manifest.jobs.length > 50) manifest.jobs = manifest.jobs.slice(-50);
+  manifest.jobs = retainJobs(manifest.jobs);
   saveMediaManifest(projectPath, manifest);
   return { sessionId: res.sessionId, jobId: generationId, method: 'codex', message: 'Génération Codex lancée' };
 }
@@ -2405,40 +2448,29 @@ function finalizeCodexMediaSession(projectPath, sessionId) {
 //    un modèle via original_model_task_id. Un modèle local GLB/FBX doit donc
 //    d'abord être importé : upload STS (POST /openapi/upload/sts/token puis PUT
 //    S3 signé SigV4) → import_model → render_image.
-async function generateMediaWithTripo({ projectPath, kind, info, prompt, n, itemId, variantId, baseImage, folder }) {
+async function generateMediaWithTripo({ projectPath, kind, info, prompt, n, itemId, variantId, baseImage, folder, provider, tripoApproved }) {
+  if (kind !== 'img2model') return { error: 'Tripo est réservé à image → 3D. Utilise Blender pour les rendus.' };
+  if (provider !== 'tripo' || tripoApproved !== true) return { error: 'Choisis explicitement Tripo pour cette conversion image → 3D (crédits Tripo requis).' };
   const key = loadApiKeys().tripo || process.env.TRIPO_API_KEY;
   if (!key) return { error: 'Clé API Tripo3D manquante (page Clés API → Tripo3D)' };
   const jobIds = [];
-  const manifest = loadMediaManifest(projectPath);
-  const needSource = kind === 'img2model' || kind === 'model2img';
-  const source = needSource ? await tripoResolveSource(projectPath, baseImage) : null;
-  if (kind === 'img2model' && !source) return { error: 'Une image source (2D) est requise pour créer un modèle 3D' };
-  if (kind === 'model2img' && !source) return { error: 'Un modèle 3D source est requis pour le rendre en image' };
-
-  // Modèle local → import Tripo une seule fois, puis n rendus 2D se basent dessus.
-  let importTaskId = null;
-  if (kind === 'model2img') {
-    const obj = await tripoUploadModel(source);
-    importTaskId = await tripoCreateTask({ type: 'import_model', file: { object: obj } });
-    await tripoWaitTask(importTaskId, 120000);
-    console.log('[tripo] modèle importé (import_model', importTaskId + ')');
-  }
-  const imgFile = kind === 'img2model'
-    ? (source.url ? { type: source.ext, url: source.url } : { type: source.ext, file_token: await tripoUploadImage(source) })
-    : null;
+  const source = await tripoResolveSource(projectPath, baseImage);
+  if (!source) return { error: 'Une image source est requise pour créer un modèle 3D' };
+  const imgFile = source.url ? { type: source.ext, url: source.url } : { type: source.ext, file_token: await tripoUploadImage(source) };
   for (let i = 0; i < n; i++) {
-    let taskId = null;
-    if (kind === 'img2model') {
+    let taskId;
+    try {
       taskId = await tripoCreateTask({ type: 'image_to_model', prompt: prompt || 'Reproduire ce modèle', file: imgFile });
-    } else if (kind === 'model2img') {
-      taskId = await tripoCreateTask({ type: 'render_image', original_model_task_id: importTaskId, prompt: prompt || '' });
-    } else {
-      return { error: 'Type 3D non supporté' };
+    } catch (err) {
+      if (!jobIds.length) throw err;
+      return { jobIds, method: 'tripo', error: `${jobIds.length} tâche(s) déjà lancée(s) et suivie(s) en arrière-plan. Les suivantes n'ont pas été confirmées : ${err.message}. Ne relance pas tout le lot.` };
     }
     jobIds.push(taskId);
-    attachJob(manifest, kind, 'tripo', taskId, prompt, baseImage || '');
+    const manifest = loadMediaManifest(projectPath);
+    attachJob(manifest, kind, 'tripo', taskId, prompt, baseImage || '', itemId, variantId);
+    saveMediaManifest(projectPath, manifest);
+    scheduleMediaTracking(projectPath);
   }
-  saveMediaManifest(projectPath, manifest);
   return { jobIds, method: 'tripo', message: `Génération Tripo3D lancée (${jobIds.length} tâche(s))` };
 }
 
@@ -2552,22 +2584,33 @@ async function tripoWaitTask(taskId, maxMs) {
   throw new Error('Délai dépassé pour la tâche Tripo3D');
 }
 
-function attachJob(manifest, kind, method, jobId, prompt, target) {
+function attachJob(manifest, kind, method, jobId, prompt, target, itemId, variantId) {
   manifest.jobs = manifest.jobs || [];
-  manifest.jobs.push({ id: jobId, kind, method, prompt, target, status: 'pending', finishedAt: null });
-  if (manifest.jobs.length > 50) manifest.jobs = manifest.jobs.slice(-50);
+  manifest.jobs.push({ id: jobId, kind, method, prompt, target, itemId, variantId, status: 'pending', startedAt: Date.now(), finishedAt: null });
+  manifest.jobs = retainJobs(manifest.jobs);
 }
 
 // Vérifie l'avancement des tâches Tripo, télécharge les résultats dans le
 // dossier du projet et met l'arbre à jour.
-ipcMain.handle('media-poll', async (event, projectPath) => {
+async function pollMediaJobsNow(projectPath) {
   try {
     if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Aucun projet actif' };
     const manifest = loadMediaManifest(projectPath);
     if (!manifest.jobs || !manifest.jobs.length) return { done: true, jobs: [] };
     const jobs = [];
+    const notifications = [];
     let anyRunning = false;
     for (const job of manifest.jobs) {
+      if (job.method === 'blender') {
+        if (job.status === 'running' && !activeBlenderRenders.has(job.id)) {
+          job.status = 'failed';
+          job.error = 'Rendu local interrompu. Relance le rendu Blender.';
+          job.finishedAt = Date.now();
+        }
+        if (job.status === 'running') anyRunning = true;
+        jobs.push(job);
+        continue;
+      }
       if (job.method === 'codex') {
         if (job.status === 'done' || job.status === 'partial' || job.status === 'failed') {
           jobs.push(job);
@@ -2576,6 +2619,7 @@ ipcMain.handle('media-poll', async (event, projectPath) => {
 
         const entry = findMediaEntry(manifest, job.kind, job.itemId, job.variantId);
         const generated = generatedFilesForCodexJob(projectPath, job);
+        job.files = generated;
 
         if (entry && generated.length) {
           entry.files = Array.from(new Set([...(entry.files || []), ...generated]));
@@ -2612,47 +2656,56 @@ ipcMain.handle('media-poll', async (event, projectPath) => {
         jobs.push(job);
         continue;
       }
-      if (job.status === 'done' || job.status === 'failed') { jobs.push(job); continue; }
-      anyRunning = true;
-      try {
-        const data = await tripoPoll(job.id);
-        if (data.status === 'success') {
-          const out = data.output || {};
-          const url = job.kind === 'img2model'
-            ? (out.fbx_model || out.pbr_model || out.model || out.base_model)
-            : (out.rendered_image || out.image_url || out.images || out.result_image);
-          job.status = 'done';
-          job.finishedAt = Date.now();
-          if (url) { const saved = await downloadMediaToProject(url, projectPath, job.kind, data); if (saved) job.saved = saved;
-            // Auto-rembg : supprime l'arriere-plan des images generees.
-            if (saved && (job.kind === 'thumb' || job.kind === 'icon' || job.kind === 'model2img')) {
-              const ext = path.extname(saved).toLowerCase();
-              if (['.png', '.jpg', '.jpeg'].includes(ext)) {
-                const fullPath = path.join(projectPath, saved);
-                const nobg = await runRembg(fullPath);
-                if (nobg.success) {
-                  job.savedBg = path.relative(projectPath, nobg.path).replace(/\\/g, '/');
-                  console.log('[rembg] Arriere-plan supprime :', job.savedBg);
-                } else {
-                  console.warn('[rembg] Echec :', nobg.error);
-                }
-              }
-            }
-          }
-          notifyMediaDone(projectPath, job.kind, job.saved, job.prompt, false);
-        } else if (data.status === 'failed') {
-          job.status = 'failed';
-          notifyMediaDone(projectPath, job.kind, null, job.prompt, true);
-        }
-      } catch (err) {
-        job.status = 'failed'; job.error = err.message;
-        notifyMediaDone(projectPath, job.kind, null, job.prompt, true);
+      const updated = await advanceRemoteJob(job, {
+        poll: tripoPoll,
+        download: (url, task, data) => downloadMediaToProject(url, projectPath, task.kind, data, task.id),
+      });
+      if (!isActiveJob(updated) && isActiveJob(job) && !job.notified) {
+        updated.notified = true;
+        notifications.push(updated);
       }
+      Object.assign(job, updated);
       jobs.push(job);
     }
-    saveMediaManifest(projectPath, manifest);
-    return { done: !anyRunning, jobs };
+    const latest = mergePolledJobs(loadMediaManifest(projectPath), jobs, findMediaEntry);
+    saveMediaManifest(projectPath, latest);
+    for (const job of notifications) {
+      if (latest.jobs.some(item => item.id === job.id)) notifyMediaDone(projectPath, job.kind, job.saved, job.prompt, job.status === 'failed');
+    }
+    return { done: !latest.jobs.some(isActiveJob), jobs: latest.jobs };
   } catch (err) { return { error: err.message }; }
+}
+
+const mediaPolls = new Map();
+const mediaTrackingTimers = new Map();
+let mediaTrackingStopped = false;
+function pollMediaJobs(projectPath) {
+  const key = canonicalExistingPath(projectPath);
+  if (!key) return Promise.resolve({ error: 'Projet introuvable' });
+  if (mediaPolls.has(key)) return mediaPolls.get(key);
+  const pending = pollMediaJobsNow(key).finally(() => mediaPolls.delete(key));
+  mediaPolls.set(key, pending);
+  return pending;
+}
+ipcMain.handle('media-poll', (event, projectPath) => pollMediaJobs(projectPath));
+
+function scheduleMediaTracking(projectPath) {
+  if (mediaTrackingStopped || !projectPath || !fs.existsSync(projectPath)) return;
+  const key = canonicalExistingPath(projectPath);
+  if (!key || mediaTrackingTimers.has(key)) return;
+  const jobs = loadMediaManifest(key).jobs || [];
+  if (!jobs.some(job => job.method === 'tripo' && isActiveJob(job))) return;
+  const timer = setTimeout(async () => {
+    try { await pollMediaJobs(key); }
+    finally { mediaTrackingTimers.delete(key); scheduleMediaTracking(key); }
+  }, 5000);
+  timer.unref?.();
+  mediaTrackingTimers.set(key, timer);
+}
+app.on('before-quit', () => {
+  mediaTrackingStopped = true;
+  for (const timer of mediaTrackingTimers.values()) clearTimeout(timer);
+  mediaTrackingTimers.clear();
 });
 
 async function tripoCreateTask(body) {
@@ -2663,7 +2716,7 @@ async function tripoCreateTask(body) {
     body: JSON.stringify(body)
   }, 30000);
   const d = await r.json();
-  if (!r.ok) throw new Error(`Tripo3D ${r.status}: ${JSON.stringify(d)}`);
+  if (!r.ok || typeof d.data?.task_id !== 'string') throw new Error(`Tripo3D ${r.status}: création non confirmée. ${JSON.stringify(d)}`);
   return d.data.task_id;
 }
 
@@ -2673,27 +2726,52 @@ async function tripoPoll(taskId) {
     headers: { 'Authorization': `Bearer ${key}` }
   }, 30000);
   const d = await r.json();
-  if (!r.ok) throw new Error('Erreur de polling Tripo3D');
+  if (!r.ok || !d.data || typeof d.data.status !== 'string') throw new Error(`Suivi Tripo indisponible (${r.status}). La tâche existante sera revérifiée.`);
   return d.data;
 }
 
 // Télécharge un fichier distant (glb/fbx/png) dans le dossier du projet.
-async function downloadMediaToProject(url, projectPath, kind, data) {
-  try {
-    const extMatch = /\.(\w{3,4})(\?.*)?$/.exec(new URL(url).pathname);
-    const ext = extMatch ? extMatch[1].toLowerCase() : (kind === 'img2model' ? 'fbx' : 'png');
-    const name = (path.basename(decodeURIComponent(new URL(url).pathname)).split('?')[0])
-      || (mediaGenId('asset') + '.' + ext);
-    const folder = ensureMediaFolder(projectPath, MEDIA_KINDS[kind].folder);
-    const target = path.join(folder, name);
-    const res = await fetchWithTimeout(url, {}, 60000);
-    if (!res.ok) throw new Error('Téléchargement échoué ' + res.status);
-    const buf = Buffer.from(await res.arrayBuffer());
-    fs.writeFileSync(target, buf);
+async function downloadMediaToProject(url, projectPath, kind, data, jobId) {
+  const address = new URL(url);
+  if (!['https:', 'http:'].includes(address.protocol)) throw new Error('URL de téléchargement invalide');
+  const base = path.basename(decodeURIComponent(address.pathname)).replace(/[^a-zA-Z0-9._-]/g, '_') || 'asset';
+  const suffix = /\.(glb|gltf|fbx|obj|png|jpe?g|webp)$/i.test(base) ? '' : (kind === 'img2model' ? '.glb' : '.png');
+  const token = require('crypto').createHash('sha256').update(String(jobId || url)).digest('hex').slice(0, 16);
+  const folder = ensureMediaFolder(projectPath, MEDIA_KINDS[kind].folder);
+  const target = path.join(folder, 'tripo_' + token + '_' + base.slice(-100) + suffix);
+  if (fs.existsSync(target)) {
+    const stat = fs.lstatSync(target);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.size === 0) throw new Error('Fichier cible invalide, conservé');
     return path.relative(projectPath, target).replace(/\\/g, '/');
-  } catch (e) {
-    console.error('[Media] Téléchargement échoué :', e.message);
-    return null;
+  }
+  const temporary = target + '.' + require('crypto').randomUUID() + '.part';
+  let fd;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error('Téléchargement échoué ' + res.status);
+    if (/text\/html|application\/json/i.test(res.headers.get('content-type') || '')) throw new Error('Le serveur ne retourne pas un média');
+    const declared = Number(res.headers.get('content-length')) || 0;
+    const maximum = 256 * 1024 * 1024;
+    if (declared > maximum) throw new Error('Fichier supérieur à 256 Mio');
+    fd = fs.openSync(temporary, 'wx');
+    let size = 0;
+    for await (const chunk of res.body) {
+      size += chunk.length;
+      if (size > maximum) throw new Error('Fichier supérieur à 256 Mio');
+      fs.writeSync(fd, chunk);
+    }
+    if (!size || (declared && !res.headers.get('content-encoding') && size !== declared)) throw new Error('Téléchargement incomplet ou vide');
+    fs.closeSync(fd);
+    fd = undefined;
+    // Exclusive publication: never overwrite an existing file, even after a concurrent creation.
+    fs.linkSync(temporary, target);
+    return path.relative(projectPath, target).replace(/\\/g, '/');
+  } finally {
+    clearTimeout(timer);
+    if (fd !== undefined) fs.closeSync(fd);
+    try { fs.unlinkSync(temporary); } catch (err) { if (err.code !== 'ENOENT') throw err; }
   }
 }
 
@@ -2849,7 +2927,7 @@ async function removeMediaJobs(manifest, predicate) {
 // Crée des variantes : Codex ré-utilise les fichiers existants pour
 // décliner l'image ; Tripo relance une génération similaire.
 ipcMain.handle('media-variants', async (event, options) => {
-  const { projectPath, kind, itemId, variantId, prompt, count, baseImage, referencePaths = [] } = options || {};
+  const { projectPath, kind, itemId, variantId, prompt, count, baseImage, referencePaths = [], provider, tripoApproved = false, view } = options || {};
   try {
     if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Aucun projet actif' };
     const info = MEDIA_KINDS[kind];
@@ -2885,10 +2963,15 @@ ipcMain.handle('media-variants', async (event, options) => {
       });
       return { ...res, method: 'codex', variant: true, seed: seed, newVariantId };
     }
+    if (kind === 'img2model' && (provider !== 'tripo' || tripoApproved !== true)) return { error: 'Choisis explicitement Tripo pour cette conversion (crédits Tripo requis).' };
+    const seed = baseImage || (entry.files[0] && path.join(projectPath, entry.files[0]));
+    if (kind === 'model2img' && !baseImage) return { error: 'Sélectionne le modèle 3D source pour un nouveau rendu.' };
     const newVariantId = mediaGenId('v');
-    entry.variants.push({ id: newVariantId, prompt, files: [], createdAt: Date.now() });
+    item.variants = item.variants || [];
+    item.variants.push({ id: newVariantId, prompt, files: [], createdAt: Date.now() });
     saveMediaManifest(projectPath, manifest);
-    const res = await generateMediaWithTripo({ projectPath, kind, info, prompt, n, baseImage: baseImage || (entry.files[0] && path.join(projectPath, entry.files[0])), folder });
+    const args = { projectPath, kind, info, prompt, n, itemId, variantId: newVariantId, baseImage: seed, folder, provider, tripoApproved, view };
+    const res = kind === 'model2img' ? await generateMediaWithBlender(args) : await generateMediaWithTripo(args);
     return { ...res, variant: true, newVariantId };
   } catch (err) { return { error: err.message }; }
 });
@@ -4023,6 +4106,7 @@ async function flushPendingScriptSyncs() {
 }
 
 function startFileSync(projectPath) {
+  scheduleMediaTracking(projectPath);
   const srcPath = path.join(projectPath, 'src');
   if (currentSyncProjectPath === projectPath && (fileWatcher || sourceReconcileTimer)) {
     reconcileSourceScripts(srcPath, true);
@@ -4206,6 +4290,11 @@ autoUpdater.on('error', (err) => {
 
 // ============================================
 app.whenReady().then(() => {
+  const recoverableProjects = loadProjectsRegistry();
+  for (const project of Array.isArray(recoverableProjects) ? recoverableProjects : []) {
+    try { if (project?.path && isPathAllowed(project.path)) scheduleMediaTracking(project.path); }
+    catch (err) { console.warn('[Media] Reprise différée :', err.message); }
+  }
   createWindow();
   // Verifier les MAJ apres 5s pour laisser le temps au window de se charger
   setTimeout(() => {
