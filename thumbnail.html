@@ -217,6 +217,12 @@
         </div>
         <!-- Bottom gen bar -->
         <div class="gen-bar">
+          <div id="metricsBar" style="display:none;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--smoke-dim);padding:2px 0;display:flex;gap:16px;">
+            <span id="mPolls">—</span>
+            <span id="mErrors">—</span>
+            <span id="mDuration">—</span>
+            <span id="mCalls">—</span>
+          </div>
           <div class="gen-tabs">
             <span class="gen-ai-badge" id="tabCodex" title="IA utilisée pour la génération : Codex">
               <svg width="12" height="12" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"><path d="M50 10 L50 90" stroke-linecap="round"/><path d="M50 10 L20 75" stroke-linecap="round"/><path d="M50 10 L80 75" stroke-linecap="round"/></svg>
@@ -336,9 +342,28 @@
           state.projectPath = res.project.path;
           document.getElementById('projName').textContent = res.project.name || '—';
           await refresh();
+          await loadMetrics();
         }
       }catch(e){}
     }
+  }
+
+  async function loadMetrics(){
+    if(!state.projectPath || !window.forgeAPI.mediaMetrics) return;
+    try{
+      const m = await window.forgeAPI.mediaMetrics(state.projectPath);
+      if(!m || m.error) return;
+      const bar = document.getElementById('metricsBar');
+      bar.style.display = 'flex';
+      document.getElementById('mPolls').textContent = 'Pollings: '+(m.totalPolls||0);
+      document.getElementById('mErrors').textContent = 'Erreurs: '+(m.totalErrors||0);
+      document.getElementById('mDuration').textContent = 'Moy: '+((m.avgDurationMs||0)/1000).toFixed(1)+'s';
+      document.getElementById('mCalls').textContent = 'API: '+(m.totalApiCalls||0);
+      if(m.totalConsumption){
+        const c = Object.entries(m.totalConsumption).map(([k,v])=>k+':'+v).join(' ');
+        document.getElementById('mCalls').textContent += ' | '+c;
+      }
+    }catch(e){}
   }
 
   async function refresh(){
@@ -346,7 +371,8 @@
     const data = await window.forgeAPI.mediaListFiles(state.projectPath);
     state.data = data || { folders: {}, categories: {} };
     renderTree();
-    if((state.data.jobs||[]).some(job=>['running','pending','starting','retry_wait','download_wait','downloading'].includes(job.status))) startPolling();
+    if((state.data.jobs||[]).some(job=>job.status==='running'||job.status==='pending'||job.status==='starting')) startPolling();
+    loadMetrics();
   }
 
   // ── Section switching ──

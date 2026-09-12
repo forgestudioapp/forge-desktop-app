@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   mediaCreateItem: (projectPath, kind, name) => ipcRenderer.invoke('media-create-item', projectPath, kind, name),
   mediaGenerate: (options) => ipcRenderer.invoke('media-generate', options),
   mediaPoll: (projectPath) => ipcRenderer.invoke('media-poll', projectPath),
+  mediaMetrics: (projectPath, jobId) => ipcRenderer.invoke('media-metrics', projectPath, jobId),
   mediaDownload: (projectPath, relPath) => ipcRenderer.invoke('media-download', projectPath, relPath),
   mediaPreview: (projectPath, relPath) => ipcRenderer.invoke('media-preview', projectPath, relPath),
   mediaDelete: (projectPath, kind, itemId, variantId, relPath) => ipcRenderer.invoke('media-delete', projectPath, kind, itemId, variantId, relPath),
