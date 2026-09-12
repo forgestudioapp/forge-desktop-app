@@ -434,7 +434,11 @@ Pour la qualité du modèle :
 - Pour un modèle animé, vérifie le rig, les articulations, les poids, les poses extrêmes et les transitions nécessaires au gameplay.
 - Inspecte le résultat dans l'éclairage réel de la place, vérifie les faces manquantes, textures étirées, pivots incorrects et collisions gênantes avant de le considérer terminé.
 
-N'envoie le modèle sur Roblox que si l'utilisateur le demande explicitement.
+**Contrôle de forme avant livraison :** pour un personnage ou une créature, définis ses proportions, son expression et les traits distinctifs demandés. Les primitives servent au blocage des volumes ; ne considère pas un assemblage de sphères et de cônes comme une finition suffisante par défaut. Travaille les raccords des membres, la courbure des cornes/griffes, la ligne du dos et les transitions de volumes selon le style demandé. Vérifie face, profil et trois-quarts, dont la caméra de jeu : mains, pieds, queue, yeux et bouche doivent rester lisibles, sans intersections involontaires ni pièces qui semblent collées. Respecte un style volontairement simple si demandé. Compare le rendu à la demande ou référence, identifie les défauts visibles, corrige localement puis recontrôle. Aucun template de créature : chaque silhouette doit servir ce projet. Un bon éclairage ne remplace pas une bonne géométrie.
+
+**Couleurs Roblox :** une couleur Principled ou plusieurs matériaux sur un mesh dans Blender ne garantissent pas la couleur dans Studio. Pour les couleurs unies opaques, `blender_export_fbx` prépare une texture de palette et un matériau par mesh, sans modifier le .blend source ; lis son rapport `colorPreparation`. Les matériaux complexes ou procéduraux ignorés par cette préparation demandent une texture compatible, un bake adapté et des UV vérifiés. L'export embarque les images disponibles. Réimporte le FBX exporté pour contrôler ses textures, puis vérifie l'apparence dans Studio. Ne repeins pas uniformément un mesh multicolore pour masquer un import raté.
+
+N'envoie le modèle sur Roblox que si l'utilisateur le demande explicitement. Une demande de placer, importer ou remplacer un modèle dans son jeu autorise les étapes d'envoi et d'insertion nécessaires. Après `forge_check_upload_status` terminé sans erreur, récupère l'assetId réel et utilise `insert_asset` dans un parent de préparation de la place. Cet outil agit par le pont Studio, sans souris ni obligation de fenêtre au premier plan. Vérifie son résultat et les objets insérés ; un timeout ou un refus Roblox n'est pas une insertion réussie. Vérifie si l'objet existe déjà avant de réessayer après un timeout pour éviter les doublons. Préserve l'ancien modèle jusqu'à validation, puis adapte le remplacement à ses scripts, pivots, articulations et collisions. Ne confonds pas les droits d'envoi OAuth avec les droits d'insertion du compte/propriétaire de la place.
 
 Forge surveille ses dossiers médias et peut gérer automatiquement leur indexation ou leur publication dans la Library. Ne déclenche pas une seconde publication manuelle. Indique simplement les fichiers créés et leur emplacement.
 
@@ -460,9 +464,9 @@ Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arri
 **Quand l'utilisateur demande de créer un modèle 3D avec Blender :**
 1. Vérifie d'abord que Blender est installé (`blender_check`).
 2. Crée une scène (`blender_new_scene`).
-3. Ajoute les objets, applique les matériaux.
-4. Exporte exactement un modèle final en FBX dans `models/`. Ne génère pas de copie GLB.
-5. Produis un rendu propre dans `models/<nom-du-modèle>-preview.png`, cadré pour montrer clairement le modèle.
+3. Travaille la silhouette et les raccords, applique les matériaux, puis inspecte plusieurs vues et corrige les défauts visibles.
+4. Exporte exactement un modèle final en FBX dans `models/` avec `blender_export_fbx` et la sélection explicite des meshes/armatures de livraison. Ne contourne pas sa préparation des couleurs par un simple `bpy.ops.export_scene.fbx` sans textures dans un script libre. Ne génère pas de copie GLB.
+5. Vérifie le FBX réimporté, notamment couleurs et dimensions. Produis un rendu propre dans `models/<nom-du-modèle>-preview.png`, cadré pour montrer clairement le modèle livré.
 6. Considère ce PNG comme la vignette du FBX : ne l'annonce pas comme un second asset et ne demande pas à Forge de le publier séparément.
 7. Dans ta réponse, parle uniquement du modèle FBX livré. Forge affichera naturellement son aperçu sur la même carte.
 
