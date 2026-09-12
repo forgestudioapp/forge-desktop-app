@@ -2779,8 +2779,36 @@ async function downloadMediaToProject(url, projectPath, kind, data, jobId) {
 // Genere un fichier _nobg.png a cote de l'original.
 // Modele u2netp (leger ~5 Mo) : evite le telechargement de u2net (~1 Go)
 // qui echoue sur les disques presque pleins.
+// Auto-unblock : Windows SmartScreen bloque les .pyd de pip. On les debloque
+// automatiquement au premier lancement pour eviter que tous les utilisateurs
+// ne voient "cette application est potentiellement dangereuse".
+async function unblockPythonPackages() {
+  try {
+    const pythonDir = await new Promise((resolve) => {
+      const proc = spawn('python', ['-c', 'import site; print(site.getsitepackages()[0])'], { shell: true, windowsHide: true });
+      let out = '';
+      proc.stdout.on('data', d => out += d.toString());
+      proc.on('close', () => resolve(out.trim()));
+      proc.on('error', () => resolve(''));
+    });
+    if (!pythonDir || !fs.existsSync(pythonDir)) return;
+    const stamp = userDataFile('.rembg-unblocked');
+    if (fs.existsSync(stamp)) return; // deja debloque
+    const proc = spawn('powershell', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      `Get-ChildItem -Path '${pythonDir}' -Recurse -Filter '*.pyd' | Unblock-File; ` +
+      `Get-ChildItem -Path '${pythonDir}' -Recurse -Filter '*.dll' | Unblock-File; ` +
+      `New-Item -ItemType File -Path '${stamp}' -Force | Out-Null`
+    ], { shell: true, windowsHide: true });
+    proc.on('close', () => console.log('[rembg] Python packages unblocked'));
+    proc.on('error', () => {});
+  } catch (e) {}
+}
+
 async function runRembg(inputPath) {
   const outputPath = inputPath.replace(/(\.\w+)$/, '_nobg.png');
+  // Debloque les .pyd bloques par SmartScreen avant le premier lancement
+  await unblockPythonPackages();
   return new Promise((resolve) => {
     const proc = spawn('rembg', ['i', '-m', 'u2netp', inputPath, outputPath], { shell: true, windowsHide: true, timeout: 120000 });
     let stderr = '';
