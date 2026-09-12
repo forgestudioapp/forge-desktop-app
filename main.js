@@ -23,12 +23,14 @@ const { scheduleProjectIndex } = require('./lib/project-index');
 const { importMediaReferences } = require('./lib/media-references');
 const { isActiveJob, retainJobs, advanceRemoteJob, mergePolledJobs } = require('./lib/media-jobs');
 const { createMediaLaunchGuard } = require('./lib/media-launch-guard');
+const { trackEvent, getJobMetrics, getAggregatedMetrics } = require('./lib/media-metrics');
 const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('./lib/file-sync');
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
 const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
 const {
   isModelFile,
   isModelPreviewFile,
+  isModelSupportFile,
   modelArtifactKey,
   previewCandidatesForModel,
 } = require('./lib/model-asset-pairing');
@@ -2288,6 +2290,7 @@ async function generateMediaWithBlender({ projectPath, kind, n, itemId, variantI
   manifest.jobs.push(job);
   activeBlenderRenders.add(job.id);
   saveMediaManifest(projectPath, manifest);
+  trackEvent(projectPath, job.id, 'start', { method: 'blender', kind });
   let failure;
   try {
     const views = ['perspective', 'front', 'side', 'top'];
@@ -2298,7 +2301,7 @@ async function generateMediaWithBlender({ projectPath, kind, n, itemId, variantI
       if (!fs.existsSync(output) || !fs.statSync(output).size) throw new Error('Blender ne retourne aucun fichier image.');
       job.files.push(path.relative(projectPath, output).replace(/\\/g, '/'));
     }
-  } catch (err) { failure = err.message; }
+  } catch (err) { failure = err.message; trackEvent(projectPath, job.id, 'error', { message: err.message }); }
   finally { activeBlenderRenders.delete(job.id); }
   manifest = loadMediaManifest(projectPath);
   const savedJob = (manifest.jobs || []).find(j => j.id === job.id);
@@ -2307,6 +2310,7 @@ async function generateMediaWithBlender({ projectPath, kind, n, itemId, variantI
   const entry = findMediaEntry(manifest, kind, itemId, variantId);
   if (entry) Object.assign(entry, { status, files: [...new Set([...(entry.files || []), ...job.files])], error: failure || null });
   saveMediaManifest(projectPath, manifest);
+  trackEvent(projectPath, job.id, 'done', { status });
   notifyMediaDone(projectPath, kind, job.files.at(-1), 'Rendu Blender local', !job.files.length);
   return { success: !failure, error: failure, method: 'blender', files: job.files, jobIds: [job.id] };
 }
@@ -2346,6 +2350,7 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
     images: [...new Set([sourceImage, ...referenceImages].filter(Boolean))],
   });
   if (!res || res.error) {
+    trackEvent(projectPath, generationId, 'error', { message: (res && res.error) || 'Échec du lancement' });
     manifest = loadMediaManifest(projectPath);
     entry = findMediaEntry(manifest, kind, itemId, variantId);
     if (entry) {
@@ -2384,6 +2389,7 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
   });
   manifest.jobs = retainJobs(manifest.jobs);
   saveMediaManifest(projectPath, manifest);
+  trackEvent(projectPath, generationId, 'start', { method: 'codex', kind });
   return { sessionId: res.sessionId, jobId: generationId, method: 'codex', message: 'Génération Codex lancée' };
 }
 
@@ -2461,11 +2467,14 @@ async function generateMediaWithTripo({ projectPath, kind, info, prompt, n, item
     let taskId;
     try {
       taskId = await tripoCreateTask({ type: 'image_to_model', prompt: prompt || 'Reproduire ce modèle', file: imgFile });
+      trackEvent(projectPath, taskId, 'api_call', { endpoint: 'tripo:create_task' });
     } catch (err) {
+      trackEvent(projectPath, `tripo_${i}`, 'error', { message: err.message });
       if (!jobIds.length) throw err;
       return { jobIds, method: 'tripo', error: `${jobIds.length} tâche(s) déjà lancée(s) et suivie(s) en arrière-plan. Les suivantes n'ont pas été confirmées : ${err.message}. Ne relance pas tout le lot.` };
     }
     jobIds.push(taskId);
+    trackEvent(projectPath, taskId, 'start', { method: 'tripo', kind });
     const manifest = loadMediaManifest(projectPath);
     attachJob(manifest, kind, 'tripo', taskId, prompt, baseImage || '', itemId, variantId);
     saveMediaManifest(projectPath, manifest);
@@ -2649,6 +2658,7 @@ async function pollMediaJobsNow(projectPath) {
             entry.error = job.error || null;
             entry.finishedAt = job.finishedAt;
           }
+          trackEvent(projectPath, job.id, 'done', { status: job.status });
           notifyCodexMediaJobOnce(projectPath, job, generated);
         } else if (entry) {
           entry.status = 'running';
@@ -2660,6 +2670,11 @@ async function pollMediaJobsNow(projectPath) {
         poll: tripoPoll,
         download: (url, task, data) => downloadMediaToProject(url, projectPath, task.kind, data, task.id),
       });
+      // Tracking: poll + state transitions
+      if (updated.polls !== job.polls) trackEvent(projectPath, job.id, 'poll');
+      if (updated.status === 'done' && job.status !== 'done') trackEvent(projectPath, job.id, 'done', { status: 'done' });
+      if (updated.status === 'failed' && job.status !== 'failed') trackEvent(projectPath, job.id, 'error', { message: updated.error || 'Tâche échouée' });
+      if (updated.retryCount > (job.retryCount || 0)) trackEvent(projectPath, job.id, 'retry');
       if (!isActiveJob(updated) && isActiveJob(job) && !job.notified) {
         updated.notified = true;
         notifications.push(updated);
@@ -2688,6 +2703,14 @@ function pollMediaJobs(projectPath) {
   return pending;
 }
 ipcMain.handle('media-poll', (event, projectPath) => pollMediaJobs(projectPath));
+
+// Métriques de consommation média
+ipcMain.handle('media-metrics', (event, projectPath, jobId) => {
+  try {
+    if (jobId) return getJobMetrics(projectPath, jobId);
+    return getAggregatedMetrics(projectPath);
+  } catch (err) { return { error: err.message }; }
+});
 
 function scheduleMediaTracking(projectPath) {
   if (mediaTrackingStopped || !projectPath || !fs.existsSync(projectPath)) return;
@@ -3822,6 +3845,7 @@ function autoMoveAsset(filePath, filename) {
   const ext = filename.split('.').pop().toLowerCase();
   const meta = ASSET_EXT_MAP[ext];
   if (!meta || !currentSyncProjectPath) return filePath;
+  if (isModelSupportFile(filePath, currentSyncProjectPath)) return filePath;
 
   const targetFolder = isModelPreviewFile(filename) ? 'models' : meta.folder;
   const targetDir = path.join(currentSyncProjectPath, targetFolder);
@@ -3866,6 +3890,7 @@ function resolveAgent() {
 }
 
 function handleNewAssetFile(filePath, filename) {
+  const projectPath = currentSyncProjectPath;
   // De-duplicate: ignore if we already fired a notif for this filename recently
   if (seenAssets.has(filename)) return;
   seenAssets.add(filename);
@@ -3873,6 +3898,7 @@ function handleNewAssetFile(filePath, filename) {
 
   // Debounce: wait for the file to finish writing
   setTimeout(async () => {
+    if (projectPath !== currentSyncProjectPath) return;
     // Re-resolve path in case it was already moved
     let resolvedPath = filePath;
     if (!fs.existsSync(resolvedPath)) {
@@ -3902,6 +3928,10 @@ function handleNewAssetFile(filePath, filename) {
       attachPreviewToModelNotification(previewPath);
       return;
     }
+
+    // Textures/palettes and QA renders stay with the model, without separate
+    // cards or Library uploads, even when generated before the FBX exists.
+    if (isModelSupportFile(resolvedPath, projectPath)) return;
 
     let existingModelNotification = null;
     if (isModelFile(filename)) {
