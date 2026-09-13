@@ -2,6 +2,17 @@ const { app, BrowserWindow, ipcMain, safeStorage, dialog } = require('electron')
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+// Configure isolation before any storage paths or Electron sessions are opened.
+if (process.env.FORGE_TEST_PROFILE) {
+  const testRoot = path.resolve(process.env.FORGE_TEST_PROFILE);
+  const userData = path.join(testRoot, 'AppData', 'Roaming', 'Forge');
+  const documents = path.join(testRoot, 'Documents');
+  fs.mkdirSync(userData, { recursive: true });
+  fs.mkdirSync(documents, { recursive: true });
+  app.setPath('userData', userData);
+  app.setPath('documents', documents);
+}
+
 const { spawn, execFile } = require('child_process');
 const { canonicalExistingPath, isPathInside, isExistingDirectoryWithinRoots } = require('./lib/path-security');
 const {
@@ -23,7 +34,24 @@ const { scheduleProjectIndex } = require('./lib/project-index');
 const { importMediaReferences } = require('./lib/media-references');
 const { isActiveJob, retainJobs, advanceRemoteJob, mergePolledJobs } = require('./lib/media-jobs');
 const { createMediaLaunchGuard } = require('./lib/media-launch-guard');
+const { correctionResult } = require('./lib/model-refinement');
 const { trackEvent, getJobMetrics, getAggregatedMetrics } = require('./lib/media-metrics');
+const {
+  loadIteration,
+  saveIteration,
+  createIterationState,
+  canContinue,
+  getNextAttemptNumber,
+  markAttemptStart,
+  markRenderDone,
+  markInspectionDone,
+  markCorrectionsDone,
+  markComplete,
+  markFailed,
+  getIterationSummary,
+MAX_ATTEMPTS,
+} = require('./lib/artistic-quality-loop');
+
 const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('./lib/file-sync');
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
 const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
@@ -2275,6 +2303,131 @@ ipcMain.handle('media-generate', async (event, options) => {
   } catch (err) { return { error: err.message }; }
 });
 
+// ============================================
+// MODEL REFINE — Boucle d'amélioration qualité artistique
+// ============================================
+const activeModelRefinements = new Set();
+ipcMain.handle('model-refine', async (event, options) => {
+  const { projectPath, modelId, modelPath, action, defects, agentResponse, correctionPlan, maxAttempts = MAX_ATTEMPTS } = options || {};
+  let state = null;
+  let ownedKey = null;
+  try {
+    if (!projectPath || !fs.existsSync(projectPath)) return { error: 'Aucun projet actif' };
+    if (typeof modelId !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(modelId)) return { error: 'modelId invalide' };
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > MAX_ATTEMPTS) return { error: 'Nombre de tentatives invalide' };
+    if (!['status', 'resume'].includes(action)) {
+      const key = canonicalExistingPath(projectPath) + ':' + modelId;
+      if (activeModelRefinements.has(key)) return { error: 'Une opération sur ce modèle est déjà en cours' };
+      activeModelRefinements.add(key);
+      ownedKey = key;
+    }
+
+    state = loadIteration(projectPath, modelId);
+
+    if (action === 'start') {
+      if (!modelPath) return { error: 'modelPath requis pour démarrer' };
+      if (state && !['done', 'failed'].includes(state.status)) {
+        return { error: 'Itération déjà en cours', state: getIterationSummary(state) };
+      }
+      const sourcePath = canonicalExistingPath(path.resolve(projectPath, modelPath));
+      if (!sourcePath || !isPathInside(canonicalExistingPath(projectPath), sourcePath)) return { error: 'Le modèle doit appartenir au projet actif' };
+      const sourceFiles = [sourcePath];
+      state = createIterationState(modelId, sourcePath, sourceFiles);
+      state.maxAttempts = maxAttempts;
+      saveIteration(projectPath, modelId, state);
+      trackEvent(projectPath, `refine-${modelId}`, 'start', { method: 'blender', kind: 'refinement', modelPath, maxAttempts });
+      return { success: true, state: getIterationSummary(state) };
+    }
+
+    if (!state) return { error: 'Itération introuvable. Lance avec action: "start".' };
+
+    if (action === 'status') {
+      return { success: true, state: getIterationSummary(state) };
+    }
+
+    if (action === 'render') {
+      if (!canContinue(state)) return { error: 'Limite de tentatives atteinte ou itération terminée', state: getIterationSummary(state) };
+      const modulePath = getBundledResourcePath('robloxstudio-mcp', 'dist', 'tools', 'blender-tools.js');
+      if (!modulePath) return { error: 'Service Blender absent' };
+      const { BlenderTools } = await import(require('url').pathToFileURL(modulePath).href);
+      const renderer = new BlenderTools(path.join(projectPath, 'models'));
+      const attemptNum = getNextAttemptNumber(state);
+      const outputDir = path.join(projectPath, 'models', 'renders', modelId, `attempt-${attemptNum}`);
+      const baseName = `${modelId}_a${attemptNum}`;
+      try {
+        fs.mkdirSync(outputDir, { recursive: true });
+      } catch {}
+      const views = ['perspective', 'front', 'side', 'back', 'game'];
+      markAttemptStart(state, []);
+      saveIteration(projectPath, modelId, state);
+      const renderFiles = [];
+      for (const view of views) {
+        const output = path.join(outputDir, `${baseName}_${view}.png`);
+        const response = await renderer.renderModel(state.modelPath, output, view);
+        if (response.isError) throw new Error(response.content[0]?.text || `Échec rendu ${view}`);
+        if (!fs.existsSync(output) || !fs.statSync(output).size) throw new Error(`Fichier rendu vide: ${view}`);
+        renderFiles.push({ view, path: path.relative(projectPath, output).replace(/\\/g, '/') });
+      }
+      markRenderDone(state, renderFiles);
+      saveIteration(projectPath, modelId, state);
+      trackEvent(projectPath, `refine-${modelId}`, 'render_done', { attempt: attemptNum, files: renderFiles.length });
+      return { success: true, state: getIterationSummary(state), renderFiles };
+    }
+
+    if (action === 'inspect') {
+      if (state.status !== 'inspecting' || !state.lastRenders?.length) return { error: 'Créer les vues avant inspection' };
+      if (!defects || !Array.isArray(defects)) return { error: 'defects array requis' };
+      markInspectionDone(state, defects, agentResponse);
+      saveIteration(projectPath, modelId, state);
+      trackEvent(projectPath, `refine-${modelId}`, 'inspect_done', { defectsCount: defects.length, hasAgentResponse: !!agentResponse });
+      const nextAction = defects.length > 0 ? 'correct' : 'complete';
+      return { success: true, state: getIterationSummary(state), nextAction };
+    }
+
+    if (action === 'correct') {
+      if (state.currentAttempt >= state.maxAttempts) return { error: 'Limite atteinte : défauts non résolus, aucune nouvelle correction sans contrôle final' };
+      if (!state.lastDefects || state.lastDefects.length === 0) return { error: 'Aucun défaut à corriger' };
+      const blenderToolsPath = getBundledResourcePath('robloxstudio-mcp', 'dist', 'tools', 'blender-tools.js');
+      const mcpIndexPath = getBundledResourcePath('robloxstudio-mcp', 'dist', 'tools', 'index.js');
+      if (!blenderToolsPath || !mcpIndexPath) return { error: 'Service Blender absent' };
+      const { BlenderTools } = await import(require('url').pathToFileURL(blenderToolsPath).href);
+      const mcpModule = await import(require('url').pathToFileURL(mcpIndexPath).href);
+      const renderer = new BlenderTools(path.join(projectPath, 'models'));
+      const plan = correctionPlan || mcpModule.parseDefectsToPlan(state.lastDefects);
+      const attemptNum = state.currentAttempt;
+      const correctedModelPath = path.join(projectPath, 'models', `${modelId}_corrected_a${attemptNum}.blend`);
+      const response = await renderer.correctModel(state.modelPath, correctedModelPath, plan);
+      const result = correctionResult(response);
+      if (!fs.existsSync(correctedModelPath) || !fs.statSync(correctedModelPath).size) throw new Error('Scène corrigée absente ou vide');
+      markCorrectionsDone(state, plan, correctedModelPath);
+      saveIteration(projectPath, modelId, state);
+      trackEvent(projectPath, `refine-${modelId}`, 'correct_done', { attempt: attemptNum, applied: result.applied?.length || 0, errors: result.errors?.length || 0 });
+      return { success: true, state: getIterationSummary(state), corrections: result, newModelPath: correctedModelPath };
+    }
+
+    if (action === 'complete') {
+      if (state.lastDefects?.length || !state.lastRenders?.length) return { error: 'Une nouvelle inspection sans défaut est requise' };
+      const finalRenders = state.lastRenders || [];
+      markComplete(state, state.modelPath, finalRenders);
+      saveIteration(projectPath, modelId, state);
+      trackEvent(projectPath, `refine-${modelId}`, 'done', { status: 'done', finalModelPath: state.modelPath, totalAttempts: state.currentAttempt });
+      return { success: true, state: getIterationSummary(state) };
+    }
+
+    if (action === 'resume') {
+      return { success: true, state: getIterationSummary(state), canContinue: canContinue(state) };
+    }
+
+    return { error: 'Action inconnue: ' + action };
+  } catch (err) {
+    if (state) { markFailed(state, err.message); saveIteration(projectPath, modelId, state); }
+    trackEvent(projectPath, `refine-${modelId}`, 'error', { message: err.message });
+    return { error: err.message };
+  } finally {
+    if (ownedKey) activeModelRefinements.delete(ownedKey);
+  }
+});
+
 const activeBlenderRenders = new Set();
 async function generateMediaWithBlender({ projectPath, kind, n, itemId, variantId, baseImage, folder, view = 'perspective' }) {
   const source = resolveMediaSource(projectPath, baseImage);
@@ -2293,7 +2446,7 @@ async function generateMediaWithBlender({ projectPath, kind, n, itemId, variantI
   trackEvent(projectPath, job.id, 'start', { method: 'blender', kind });
   let failure;
   try {
-    const views = ['perspective', 'front', 'side', 'top'];
+    const views = ['perspective', 'front', 'side', 'back', 'game'];
     for (let i = 0; i < n; i++) {
       const output = path.join(folder, `${job.id}_${i + 1}.png`);
       const response = await renderer.renderModel(source, output, i === 0 ? view : views[i % views.length]);
@@ -2311,6 +2464,7 @@ async function generateMediaWithBlender({ projectPath, kind, n, itemId, variantI
   if (entry) Object.assign(entry, { status, files: [...new Set([...(entry.files || []), ...job.files])], error: failure || null });
   saveMediaManifest(projectPath, manifest);
   trackEvent(projectPath, job.id, 'done', { status });
+  trackEvent(projectPath, job.id, 'consumption', { consumption: { blender_local: job.files.length } });
   notifyMediaDone(projectPath, kind, job.files.at(-1), 'Rendu Blender local', !job.files.length);
   return { success: !failure, error: failure, method: 'blender', files: job.files, jobIds: [job.id] };
 }
@@ -2659,6 +2813,8 @@ async function pollMediaJobsNow(projectPath) {
             entry.finishedAt = job.finishedAt;
           }
           trackEvent(projectPath, job.id, 'done', { status: job.status });
+          const durationMs = job.finishedAt - (job.startedAt || job.finishedAt);
+          trackEvent(projectPath, job.id, 'consumption', { consumption: { codex_session: 1, duration_ms: durationMs } });
           notifyCodexMediaJobOnce(projectPath, job, generated);
         } else if (entry) {
           entry.status = 'running';
@@ -2672,7 +2828,10 @@ async function pollMediaJobsNow(projectPath) {
       });
       // Tracking: poll + state transitions
       if (updated.polls !== job.polls) trackEvent(projectPath, job.id, 'poll');
-      if (updated.status === 'done' && job.status !== 'done') trackEvent(projectPath, job.id, 'done', { status: 'done' });
+      if (updated.status === 'done' && job.status !== 'done') {
+        trackEvent(projectPath, job.id, 'done', { status: 'done' });
+        trackEvent(projectPath, job.id, 'consumption', { consumption: { tripo_polls: (updated.polls || 0) + 1, duration_ms: (updated.finishedAt || Date.now()) - (updated.startedAt || Date.now()) } });
+      }
       if (updated.status === 'failed' && job.status !== 'failed') trackEvent(projectPath, job.id, 'error', { message: updated.error || 'Tâche échouée' });
       if (updated.retryCount > (job.retryCount || 0)) trackEvent(projectPath, job.id, 'retry');
       if (!isActiveJob(updated) && isActiveJob(job) && !job.notified) {
@@ -3839,24 +3998,46 @@ function findModelPreview(modelPath) {
   return previewCandidatesForModel(modelPath).find(candidate => fs.existsSync(candidate)) || '';
 }
 
+// Track in-flight moves to prevent race conditions between root watcher and subfolder watcher.
+const pendingMoves = new Map(); // key: resolved source path -> { targetPath, timestamp }
+
+// Track recently notified files to avoid double-firing.
+// Key = filename + source folder (to handle root->subfolder moves correctly).
+const seenAssets = new Map(); // key: filename -> { sourcePath, timestamp }
+
 // Move a file from anywhere in the project to the right subfolder
-// Returns the new path (or original if already in place)
+// Returns the new path (or original if already in place or move failed).
+// If move fails, returns null to indicate failure.
 function autoMoveAsset(filePath, filename) {
   const ext = filename.split('.').pop().toLowerCase();
   const meta = ASSET_EXT_MAP[ext];
-  if (!meta || !currentSyncProjectPath) return filePath;
-  if (isModelSupportFile(filePath, currentSyncProjectPath)) return filePath;
+  if (!meta || !currentSyncProjectPath) return null;
+  if (isModelSupportFile(filePath, currentSyncProjectPath)) return filePath; // already in correct place
 
   const targetFolder = isModelPreviewFile(filename) ? 'models' : meta.folder;
   const targetDir = path.join(currentSyncProjectPath, targetFolder);
   if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
   const targetPath = path.join(targetDir, filename);
-  if (path.resolve(filePath) === path.resolve(targetPath)) return filePath; // already there
+  const resolvedSource = path.resolve(filePath);
+  const resolvedTarget = path.resolve(targetPath);
+
+  if (resolvedSource === resolvedTarget) return filePath; // already there
+
+  // Check if a move for this source is already in progress
+  const existingMove = pendingMoves.get(resolvedSource);
+  if (existingMove && Date.now() - existingMove.timestamp < 5000) {
+    console.log('[AssetWatcher] Move already in progress for:', filename);
+    return existingMove.targetPath;
+  }
+
+  // Register the pending move
+  pendingMoves.set(resolvedSource, { targetPath: resolvedTarget, timestamp: Date.now() });
 
   try {
     fs.renameSync(filePath, targetPath);
     console.log('[AssetWatcher] Déplacé :', filename, '→', targetFolder + '/');
+    pendingMoves.delete(resolvedSource);
     return targetPath;
   } catch (err) {
     // rename across drives fails — fallback to copy+delete
@@ -3864,17 +4045,37 @@ function autoMoveAsset(filePath, filename) {
       fs.copyFileSync(filePath, targetPath);
       fs.unlinkSync(filePath);
       console.log('[AssetWatcher] Copié+Supprimé :', filename, '→', targetFolder + '/');
+      pendingMoves.delete(resolvedSource);
       return targetPath;
     } catch (e) {
       console.error('[AssetWatcher] Impossible de déplacer :', e.message);
-      return filePath;
+      pendingMoves.delete(resolvedSource);
+      return null; // move failed
     }
   }
 }
 
-// Track recently notified files to avoid double-firing.
-// Key = filename (not path — path changes when root→subfolder move happens).
-const seenAssets = new Set();
+// Check if a file has been recently processed (for deduplication)
+function isAssetRecentlySeen(filename, sourcePath) {
+  const key = filename;
+  const entry = seenAssets.get(key);
+  if (!entry) return false;
+  // If the source path is different, it's a different file (e.g., moved from root to subfolder)
+  if (entry.sourcePath && path.resolve(entry.sourcePath) !== path.resolve(sourcePath)) {
+    return false;
+  }
+  return Date.now() - entry.timestamp < 5000;
+}
+
+function markAssetSeen(filename, sourcePath) {
+  seenAssets.set(filename, { sourcePath: path.resolve(sourcePath), timestamp: Date.now() });
+  setTimeout(() => {
+    const entry = seenAssets.get(filename);
+    if (entry && entry.timestamp === seenAssets.get(filename)?.timestamp) {
+      seenAssets.delete(filename);
+    }
+  }, 5000);
+}
 
 function resolveAgent() {
   let agentName = 'Agent', agentColor = '#3B82F6';
@@ -3891,10 +4092,9 @@ function resolveAgent() {
 
 function handleNewAssetFile(filePath, filename) {
   const projectPath = currentSyncProjectPath;
-  // De-duplicate: ignore if we already fired a notif for this filename recently
-  if (seenAssets.has(filename)) return;
-  seenAssets.add(filename);
-  setTimeout(() => seenAssets.delete(filename), 5000);
+  // De-duplicate: ignore if we already fired a notif for this filename from the same source recently
+  if (isAssetRecentlySeen(filename, filePath)) return;
+  markAssetSeen(filename, filePath);
 
   // Debounce: wait for the file to finish writing
   setTimeout(async () => {
@@ -4026,8 +4226,15 @@ function watchProjectRoot(projectPath) {
       } catch (e) { return; }
 
       // Move to correct subfolder — this will trigger watchAssetFolder,
-      // but handleNewAssetFile deduplicates by filename so only one notif fires.
-      autoMoveAsset(filePath, filename);
+      // but handleNewAssetFile deduplicates by filename+source so only one notif fires.
+      const movedPath = autoMoveAsset(filePath, filename);
+      if (movedPath === null) {
+        // Move failed (e.g., cross-device, permissions). Don't proceed as if succeeded.
+        console.error('[AssetWatcher] Move failed for:', filename, '- file remains at:', filePath);
+        // Still notify about the file in its original location
+        handleNewAssetFile(filePath, filename);
+      }
+      // If move succeeded, watchAssetFolder will pick it up and call handleNewAssetFile
     }, 400);
   });
   assetWatchers.push(w);

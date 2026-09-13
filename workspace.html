@@ -495,6 +495,7 @@
 <script src="./lib/FBXLoader.js"></script>
 <script src="./lib/GLTFLoader.js"></script>
 <script src="./lib/model-viewer-utils.js"></script>
+<script src="./lib/animation-validator.js"></script>
 <script src="./lib/OrbitControls.js"></script>
 <script src="./lib/i18n.js"></script>
 <script src="./lib/ux.js"></script>
@@ -2020,6 +2021,8 @@ function loadFBXViewer(canvas, filePath) {
   scene.background = new THREE.Color(0x0A0806);
   const camera = new THREE.PerspectiveCamera(50, (canvas.width || 1) / (canvas.height || 1), 0.1, 1000);
   let renderer, controls, animId = null, stopped = false, loaded = false;
+  let mixer = null, animations = [], activeAction = null, clock = new THREE.Clock();
+
   function stop() {
     if (stopped) return;
     stopped = true;
@@ -2027,30 +2030,315 @@ function loadFBXViewer(canvas, filePath) {
     animId = null;
     document.removeEventListener('visibilitychange', visibilityChanged);
     if (controls) controls.dispose();
+    if (mixer) mixer.stopAllAction();
     ForgeModelViewer.disposeObject(scene);
     if (renderer) { renderer.dispose(); renderer.forceContextLoss(); }
+    removeAnimationUI();
   }
   canvas._fbxStop = stop;
+
   function showError() {
     if (stopped) return;
     stop();
     canvas.outerHTML = '<div class="model-unsupported"><p>Impossible de charger ce modèle.</p></div>';
   }
+
   function animate() {
     animId = null;
     if (stopped) return;
     if (!canvas.isConnected) { stop(); return; }
     if (document.hidden) return;
+    const delta = clock.getDelta();
+    if (mixer) mixer.update(delta);
     controls.update();
     renderer.render(scene, camera);
+    updateTimelineUI();
     animId = requestAnimationFrame(animate);
   }
+
+  let _timelineEl = null, _timeDisplayEl = null;
+  function updateTimelineUI() {
+    if (!activeAction || !activeAction.getClip()) return;
+    if (!_timelineEl || !_timeDisplayEl) return;
+    const clip = activeAction.getClip();
+    const currentTime = activeAction.time;
+    const duration = clip.duration;
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+    _timelineEl.value = progress;
+    _timeDisplayEl.textContent = `${currentTime.toFixed(2)}s / ${duration.toFixed(2)}s`;
+  }
+
   function visibilityChanged() {
     if (document.hidden) {
       if (animId !== null) cancelAnimationFrame(animId);
       animId = null;
     } else if (loaded && !stopped && animId === null) animate();
   }
+
+  function createAnimationUI(modelAnimations, skeleton, model) {
+    removeAnimationUI();
+    if (!modelAnimations || modelAnimations.length === 0) return;
+
+    animations = modelAnimations;
+
+    const validator = window.ForgeAnimationValidator;
+    if (validator) {
+      const result = validator.validateAnimations(animations, skeleton, model);
+      console.log('[Forge] Animation validation:', result);
+      if (result.errors.length > 0) {
+        console.warn('[Forge] Animation errors:', result.errors);
+      }
+      if (result.warnings.length > 0) {
+        console.warn('[Forge] Animation warnings:', result.warnings);
+      }
+      canvas._validationReport = validator.generateReport(result);
+    }
+
+    const container = document.createElement('div');
+    container.className = 'animation-controls';
+    container.style.cssText = `
+      position: absolute; bottom: 8px; left: 8px; right: 8px;
+      background: rgba(20,17,14,0.95); backdrop-filter: blur(8px);
+      border: 1px solid rgba(59,130,246,0.2); border-radius: 8px;
+      padding: 8px 10px; font-family: 'Inter',sans-serif; font-size: 11px;
+      color: var(--bone); z-index: 10; display: flex; flex-direction: column; gap: 6px;
+    `;
+
+    const row1 = document.createElement('div');
+    row1.style.cssText = 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;';
+
+    const playPauseBtn = document.createElement('button');
+    playPauseBtn.id = 'anim-playpause';
+    playPauseBtn.title = 'Lecture / Pause (Espace)';
+    playPauseBtn.style.cssText = 'width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--border-light); background: var(--char3); color: var(--bone); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s;';
+    playPauseBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+    playPauseBtn.onmouseenter = () => { playPauseBtn.style.borderColor = 'var(--ember)'; playPauseBtn.style.background = 'rgba(59,130,246,0.1)'; };
+    playPauseBtn.onmouseleave = () => { playPauseBtn.style.borderColor = 'var(--border-light)'; playPauseBtn.style.background = 'var(--char3)'; };
+
+    const animSelect = document.createElement('select');
+    animSelect.id = 'anim-select';
+    animSelect.style.cssText = 'flex: 1; min-width: 120px; max-width: 200px; background: var(--char3); border: 1px solid var(--border-light); border-radius: 5px; color: var(--bone); padding: 4px 8px; font-size: 11px; font-family: inherit;';
+    animations.forEach((anim, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${anim.name || `Animation ${i+1}`} (${anim.duration.toFixed(2)}s)`;
+      animSelect.appendChild(opt);
+    });
+
+    const speedLabel = document.createElement('span');
+    speedLabel.style.cssText = 'color: var(--smoke); white-space: nowrap;';
+    speedLabel.textContent = 'Vitesse:';
+
+    const speedInput = document.createElement('input');
+    speedInput.type = 'range';
+    speedInput.id = 'anim-speed';
+    speedInput.min = '0.1';
+    speedInput.max = '3';
+    speedInput.step = '0.1';
+    speedInput.value = '1';
+    speedInput.style.cssText = 'width: 80px; accent-color: var(--ember);';
+
+    const speedValue = document.createElement('span');
+    speedValue.id = 'anim-speed-val';
+    speedValue.style.cssText = 'color: var(--smoke); min-width: 28px; text-align: right;';
+    speedValue.textContent = '1.0x';
+
+    row1.appendChild(playPauseBtn);
+    row1.appendChild(animSelect);
+    row1.appendChild(speedLabel);
+    row1.appendChild(speedInput);
+    row1.appendChild(speedValue);
+
+    const row2 = document.createElement('div');
+    row2.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+
+    const timeline = document.createElement('input');
+    timeline.type = 'range';
+    timeline.id = 'anim-timeline';
+    timeline.min = '0';
+    timeline.max = '100';
+    timeline.step = '0.1';
+    timeline.value = '0';
+    timeline.style.cssText = 'flex: 1; accent-color: var(--ember); cursor: pointer;';
+
+    const timeDisplay = document.createElement('span');
+    timeDisplay.id = 'anim-time';
+    timeDisplay.style.cssText = 'color: var(--smoke); font-family: "JetBrains Mono",monospace; font-size: 10px; min-width: 80px;';
+    timeDisplay.textContent = '0.00s / 0.00s';
+
+    const loopBtn = document.createElement('button');
+    loopBtn.id = 'anim-loop';
+    loopBtn.title = 'Boucle (activé)';
+    loopBtn.style.cssText = 'width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--border-light); background: var(--ember); color: var(--char); cursor: pointer; display: flex; align-items: center; justify-content: center;';
+    loopBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>';
+    loopBtn.dataset.loop = 'true';
+
+    const validateBtn = document.createElement('button');
+    validateBtn.id = 'anim-validate';
+    validateBtn.title = 'Vérifier l\'animation (console)';
+    validateBtn.style.cssText = 'width: 28px; height: 28px; border-radius: 5px; border: 1px solid var(--border-light); background: var(--char3); color: var(--smoke); cursor: pointer; display: flex; align-items: center; justify-content: center;';
+    validateBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+    row2.appendChild(timeline);
+    row2.appendChild(timeDisplay);
+    row2.appendChild(loopBtn);
+    row2.appendChild(validateBtn);
+
+    container.appendChild(row1);
+    container.appendChild(row2);
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const parent = canvas.parentElement;
+    if (parent) {
+      parent.style.position = 'relative';
+      parent.appendChild(container);
+    }
+    canvas._animUI = container;
+
+    let isPlaying = false;
+    let isLooping = true;
+    let currentAnimIndex = 0;
+
+    function playAnimation(index) {
+      if (!mixer || index < 0 || index >= animations.length) return;
+      if (activeAction) {
+        activeAction.fadeOut(0.15);
+        activeAction.stop();
+      }
+      const clip = animations[index];
+      activeAction = mixer.clipAction(clip);
+      activeAction.setLoop(isLooping ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+      activeAction.clampWhenFinished = !isLooping;
+      activeAction.fadeIn(0.15);
+      activeAction.play();
+      currentAnimIndex = index;
+      animSelect.value = index;
+      isPlaying = true;
+      updatePlayPauseIcon();
+    }
+
+    function pauseAnimation() {
+      if (activeAction) {
+        activeAction.paused = true;
+      }
+      isPlaying = false;
+      updatePlayPauseIcon();
+    }
+
+    function resumeAnimation() {
+      if (activeAction) {
+        activeAction.paused = false;
+      }
+      isPlaying = true;
+      updatePlayPauseIcon();
+    }
+
+    function updatePlayPauseIcon() {
+      playPauseBtn.innerHTML = isPlaying
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+    }
+
+    _timelineEl = timeline; _timeDisplayEl = timeDisplay;
+
+    playPauseBtn.onclick = () => {
+      if (isPlaying) pauseAnimation();
+      else if (activeAction) resumeAnimation();
+      else playAnimation(currentAnimIndex);
+    };
+
+    animSelect.onchange = (e) => {
+      const wasPlaying = isPlaying;
+      playAnimation(parseInt(e.target.value, 10));
+      if (!wasPlaying) pauseAnimation();
+    };
+
+    speedInput.oninput = (e) => {
+      const val = parseFloat(e.target.value);
+      speedValue.textContent = val.toFixed(1) + 'x';
+      if (mixer) mixer.timeScale = val;
+    };
+
+    timeline.oninput = (e) => {
+      if (!activeAction || !activeAction.getClip()) return;
+      const clip = activeAction.getClip();
+      const newTime = (parseFloat(e.target.value) / 100) * clip.duration;
+      activeAction.time = newTime;
+      timeDisplay.textContent = `${newTime.toFixed(2)}s / ${clip.duration.toFixed(2)}s`;
+    };
+
+    timeline.onchange = (e) => {
+      if (!activeAction || !activeAction.getClip()) return;
+      const clip = activeAction.getClip();
+      const newTime = (parseFloat(e.target.value) / 100) * clip.duration;
+      activeAction.time = newTime;
+    };
+
+    loopBtn.onclick = () => {
+      isLooping = !isLooping;
+      loopBtn.dataset.loop = isLooping;
+      loopBtn.style.borderColor = isLooping ? 'var(--ember)' : 'var(--border-light)';
+      loopBtn.style.background = isLooping ? 'var(--ember)' : 'var(--char3)';
+      loopBtn.style.color = isLooping ? 'var(--char)' : 'var(--smoke)';
+      loopBtn.title = isLooping ? 'Boucle (activé)' : 'Boucle (désactivé)';
+      if (activeAction) {
+        activeAction.setLoop(isLooping ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+        activeAction.clampWhenFinished = !isLooping;
+      }
+    };
+
+    validateBtn.onclick = () => {
+      if (canvas._validationReport) {
+        console.log(canvas._validationReport);
+        alert('Rapport de validation affiché dans la console (F12)');
+      } else {
+        alert('Aucun rapport de validation disponible');
+      }
+    };
+
+    // Dedicated handler reference so we can remove it
+    function handleAnimationKeydown(e) {
+      // Only act when animation UI is visible
+      if (!canvas._animUI) return;
+
+      // Ignore if typing in an input/select
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        playPauseBtn.click();
+      }
+      if (e.code === 'ArrowLeft' && activeAction) {
+        activeAction.time = Math.max(0, activeAction.time - 0.1);
+      }
+      if (e.code === 'ArrowRight' && activeAction) {
+        const clip = activeAction.getClip();
+        if (clip) activeAction.time = Math.min(clip.duration, activeAction.time + 0.1);
+      }
+    }
+
+    document.addEventListener('keydown', handleAnimationKeydown);
+    canvas._animKeydownHandler = handleAnimationKeydown;
+
+    playAnimation(0);
+    pauseAnimation();
+  }
+
+  function removeAnimationUI() {
+    if (canvas._animUI && canvas._animUI.parentElement) {
+      canvas._animUI.remove();
+    }
+    // Remove the keydown listener to prevent accumulation and space key interception
+    if (canvas._animKeydownHandler) {
+      document.removeEventListener('keydown', canvas._animKeydownHandler);
+      canvas._animKeydownHandler = null;
+    }
+    canvas._animUI = null;
+    _timelineEl = null;
+    _timeDisplayEl = null;
+  }
+
   try {
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setSize(canvas.width, canvas.height);
@@ -2065,10 +2353,10 @@ function loadFBXViewer(canvas, filePath) {
     controls.enableDamping = true; controls.dampingFactor = 0.08;
     controls.autoRotate = true; controls.autoRotateSpeed = 1.5;
     document.addEventListener('visibilitychange', visibilityChanged);
+
     ForgeModelViewer.load(THREE, filePath, function(model) {
       if (stopped || !canvas.isConnected) { ForgeModelViewer.disposeObject(model); stop(); return; }
       try {
-        // Normalize a wrapper so original transforms, materials and animation targets survive.
         const group = new THREE.Group(); group.add(model); scene.add(group);
         const box = new THREE.Box3().setFromObject(model);
         if (box.isEmpty()) throw new Error('Modèle vide');
@@ -2076,6 +2364,18 @@ function loadFBXViewer(canvas, filePath) {
         const scale = 2 / (Math.max(size.x, size.y, size.z) || 1);
         group.scale.setScalar(scale); group.position.copy(center).multiplyScalar(-scale);
         camera.position.set(0, 1, 3); controls.target.set(0, 0, 0);
+
+        let skeleton = null;
+        model.traverse(child => {
+          if (child.isSkinnedMesh && child.skeleton) {
+            skeleton = child.skeleton;
+          }
+        });
+
+        mixer = new THREE.AnimationMixer(model);
+        const modelAnimations = model.animations || [];
+        createAnimationUI(modelAnimations, skeleton, model);
+
         loaded = true; animate();
       } catch (error) { showError(); }
     }, showError);
