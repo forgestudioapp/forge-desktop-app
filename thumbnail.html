@@ -217,11 +217,12 @@
         </div>
         <!-- Bottom gen bar -->
         <div class="gen-bar">
-          <div id="metricsBar" style="display:none;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--smoke-dim);padding:2px 0;display:flex;gap:16px;">
+          <div id="metricsBar" style="display:none;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--smoke-dim);padding:2px 0;display:flex;gap:16px;align-items:center;">
             <span id="mPolls">—</span>
             <span id="mErrors">—</span>
             <span id="mDuration">—</span>
             <span id="mCalls">—</span>
+            <span id="mConsumption" style="margin-left:auto;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);color:var(--bone);">—</span>
           </div>
           <div class="gen-tabs">
             <span class="gen-ai-badge" id="tabCodex" title="IA utilisée pour la génération : Codex">
@@ -369,9 +370,18 @@
       document.getElementById('mErrors').textContent = 'Erreurs: '+(m.totalErrors||0);
       document.getElementById('mDuration').textContent = 'Moy: '+((m.avgDurationMs||0)/1000).toFixed(1)+'s';
       document.getElementById('mCalls').textContent = 'API: '+(m.totalApiCalls||0);
+      const consumptionEl = document.getElementById('mConsumption');
       if(m.totalConsumption){
-        const c = Object.entries(m.totalConsumption).map(([k,v])=>k+':'+v).join(' ');
-        document.getElementById('mCalls').textContent += ' | '+c;
+        const parts = [];
+        if(m.totalConsumption.tripo_polls) parts.push('Tripo: '+m.totalConsumption.tripo_polls+' polls (crédits non disponibles)');
+        if(m.totalConsumption.codex_session) parts.push('Codex: '+m.totalConsumption.codex_session+' session(s)');
+        if(m.totalConsumption.blender_local) parts.push('Blender: '+m.totalConsumption.blender_local+' fichier(s) local(s)');
+        if(m.totalConsumption.duration_ms) parts.push('Durée: '+(m.totalConsumption.duration_ms/1000).toFixed(0)+'s');
+        consumptionEl.textContent = parts.length ? parts.join(' · ') : 'Consommation: donnée indisponible';
+        consumptionEl.style.display = 'inline';
+      } else {
+        consumptionEl.textContent = 'Consommation: donnée indisponible';
+        consumptionEl.style.display = 'inline';
       }
     }catch(e){}
   }
@@ -625,6 +635,8 @@ closePreview();
           loadModelPreview(r.dataUrl, modelFile);
           container3d.style.display = 'block';
           controls.style.display = 'flex';
+          // Add space key handler for animation control
+          document.addEventListener('keydown', handlePreviewKeydown);
         } else {
           fallbackToImage(imgFile, files, img);
         }
@@ -829,6 +841,25 @@ closePreview();
     document.getElementById('previewOverlay').classList.remove('open');
     if(!preserve) state.previewItem = null;
     stopAnimation();
+    // Remove space key handler when preview closes
+    document.removeEventListener('keydown', handlePreviewKeydown);
+  }
+  
+  // Dedicated keydown handler for preview (space = play/pause)
+  function handlePreviewKeydown(e){
+    // Only act when preview overlay is open
+    if(!document.getElementById('previewOverlay').classList.contains('open')) return;
+    
+    // Ignore if typing in an input/select
+    const active = document.activeElement;
+    if(active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+    
+    if(e.code === 'Space'){
+      e.preventDefault();
+      toggleAnimPlay();
+    } else if(e.key === 'Escape'){
+      closePreview();
+    }
   }
   function toggleFav(){ const b=document.getElementById('favBtn'); b.classList.toggle('liked'); b.textContent=b.classList.contains('liked')?'♥':'♡'; }
   async function downloadPreview(){
@@ -938,8 +969,7 @@ closePreview();
   // ── Keyboard ──
   document.addEventListener('keydown', e=>{
     if(e.key==='Escape'){
-      if(document.getElementById('previewOverlay').classList.contains('open')) closePreview();
-      else if(document.getElementById('editModal').classList.contains('open')) closeEditModal();
+      if(document.getElementById('editModal').classList.contains('open')) closeEditModal();
     }
   });
   

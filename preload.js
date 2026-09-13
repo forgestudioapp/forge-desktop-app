@@ -112,6 +112,9 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   mediaAttachFiles: (projectPath, kind, itemId, variantId, fileNames) => ipcRenderer.invoke('media-attach-files', projectPath, kind, itemId, variantId, fileNames),
   mediaRename: (projectPath, kind, itemId, newName) => ipcRenderer.invoke('media-rename', projectPath, kind, itemId, newName),
 
+  // --- Amélioration qualité artistique (model-refine) ---
+  modelRefine: (options) => ipcRenderer.invoke('model-refine', options),
+
   // --- Library communautaire ---
   libraryList: () => ipcRenderer.invoke('library-list'),
   libraryUpload: (filePath, assetType) => ipcRenderer.invoke('library-upload', filePath, assetType),
