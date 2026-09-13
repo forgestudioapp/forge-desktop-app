@@ -258,6 +258,19 @@
   .agent-panel.starting .agent-ready-icon{animation:pulse-dot 1.1s ease-in-out infinite;}
   .agent-panel.fullscreen{grid-column:1/-1!important;grid-row:1/-1!important;z-index:50;}
   .agent-panel.fullscreen .xterm-wrap{min-height:0;}
+  .agent-panel:has(.agent-composer){min-height:320px;}
+  .agent-panel:has(.agent-composer) .xterm-wrap{min-height:0;}
+  .agent-composer{flex-shrink:0;padding:10px 12px;border-top:1px solid var(--border);background:var(--header-bg);}
+  .agent-composer-input{display:block;box-sizing:border-box;width:100%;min-height:54px;max-height:160px;resize:vertical;border:1px solid var(--border-light);border-radius:8px;background:var(--char);color:var(--bone);padding:9px 10px;font:13px/1.5 'JetBrains Mono',Consolas,monospace;outline:none;}
+  .agent-composer-input:focus{border-color:var(--ember-light);box-shadow:0 0 0 2px rgba(59,130,246,.12);}
+  .agent-composer-input::placeholder{color:var(--smoke-dim);}
+  .agent-composer-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;}
+  .agent-composer-hint{font-size:10px;color:var(--smoke-dim);}
+  .agent-composer-send{border:1px solid rgba(59,130,246,.35);border-radius:7px;background:rgba(59,130,246,.15);color:var(--bone);padding:7px 14px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;}
+  .agent-composer-send:hover:not(:disabled){background:rgba(59,130,246,.3);}
+  .agent-composer-send:disabled{opacity:.4;cursor:default;}
+  .agent-composer-status{font-size:11px;color:var(--error);line-height:1.4;}
+  .agent-composer-status:not(:empty){margin-top:6px;}
 
   @keyframes fadeIn{from{opacity:0}to{opacity:1}}
   @keyframes slideUp{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -499,6 +512,7 @@
 <script src="./lib/OrbitControls.js"></script>
 <script src="./lib/i18n.js"></script>
 <script src="./lib/ux.js"></script>
+<script src="./lib/agent-composer.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // GARDE DE SESSION (aucun compte → login)
@@ -528,9 +542,12 @@ const earlyPtyData=new Map();
 const earlyPtyExit=new Map();
 const agentGrid=document.getElementById('agentGrid'),emptyGrid=document.getElementById('emptyGrid'),agentCount=document.getElementById('agentCount'),startAgentsBtn=document.getElementById('startAgentsBtn');
 
+let draftSaveTimer=null;
+function scheduleDraftSave(){clearTimeout(draftSaveTimer);draftSaveTimer=setTimeout(saveAgentState,200);}
+window.addEventListener('pagehide',function(){clearTimeout(draftSaveTimer);saveAgentState();});
 function saveAgentState(){
   if(!window.forgeAPI||!window.forgeAPI.saveAgentState)return;
-  const state=agents.map(function(a){return{id:a.id,name:a.name,agentType:a.agentType,sessionId:a.sessionId};});
+  const state=agents.map(function(a){return{id:a.id,name:a.name,agentType:a.agentType,sessionId:a.sessionId,draft:a.draft||''};});
   window.forgeAPI.saveAgentState({agents:state,agentCounter:JSON.parse(JSON.stringify(agentCounter))});
 }
 
@@ -573,6 +590,7 @@ async function restoreAgents(){
       const meta=AGENT_META[saved.agentType];
       if(!meta)continue;
       const a={id:saved.id||genId(),name:saved.name||meta.label,agentType:saved.agentType,sessionId:saved.sessionId,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false,_fontSize:12,_fullscreen:false,_firstInput:true};
+      a.draft=typeof saved.draft==='string'?saved.draft:'';
       agents.push(a);
       createPanel(a);
       // Reconnecter au PTY existant
@@ -637,6 +655,7 @@ function startAgentAutomatically(agent){
 }
 
 function updateStartButton(){
+  agents.forEach(function(a){if(a.composer)a.composer.refresh();});
   if(!startAgentsBtn)return;
   const pending=agents.filter(function(a){return !a.sessionId&&!a.starting;}).length;
   const starting=agents.some(function(a){return a.starting;});
@@ -725,7 +744,7 @@ function createPanel(agent){
   const ready=document.createElement('div');ready.className='agent-ready'+(agent.sessionId?' hidden':'');ready.id='ready-'+agent.id;
   ready.innerHTML='<div class="agent-ready-icon">&gt;_</div><div class="agent-ready-name">'+meta.label+'</div><div class="agent-ready-status" id="ready-status-'+agent.id+'">'+t('agent_ready')+'</div>';
   wrap.appendChild(ready);
-  requestAnimationFrame(function(){setTimeout(function(){try{fit.fit();term.focus();}catch(e){}},100);});
+  requestAnimationFrame(function(){setTimeout(function(){try{fit.fit();if(agent.composer&&!document.activeElement.matches('input,textarea,[contenteditable="true"]'))agent.composer.input.focus();}catch(e){}},100);});
   const ro=new ResizeObserver(function(){try{fit.fit();}catch(e){}});ro.observe(wrap);agent.resizeObserver=ro;
 
   term.onData(function(d){
@@ -737,6 +756,15 @@ function createPanel(agent){
   });
   term.onResize(function(ev){if(agent.sessionId&&window.forgeAPI&&window.forgeAPI.ptyResize)window.forgeAPI.ptyResize(agent.sessionId,ev.cols,ev.rows);});
   agent.xterm=term;agent.fitAddon=fit;
+  agent.composer=ForgeAgentComposer.mount({agent:agent,panel:panel,
+    labels:{placeholder:t('agent_message_placeholder').replace('{agent}',agent.name),hint:t('agent_message_hint'),start:t('agent_message_start'),send:t('agent_message_send'),sending:t('agent_message_sending'),failed:t('agent_message_failed')},
+    send:function(sessionId,text,bracketedPaste){
+      if(!window.forgeAPI||!window.forgeAPI.ptySubmitMessage)return Promise.resolve({error:t('agent_message_failed')});
+      return window.forgeAPI.ptySubmitMessage(sessionId,text,bracketedPaste);
+    },
+    onDraft:scheduleDraftSave,
+    onSent:function(text){if(agent._firstInput){agent._firstInput=false;updateAgentName(agent,text);}saveAgentState();}
+  });
   updateStartButton();
 }
 
@@ -829,6 +857,7 @@ window.closeAgent=function(id){
   a._closed=true;a._launchToken=genId();
   if(a.sessionId&&window.forgeAPI&&window.forgeAPI.ptyKill)window.forgeAPI.ptyKill(a.sessionId);
   if(a.resizeObserver)a.resizeObserver.disconnect();
+  if(a.composer)a.composer.dispose();
   if(a.xterm)a.xterm.dispose();
   if(a.element)a.element.remove();
   agents.splice(i,1);updateCount();saveAgentState();

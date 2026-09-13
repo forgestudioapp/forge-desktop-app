@@ -3635,6 +3635,9 @@ ipcMain.handle('pty-input', async (event, sessionId, data) => {
   if (pty) pty.pty.write(data);
 });
 
+const submitPtyMessage = require('./lib/pty-message').createPtyMessageSender(sessionId => PTYS.get(sessionId));
+ipcMain.handle('pty-submit-message', (event, sessionId, text, bracketedPaste) => submitPtyMessage(sessionId, text, bracketedPaste));
+
 ipcMain.handle('pty-resize', async (event, sessionId, cols, rows) => {
   const pty = PTYS.get(sessionId);
   if (pty) pty.pty.resize(cols, rows);
