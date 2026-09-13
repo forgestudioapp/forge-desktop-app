@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   // --- PTY (terminals interactifs in-app) ---
   ptyCreate: (agentType, projectPath, cols, rows) => ipcRenderer.invoke('pty-create', agentType, projectPath, cols, rows),
   ptyInput: (sessionId, data) => ipcRenderer.invoke('pty-input', sessionId, data),
+  ptySubmitMessage: (sessionId, text, bracketedPaste) => ipcRenderer.invoke('pty-submit-message', sessionId, text, bracketedPaste),
   ptyResize: (sessionId, cols, rows) => ipcRenderer.invoke('pty-resize', sessionId, cols, rows),
   ptyKill: (sessionId) => ipcRenderer.invoke('pty-kill', sessionId),
   onPtyData: (callback) => ipcRenderer.on('pty-data', (event, data) => callback(data)),
