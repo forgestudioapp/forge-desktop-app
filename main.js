@@ -735,8 +735,8 @@ function getLicenseUrl() {
   return process.env.FORGE_LICENSE_URL || 'https://forgestudioapp.github.io/forge-desktop-app/forge/get-license.html';
 }
 
-function getStripeStoreUrl() {
-  return process.env.STRIPE_STORE_URL || 'https://forgestudioapp.itch.io/forge';
+function getLicenseStoreUrl() {
+  return 'https://forgestudioapp.itch.io/forge';
 }
 
 function getLicenseFilePath() {
@@ -763,7 +763,7 @@ function getLicenseClient() {
 
 ipcMain.handle('buy-license', async () => {
   const { shell } = require('electron');
-  await shell.openExternal(getStripeStoreUrl());
+  await shell.openExternal(getLicenseStoreUrl());
   return { success: true };
 });
 
