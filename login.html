@@ -92,6 +92,8 @@
     backdrop-filter:blur(8px);
   }
   .err-box.show{display:block; animation:shake 0.4s ease;}
+  .err-box.success{background:rgba(74,222,128,0.08); border-color:rgba(74,222,128,0.3); color:#4ade80;}
+  .err-box.success.show{animation:none;}
   @keyframes shake{0%,100%{transform:translateX(0);} 25%{transform:translateX(-4px);} 75%{transform:translateX(4px);}}
 
   .step-footer{position:absolute; bottom:26px; left:30px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); z-index:2;}
@@ -228,7 +230,8 @@
     link.style.pointerEvents = 'none';
     try {
       const result = await window.forgeAPI.supabaseAuth('recover', email);
-      showError(result.error || t('login_reset_sent'));
+      if(result.error) showError(result.error);
+      else showSuccess(t('login_reset_sent'));
     } catch(err) {
       showError(t('login_err_unavailable'));
     } finally {
@@ -254,6 +257,15 @@
   checkAlreadyLoggedIn();
 
   function showError(msg){
+    errBox.classList.remove('success');
+    errBox.setAttribute('role', 'alert');
+    errBox.textContent = msg;
+    errBox.classList.add('show');
+  }
+
+  function showSuccess(msg){
+    errBox.classList.add('success');
+    errBox.setAttribute('role', 'status');
     errBox.textContent = msg;
     errBox.classList.add('show');
   }
@@ -296,7 +308,7 @@
       const result = await window.forgeAPI.supabaseAuth(mode, email, password, licenseKey);
       if(result.confirmationRequired){
         setMode('signin');
-        showError(t('login_confirm_email'));
+        showSuccess(t('login_confirm_email'));
         return;
       }
       if(result.error){
