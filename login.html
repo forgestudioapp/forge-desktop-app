@@ -115,7 +115,7 @@
 
   <img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">
   <h1 id="formTitle" data-i18n="login_signup_title">Crée ton compte Forge</h1>
-  <p class="sub" id="formSub" data-i18n="login_signup_sub">Un seul compte pour retrouver tes projets partout.</p>
+  <p class="sub" id="formSub" data-i18n="login_signup_sub">Achète Forge sur itch.io, récupère ta clé, puis crée ton compte ici.</p>
 
   <div class="form-box">
     <div class="err-box" id="errBox"></div>
@@ -134,7 +134,7 @@
       <label data-i18n="login_license_key">Clé de licence</label>
       <input type="text" id="licenseInput" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" data-i18n-placeholder="login_license_ph">
       <div style="margin-top:6px; font-size:12px; color:var(--smoke-dim);">
-        <span data-i18n="login_license_store">Achetée sur le store ? — </span><a id="buyLink" style="color:var(--ember-light); text-decoration:underline; cursor:pointer;" data-i18n="login_buy_license">💳 Acheter une licence</a>
+        <span data-i18n="login_license_store">Après l’achat : page de téléchargement itch.io → « Request key ». </span><a id="buyLink" style="color:var(--ember-light); text-decoration:underline; cursor:pointer;" data-i18n="login_buy_license">💳 Acheter une licence</a>
       </div>
     </div>
     <div class="field" id="forgotField" style="display:none; margin-top:-10px; margin-bottom:10px;">
@@ -227,22 +227,8 @@
     link.textContent = t('login_sending_reset');
     link.style.pointerEvents = 'none';
     try {
-      const { url: supabaseUrl, serviceKey: supabaseKey } = getSupabaseConfig ? getSupabaseConfig() : {url: '', serviceKey: ''};
-      if(!supabaseUrl || !supabaseKey){
-        showError('Configuration Supabase manquante');
-        return;
-      }
-      const response = await fetch(`${supabaseUrl}/auth/v1/recover`, {
-        method: 'POST',
-        headers: { 'apikey': supabaseKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      if(response.ok){
-        showError(t('login_reset_sent'));
-      } else {
-        const data = await response.json();
-        showError(data.error_description || t('login_reset_failed'));
-      }
+      const result = await window.forgeAPI.supabaseAuth('recover', email);
+      showError(result.error || t('login_reset_sent'));
     } catch(err) {
       showError(t('login_err_unavailable'));
     } finally {
@@ -293,6 +279,7 @@
     errBox.classList.remove('show');
     submitBtn.disabled = true;
 
+    try {
     if(mode === 'signup'){
       const licenseKey = licenseInput.value.trim();
       if(!licenseKey){
@@ -305,16 +292,13 @@
         submitBtn.disabled = false;
         return;
       }
-      submitBtn.textContent = t('login_validating_license');
-      const license = await window.forgeAPI.verifyLicense(licenseKey);
-      if(license.error){
-        showError(license.error);
-        submitBtn.disabled = false;
-        submitBtn.textContent = t('login_signup_btn');
-        return;
-      }
       submitBtn.textContent = t('login_creating_account');
       const result = await window.forgeAPI.supabaseAuth(mode, email, password, licenseKey);
+      if(result.confirmationRequired){
+        setMode('signin');
+        showError(t('login_confirm_email'));
+        return;
+      }
       if(result.error){
         showError(result.error);
         submitBtn.disabled = false;
@@ -335,10 +319,17 @@
     document.body.style.opacity = '0';
     document.body.style.transition = 'opacity 0.2s ease';
     setTimeout(() => { window.location.href = 'accounts.html'; }, 200);
+    } catch (err) {
+      showError(t('login_err_network'));
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = t(mode === 'signup' ? 'login_signup_btn' : 'login_signin');
+    }
   }
 
   submitBtn.addEventListener('click', submit);
   emailInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') passwordInput.focus(); });
+  licenseInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
   passwordInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
 </script>
 <script>initLang();</script>

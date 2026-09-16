@@ -152,7 +152,7 @@
   // ============================================
   var SUPABASE_URL = 'https://quzbsdcjtkmdeuiyyhnv.supabase.co';
   var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1emJzZGNqdGttZGV1aXl5aG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjAwNTksImV4cCI6MjEwMTU5NjA1OX0.ToM71JAeMxTQNFatqcnSPK2xLQIye8vRU1nDmoyyMbE';
-  var LICENSE_API = SUPABASE_URL + '/rest/v1/rpc/verify_license';
+  var LICENSE_API = SUPABASE_URL + '/rest/v1/rpc/verify_license_for_signup';
   var MODE = 'signin'; // 'signin' | 'signup'
 
   var titleEl = document.getElementById('formTitle');
@@ -224,7 +224,7 @@
     var password = document.getElementById('password').value;
     if (!email || !password) { showErr('Renseigne ton email et ton mot de passe.'); return; }
 
-    var licenseKey = MODE === 'signup' ? document.getElementById('licenseKey').value.trim() : '';
+    var licenseKey = MODE === 'signup' ? document.getElementById('licenseKey').value.trim().toUpperCase() : '';
 
     // Mode signup : valide d'abord la licence Supabase.
     if (MODE === 'signup') {
@@ -232,7 +232,7 @@
       try {
         var lic = await validateLicense(licenseKey);
         if (!(lic.ok && licenseIsActive(lic.data))) {
-          showErr('Clé de licence invalide ou déjà utilisée sur une autre machine : ' + licenseError(lic.data));
+          showErr('Clé de licence invalide ou déjà associée à un compte : ' + licenseError(lic.data));
           return;
         }
       } catch (ex) {
@@ -251,7 +251,7 @@
       var response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, password: password })
+        body: JSON.stringify(MODE === 'signup' ? { email: email, password: password, data: { forge_license_key: licenseKey } } : { email: email, password: password })
       });
       var data = await response.json();
       if (!response.ok) {
@@ -264,14 +264,6 @@
           setMode('signin');
           return;
         }
-        // Consommer la cle de licence apres creation de compte
-        try {
-          await fetch(SUPABASE_URL + '/rest/v1/rpc/consume_license', {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: licenseKey, user_email: email }),
-          });
-        } catch (e) { /* best effort */ }
         showOk('Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi.');
         setMode('signin');
       } else {

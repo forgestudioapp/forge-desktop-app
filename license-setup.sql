@@ -5,6 +5,8 @@
 --   1. Ouvre https://supabase.com/dashboard → ton projet Forge
 --   2. Menu gauche → SQL Editor → New query
 --   3. Colle tout ce fichier et clique sur "Run"
+--   4. Applique supabase/migrations/20260915190000_itch_external_licenses.sql
+--      pour l'inscription atomique du client Forge 1.5.5+.
 -- ============================================================
 
 -- 1) Table des clés de licence -------------------------------
@@ -13,7 +15,7 @@ create table if not exists public.license_keys (
   created_at timestamptz not null default now(),
   license_key text unique not null,
   email text,
-  status text not null default 'active' check (status in ('active','revoked','expired')),
+  status text not null default 'active' check (status in ('active','revoked','expired','used')),
   plan text default 'pro',
   stripe_session_id text,
   activated_at timestamptz,
@@ -25,15 +27,12 @@ create table if not exists public.license_keys (
 create index if not exists idx_license_keys_key on public.license_keys (license_key);
 create index if not exists idx_license_keys_email on public.license_keys (email);
 
--- 2) RLS — lecture publique pour vérification ----------------
+-- 2) RLS — seules les fonctions dédiées vérifient les clés ----
 alter table public.license_keys enable row level security;
 
--- anyone can verify a license key (read-only)
 drop policy if exists "license_verify_public" on public.license_keys;
-create policy "license_verify_public"
-  on public.license_keys
-  for select
-  using (true);
+revoke all on public.license_keys from public, anon, authenticated;
+grant all on public.license_keys to service_role;
 
 -- only service_role can insert/update/delete (Edge Function uses service key)
 drop policy if exists "license_admin_service" on public.license_keys;
@@ -89,6 +88,7 @@ as $$
 $$;
 
 -- Restreindre l'appel de consume_license aux rôles autorisés uniquement
+revoke execute on function public.consume_license(text, text) from public;
 revoke execute on function public.consume_license(text, text) from anon;
 revoke execute on function public.consume_license(text, text) from authenticated;
 grant execute on function public.consume_license(text, text) to service_role;

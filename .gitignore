@@ -14,3 +14,7 @@ api-keys.json
 agents-state.json
 
 releases/
+
+# Private license stock and database export files must never be committed.
+.private-licenses/
+supabase/tests/*.dry-run.sql
