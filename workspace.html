@@ -259,8 +259,8 @@
   .agent-panel.fullscreen{grid-column:1/-1!important;grid-row:1/-1!important;z-index:50;}
   .agent-panel.fullscreen .xterm-wrap{min-height:0;}
   .agent-panel:has(.agent-composer){min-height:320px;}
-  .agent-panel:has(.agent-composer) .xterm-wrap{min-height:0;}
-  .agent-composer{flex-shrink:0;padding:10px 12px;border-top:1px solid var(--border);background:var(--header-bg);}
+  .agent-panel:has(.agent-composer) .xterm-wrap{min-height:0;overflow:hidden;isolation:isolate;}
+  .agent-composer{position:relative;z-index:1;flex-shrink:0;padding:10px 12px;border-top:1px solid var(--border);background:var(--header-bg);}
   .agent-composer-input{display:block;box-sizing:border-box;width:100%;min-height:54px;max-height:160px;resize:vertical;border:1px solid var(--border-light);border-radius:8px;background:var(--char);color:var(--bone);padding:9px 10px;font:13px/1.5 'JetBrains Mono',Consolas,monospace;outline:none;}
   .agent-composer-input:focus{border-color:var(--ember-light);box-shadow:0 0 0 2px rgba(59,130,246,.12);}
   .agent-composer-input::placeholder{color:var(--smoke-dim);}
@@ -537,18 +537,24 @@ const AGENT_META={claude:{label:'Claude Code',color:'#CC785C'},codex:{label:'Ope
 const AGENT_ICONS={claude:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none"><path d="M50 10 L50 90" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M50 10 L20 75" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M50 10 L80 75" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>',codex:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M50 15 C50 15 58 38 50 50 C42 62 15 50 15 50 C15 50 42 38 50 15 Z"/><path d="M50 15 C50 15 42 38 50 50 C58 62 85 50 85 50 C85 50 58 38 50 15 Z"/><path d="M50 85 C50 85 42 62 50 50 C58 38 50 15 50 15 C50 15 58 62 50 85 Z"/><path d="M50 85 C50 85 58 62 50 50 C42 38 50 15 50 15 C50 15 42 62 50 85 Z"/></svg>',antigravity:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="6" fill="currentColor"/><g stroke="currentColor" stroke-width="5" stroke-linecap="round"><line x1="50" y1="18" x2="50" y2="34"/><line x1="50" y1="66" x2="50" y2="82"/><line x1="18" y1="50" x2="34" y2="50"/><line x1="66" y1="50" x2="82" y2="50"/><line x1="27" y1="27" x2="38" y2="38"/><line x1="62" y1="62" x2="73" y2="73"/><line x1="73" y1="27" x2="62" y2="38"/><line x1="38" y1="62" x2="27" y2="73"/></g></svg>'};
 
 let agents=[],agentCounter={claude:1,codex:1,antigravity:1},activeProject=null;
-let workspaceStarted=sessionStorage.getItem('forge-agents-started')==='1';
+let workspaceStarted=false,agentStateReady=false,stateProjectPath=null,stateProjectKey=null;
 const earlyPtyData=new Map();
 const earlyPtyExit=new Map();
 const agentGrid=document.getElementById('agentGrid'),emptyGrid=document.getElementById('emptyGrid'),agentCount=document.getElementById('agentCount'),startAgentsBtn=document.getElementById('startAgentsBtn');
 
 let draftSaveTimer=null;
 function scheduleDraftSave(){clearTimeout(draftSaveTimer);draftSaveTimer=setTimeout(saveAgentState,200);}
-window.addEventListener('pagehide',function(){clearTimeout(draftSaveTimer);saveAgentState();});
-function saveAgentState(){
-  if(!window.forgeAPI||!window.forgeAPI.saveAgentState)return;
+window.addEventListener('pagehide',function(){clearTimeout(draftSaveTimer);saveAgentState(true);});
+function saveAgentState(onClose){
+  if(!agentStateReady||!stateProjectPath||!window.forgeAPI||!window.forgeAPI.saveAgentState)return;
   const state=agents.map(function(a){return{id:a.id,name:a.name,agentType:a.agentType,sessionId:a.sessionId,draft:a.draft||''};});
-  window.forgeAPI.saveAgentState({agents:state,agentCounter:JSON.parse(JSON.stringify(agentCounter))});
+  const payload={agents:state,agentCounter:JSON.parse(JSON.stringify(agentCounter))};
+  try{
+    const result=onClose===true&&window.forgeAPI.saveAgentStateOnClose
+      ?window.forgeAPI.saveAgentStateOnClose(stateProjectPath,payload)
+      :window.forgeAPI.saveAgentState(stateProjectPath,payload);
+    return Promise.resolve(result).then(function(res){if(res&&res.error)console.error('saveAgentState',res.error);return res;}).catch(function(err){console.error('saveAgentState',err);});
+  }catch(err){console.error('saveAgentState',err);}
 }
 
 async function loadProject(){
@@ -580,12 +586,16 @@ async function loadProject(){
 }
 
 async function restoreAgents(){
-  if(!window.forgeAPI||!window.forgeAPI.loadAgentState)return;
+  if(!activeProject||!window.forgeAPI||!window.forgeAPI.loadAgentState)return;
+  stateProjectPath=activeProject.path;
   try{
-    const res=await window.forgeAPI.loadAgentState();
-    if(!res.agents||res.agents.length===0)return;
+    const res=await window.forgeAPI.loadAgentState(stateProjectPath);
+    if(res.error)throw new Error(res.error);
+    if(!Array.isArray(res.agents)||!res.projectKey)throw new Error('État des agents invalide.');
+    stateProjectKey=res.projectKey;
+    workspaceStarted=sessionStorage.getItem('forge-agents-started:'+stateProjectKey)==='1';
     // Restaurer les compteurs
-    if(res.agentCounter)agentCounter=res.agentCounter;
+    if(res.agentCounter)for(const type of Object.keys(agentCounter)){if(Number.isSafeInteger(res.agentCounter[type])&&res.agentCounter[type]>0)agentCounter[type]=res.agentCounter[type];}
     for(const saved of res.agents){
       const meta=AGENT_META[saved.agentType];
       if(!meta)continue;
@@ -595,7 +605,7 @@ async function restoreAgents(){
       createPanel(a);
       // Reconnecter au PTY existant
       if(a.sessionId){
-        var reconnectRes=window.forgeAPI.reconnectPty?await window.forgeAPI.reconnectPty(a.sessionId):{error:'API PTY non disponible'};
+        var reconnectRes=window.forgeAPI.reconnectPty?await window.forgeAPI.reconnectPty(a.sessionId,stateProjectPath):{error:'API PTY non disponible'};
         if(reconnectRes&&reconnectRes.error){a.sessionId=null;setAgentReady(a,t('agent_ready'));}
         else{
           a.element.classList.add('running');
@@ -605,8 +615,9 @@ async function restoreAgents(){
         }
       }
     }
+    agentStateReady=true;
     updateCount();
-  }catch(e){console.error('restoreAgents',e);}
+  }catch(e){console.error('restoreAgents',e);showToast('Impossible de restaurer les agents : '+e.message);}
 }
 
 loadProject().then(function(){restoreAgents();});
@@ -636,6 +647,7 @@ function applyGridLayout(){
 function genId(){return 'a_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);}
 let createAgentLock = false;
 function createAgent(type){
+  if(!agentStateReady){showToast(t('agent_state_not_ready'));return;}
   if(createAgentLock) return;
   createAgentLock = true;
   setTimeout(() => { createAgentLock = false; }, 300);
@@ -680,10 +692,11 @@ function setAgentReady(agent,status){
 async function startPendingAgents(){
   if(!window.forgeAPI||!window.forgeAPI.ptyCreate){showToast(t('start_requires_forge'));return;}
   if(!activeProject){showToast(t('start_requires_project'));return;}
+  if(!agentStateReady){showToast(t('agent_state_not_ready'));return;}
   const pending=agents.filter(function(a){return !a.sessionId&&!a.starting;});
   if(pending.length===0)return;
   workspaceStarted=true;
-  sessionStorage.setItem('forge-agents-started','1');
+  sessionStorage.setItem('forge-agents-started:'+stateProjectKey,'1');
   pending.forEach(function(a){
     a.starting=true;
     if(a.element)a.element.classList.add('starting');

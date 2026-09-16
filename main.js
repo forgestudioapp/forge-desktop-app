@@ -14,6 +14,8 @@ if (process.env.FORGE_TEST_PROFILE) {
 }
 
 const { spawn, execFile } = require('child_process');
+const { createPtyOutputRelay } = require('./lib/pty-output-relay');
+const { createAgentStateStore, sameAgentProject } = require('./lib/agent-state');
 const { canonicalExistingPath, isPathInside, isExistingDirectoryWithinRoots } = require('./lib/path-security');
 const {
   buildCodexExec,
@@ -502,38 +504,37 @@ ipcMain.handle('agent-list', async () => {
 // ============================================
 // PERSISTANCE DES AGENTS (workspace navigation)
 // ============================================
-ipcMain.handle('save-agent-state', async (event, agentsState) => {
+function saveProjectAgentState(projectPath, agentsState) {
   try {
-    const p = userDataFile('agents-state.json');
-    fs.writeFileSync(p, JSON.stringify(agentsState, null, 2));
+    createAgentStateStore(userDataFile('agents-state.json')).save(projectPath, agentsState);
     return { success: true };
   } catch (err) {
     console.error('[Agents] Erreur sauvegarde etat:', err.message);
     return { error: err.message };
   }
+}
+
+ipcMain.handle('save-agent-state', async (event, projectPath, agentsState) => {
+  return saveProjectAgentState(projectPath, agentsState);
 });
 
-ipcMain.handle('load-agent-state', async () => {
+// Finish the last draft write before the renderer is destroyed on navigation/quit.
+ipcMain.on('save-agent-state-on-close', (event, projectPath, agentsState) => {
+  event.returnValue = saveProjectAgentState(projectPath, agentsState);
+});
+
+ipcMain.handle('load-agent-state', async (event, projectPath) => {
   try {
-    const p = userDataFile('agents-state.json');
-    if (!fs.existsSync(p)) return { agents: [] };
-    const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-    // Conserver les panneaux en attente et ne rattacher que les PTY encore actifs.
-    const restored = (data.agents || []).map((agent) => ({
-      ...agent,
-      sessionId: agent.sessionId && PTYS.has(agent.sessionId) ? agent.sessionId : null,
-    }));
-    return { ...data, agents: restored };
+    return createAgentStateStore(userDataFile('agents-state.json')).load(projectPath, PTYS);
   } catch (err) {
     console.error('[Agents] Erreur chargement etat:', err.message);
-    return { agents: [] };
+    return { agents: [], error: err.message };
   }
 });
 
-ipcMain.handle('clear-agent-state', async () => {
+ipcMain.handle('clear-agent-state', async (event, projectPath) => {
   try {
-    const p = userDataFile('agents-state.json');
-    if (fs.existsSync(p)) fs.unlinkSync(p);
+    createAgentStateStore(userDataFile('agents-state.json')).clear(projectPath);
     return { success: true };
   } catch (err) {
     return { error: err.message };
@@ -541,22 +542,11 @@ ipcMain.handle('clear-agent-state', async () => {
 });
 
 // Reconnecter les PTY existants a un nouveau renderer (navigation workspace)
-ipcMain.handle('reconnect-pty', async (event, sessionId) => {
+ipcMain.handle('reconnect-pty', async (event, sessionId, projectPath) => {
   const ptyEntry = PTYS.get(sessionId);
   if (!ptyEntry) return { error: 'Session PTY introuvable' };
-  const sender = event.sender;
-  // Remplacer le callback onData pour envoyer au nouveau renderer
-  ptyEntry.pty.onData((data) => {
-    if (!sender.isDestroyed()) {
-      sender.send('pty-data', { sessionId, data });
-    }
-  });
-  ptyEntry.pty.onExit(({ exitCode, signal }) => {
-    if (!sender.isDestroyed()) {
-      sender.send('pty-exit', { sessionId, exitCode, signal });
-    }
-    PTYS.delete(sessionId);
-  });
+  if (!sameAgentProject(ptyEntry.projectPath, projectPath)) return { error: 'Cette session PTY appartient à un autre projet.' };
+  if (!ptyEntry.outputRelay.setSender(event.sender)) return { error: 'Session PTY terminée' };
   return { success: true };
 });
 
@@ -737,9 +727,8 @@ function migrateLegacyData() {
 }
 
 // ============================================
-// LICENCE STRIPE + SUPABASE (paywall création de compte)
-// Les clés sont générées par le webhook Stripe → Supabase Edge Function.
-// L'app vérifie la clé contre la table license_keys via Supabase REST.
+// LICENCES ITCH.IO + SUPABASE
+// Itch.io distribue les clés ; Supabase les associe au compte pendant l’inscription.
 // ============================================
 
 function getLicenseUrl() {
@@ -764,67 +753,27 @@ function getSupabaseConfig() {
   const url = (process.env.SUPABASE_URL || 'https://quzbsdcjtkmdeuiyyhnv.supabase.co').replace(/\/$/, '');
   const anonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1emJzZGNqdGttZGV1aXl5aG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjAwNTksImV4cCI6MjEwMTU5NjA1OX0.ToM71JAeMxTQNFatqcnSPK2xLQIye8vRU1nDmoyyMbE';
   if (!url || !anonKey) return null;
-  return { url, anonKey, serviceKey: anonKey };
+  return { url, anonKey };
 }
 
-async function supabaseVerifyLicense(licenseKey) {
-  const { url, serviceKey } = getSupabaseConfig();
-  if (!url || !serviceKey) {
-    return { valid: false, error: 'Supabase non configuré (variables d\'environnement manquantes)' };
-  }
-  const endpoint = `${url}/rest/v1/rpc/verify_license`;
-  const res = await fetchWithTimeout(endpoint, {
-    method: 'POST',
-    headers: {
-      'apikey': serviceKey,
-      'Authorization': 'Bearer ' + serviceKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ key: licenseKey }),
-  }, 15000);
-  if (!res.ok) {
-    const txt = await res.text();
-    return { valid: false, error: 'Erreur Supabase : ' + txt.slice(0, 150) };
-  }
-  const rows = await res.json().catch(() => []);
-  if (!rows.length) return { valid: false, error: 'Clé introuvable.' };
-  const r = rows[0];
-  return { valid: r.valid, status: r.license_status, email: r.license_email, plan: r.license_plan };
-}
-
-function licenseError(msg) {
-  return typeof msg === 'string' ? msg : 'Clé de licence invalide.';
+const { createLicenseClient, normalizeLicenseKey } = require('./lib/license-client');
+function getLicenseClient() {
+  return createLicenseClient({ ...getSupabaseConfig(), request: fetchWithTimeout });
 }
 
 ipcMain.handle('buy-license', async () => {
   const { shell } = require('electron');
-  shell.openExternal(getStripeStoreUrl());
+  await shell.openExternal(getStripeStoreUrl());
   return { success: true };
 });
 
 ipcMain.handle('verify-license', async (event, licenseKey) => {
-  if (!licenseKey || typeof licenseKey !== 'string') {
-    return { error: 'Entre ta clé de licence reçue après l\'achat.' };
-  }
-  const existing = readLicenseFile();
-  if (existing && existing.key === licenseKey) {
-    return { success: true, license: existing };
-  }
   try {
-    const result = await supabaseVerifyLicense(licenseKey.trim());
-    if (result.valid) {
-      const license = {
-        key: licenseKey.trim(),
-        email: result.email || null,
-        plan: result.plan || 'pro',
-        activatedAt: new Date().toISOString()
-      };
-      fs.writeFileSync(getLicenseFilePath(), JSON.stringify(license, null, 2));
-      return { success: true, license };
-    }
-    return { error: licenseError(result.error || 'Clé inactive ou expirée.') };
+    // Never trust a locally cached key to authorize a new account.
+    const result = await getLicenseClient().verify(licenseKey, { signup: true });
+    return result.valid ? { success: true } : { error: result.error };
   } catch (err) {
-    return { error: 'Impossible de valider la licence (hors-ligne ?) : ' + err.message };
+    return { error: 'Impossible de vérifier la clé. Vérifie ta connexion Internet et réessaie.' };
   }
 });
 
@@ -832,7 +781,7 @@ ipcMain.handle('license-status', async () => {
   const license = readLicenseFile();
   if (!license) return { licensed: false };
   try {
-    const result = await supabaseVerifyLicense(license.key);
+    const result = await getLicenseClient().verify(license.key);
     return { licensed: !!result.valid, license };
   } catch (e) {
     return { licensed: true, license, offline: true };
@@ -840,62 +789,22 @@ ipcMain.handle('license-status', async () => {
 });
 
 ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey) => {
-  const { url: supabaseUrl, serviceKey: supabaseKey } = getSupabaseConfig();
-  if (!supabaseUrl || !supabaseKey) {
-    return { error: 'Configuration Supabase manquante dans .env' };
-  }
-
-  // Paywall : la création de compte Forge exige une clé de licence active.
-  if (mode === 'signup') {
-    if (!licenseKey || typeof licenseKey !== 'string' || !licenseKey.trim()) {
-      return { error: 'Une licence doit être achetée pour créer un compte (bouton "Acheter une licence").' };
-    }
-    const existing = readLicenseFile();
-    if (!existing || existing.key !== licenseKey.trim()) {
-      try {
-        const result = await supabaseVerifyLicense(licenseKey.trim());
-        if (!result.valid) {
-          return { error: 'Clé de licence invalide : ' + (result.error || 'clé inactive ou expirée') };
-        }
-      } catch (err) {
-        return { error: 'Impossible de valider la licence (hors-ligne ?) : ' + err.message };
-      }
-    }
-  }
-
-    const endpoint = mode === 'signup'
-    ? `${supabaseUrl}/auth/v1/signup`
-    : `${supabaseUrl}/auth/v1/token?grant_type=password`;
   try {
-    const response = await fetchWithTimeout(endpoint, {
-      method: 'POST',
-      headers: { 'apikey': supabaseKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    }, 15000);
-    const data = await response.json();
-    if (!response.ok) {
-      return { error: data.error_description || data.msg || 'Erreur de connexion' };
-    }
-    // Apres creation de compte, marquer la cle comme utilisee
-    if (mode === 'signup' && licenseKey) {
-      try {
-        const { url: svcUrl, serviceKey: svcKey } = getSupabaseConfig();
-        if (svcUrl && svcKey) {
-          await fetchWithTimeout(`${svcUrl}/rest/v1/rpc/consume_license`, {
-            method: 'POST',
-            headers: { 'apikey': svcKey, 'Authorization': 'Bearer ' + svcKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: licenseKey.trim(), user_email: email }),
-          }, 10000);
-        }
-      } catch (e) { /* best effort */ }
-    }
+    const result = await getLicenseClient().authenticate(mode, email, password, licenseKey);
+    if (result.error || result.confirmationRequired || mode === 'recover') return result;
+    if (!result.session) return { error: 'Session de connexion manquante.' };
     const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
-    fs.writeFileSync(sessionPath, JSON.stringify(data));
-    // Rapatrie d'éventuelles données d'un ancien emplacement global.
+    fs.writeFileSync(sessionPath, JSON.stringify(result.session));
+    if (mode === 'signup') {
+      fs.writeFileSync(getLicenseFilePath(), JSON.stringify({
+        key: normalizeLicenseKey(licenseKey), email: result.session.user.email,
+        activatedAt: new Date().toISOString(), plan: 'pro',
+      }, null, 2));
+    }
     migrateLegacyData();
     return { success: true };
   } catch (err) {
-    return { error: err.message };
+    return { error: 'La connexion a été interrompue. Si ton compte a été créé, choisis « Se connecter ».' };
   }
 });
 
@@ -904,9 +813,9 @@ ipcMain.handle('is-forge-connected', async () => {
   if (!fs.existsSync(sessionPath)) return { connected: false };
   try {
     const session = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
-    return { connected: true, email: session.user?.email || null };
+    return { connected: !!(session.access_token && session.user?.id), email: session.user?.email || null };
   } catch (e) {
-    return { connected: true, email: null };
+    return { connected: false };
   }
 });
 
@@ -933,12 +842,12 @@ ipcMain.handle('logout-forge', async () => {
   global.robloxAccessToken = null;
   clearGithubDevice();
 
+  const agentsStatePath = userDataFile('agents-state.json');
   const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
   removeIfExists(sessionPath);
 
   // Nettoyer l'etat des agents
   try {
-    const agentsStatePath = userDataFile('agents-state.json');
     removeIfExists(agentsStatePath);
   } catch (e) {}
 
@@ -3609,20 +3518,11 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows) =
       env: ptyEnv
     });
 
-    ptyProcess.onData((data) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('pty-data', { sessionId, data });
-      }
+    const entry = { pty: ptyProcess, agentType, projectPath, outputRelay: null };
+    PTYS.set(sessionId, entry);
+    entry.outputRelay = createPtyOutputRelay(ptyProcess, sessionId, event.sender, () => {
+      if (PTYS.get(sessionId) === entry) PTYS.delete(sessionId);
     });
-
-    ptyProcess.onExit(({ exitCode, signal }) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('pty-exit', { sessionId, exitCode, signal });
-      }
-      PTYS.delete(sessionId);
-    });
-
-    PTYS.set(sessionId, { pty: ptyProcess, agentType, projectPath });
 
     return { success: true, sessionId };
   } catch (err) {
@@ -4558,6 +4458,9 @@ autoUpdater.on('error', (err) => {
 
 // ============================================
 app.whenReady().then(() => {
+  try {
+    createAgentStateStore(userDataFile('agents-state.json')).migrateLegacy(userDataFile('active-project.json'));
+  } catch (err) { console.warn('[Agents] Migration différée :', err.message); }
   const recoverableProjects = loadProjectsRegistry();
   for (const project of Array.isArray(recoverableProjects) ? recoverableProjects : []) {
     try { if (project?.path && isPathAllowed(project.path)) scheduleMediaTracking(project.path); }
@@ -4578,10 +4481,6 @@ app.on('window-all-closed', () => {
   stopFileSync();
   if (mcpServerProcess) { mcpServerProcess.kill(); mcpServerProcess = null; }
   if (syncMcpProcess) { syncMcpProcess.kill(); syncMcpProcess = null; }
-  // Nettoyer l'etat des agents a la fermeture
-  try {
-    const agentsStatePath = userDataFile('agents-state.json');
-    removeIfExists(agentsStatePath);
-  } catch (e) {}
+  // Keep panels and drafts; stale PTY IDs are discarded when state is restored.
   if (process.platform !== 'darwin') app.quit();
 });
