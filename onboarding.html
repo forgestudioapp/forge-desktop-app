@@ -248,22 +248,6 @@
       })
     },
     {
-      id: 'node', labelKey: 'req_node', tagKey: 'req_node_tag', required: true, install: 'node',
-      check: (r) => ({
-        ok: !!(r && r.nodeInstalled && r.nodeOk),
-        status: (r && r.nodeInstalled) ? (r.nodeOk ? 'ok' : 'ko') : (r ? 'ko' : 'pending'),
-        desc: (r && r.nodeInstalled) ? (r.nodeVersion + (r.nodeOk ? '' : t('req_node_ok_suffix'))) : t('req_node_ko')
-      })
-    },
-    {
-      id: 'python', labelKey: 'req_python', tagKey: 'req_python_tag', required: false, install: 'python',
-      check: (r) => ({
-        ok: !!(r && r.pythonInstalled),
-        status: (r && r.pythonInstalled) ? 'ok' : (r ? 'alt' : 'pending'),
-        desc: (r && r.pythonInstalled) ? (r.pythonVersion + t('req_python_ok_suffix')) : t('req_python_ko')
-      })
-    },
-    {
       id: 'agents', labelKey: 'req_agents', tagKey: 'req_agents_tag', required: true, install: 'agents',
       check: (r) => {
         const has = !!(r && r.agents && r.agents.codex && r.agents.codex.installed) ||
@@ -429,7 +413,7 @@
     if(!fixAllBtn.disabled){
       fixAllBtn.disabled = true;
       logLine(t('onboarding_fix_all_log'));
-      const order = ['node', 'python', 'roblox', 'agents'];
+      const order = ['roblox', 'agents'];
       for(const reqId of order){
         const rowId = REQUIREMENTS.find(r => r.install === reqId);
         if(!rowId) continue;

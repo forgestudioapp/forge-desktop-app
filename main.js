@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, safeStorage, dialog } = require('electron')
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { Worker } = require('worker_threads');
 // Configure isolation before any storage paths or Electron sessions are opened.
 if (process.env.FORGE_TEST_PROFILE) {
   const testRoot = path.resolve(process.env.FORGE_TEST_PROFILE);
@@ -14,8 +15,19 @@ if (process.env.FORGE_TEST_PROFILE) {
 }
 
 const { spawn, execFile } = require('child_process');
+const { configureBundledNode } = require('./lib/bundled-node');
+function useBundledNode() {
+  return configureBundledNode({ resourcesDir: app.isPackaged ? process.resourcesPath : __dirname, userDataDir: app.getPath('userData') });
+}
+const forgeNodeCommand = useBundledNode();
 const { createPtyOutputRelay } = require('./lib/pty-output-relay');
-const { createAgentStateStore, sameAgentProject } = require('./lib/agent-state');
+const { createPrivateControlServer } = require('./lib/private-control-server');
+const { createAgentStateStore, agentProjectKey, sameAgentProject } = require('./lib/agent-state');
+const { createAgentActivityStore } = require('./lib/agent-activity');
+const { readProjectQualityMemory, writeProjectQualityMemory } = require('./lib/project-quality-memory');
+const {
+  listProjectCheckpoints,
+} = require('./lib/project-checkpoints');
 const { canonicalExistingPath, isPathInside, isExistingDirectoryWithinRoots } = require('./lib/path-security');
 const {
   buildCodexExec,
@@ -464,6 +476,78 @@ _buildCommand(agentType, prompt, options = {}) {
 }
 
 const agentManager = new AgentManager();
+let privateControl = null;
+
+function readActiveProjectForPrivateControl() {
+  const activePath = userDataFile('active-project.json');
+  if (!fs.existsSync(activePath)) return null;
+  try {
+    const project = JSON.parse(fs.readFileSync(activePath, 'utf8'));
+    return project && project.path ? project : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolvePrivateProject(projectPath) {
+  const projects = loadProjectsRegistry();
+  if (!projectPath) {
+    const active = readActiveProjectForPrivateControl();
+    if (!active) return null;
+    return projects.find(project => project.path === active.path) || active;
+  }
+  return projects.find(project => project.path === projectPath) || null;
+}
+
+async function startPrivateControlIfPaired() {
+  const configPath = path.join(app.getPath('userData'), 'forge-private-control.json');
+  if (!fs.existsSync(configPath)) return;
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    privateControl = createPrivateControlServer({
+      token: config.token,
+      port: Number(config.port) || 59173,
+      handlers: {
+        'GET /v1/status': () => ({
+          success: true,
+          version: app.getVersion(),
+          activeProject: readActiveProjectForPrivateControl(),
+          agents: agentManager.listSessions(),
+        }),
+        'GET /v1/projects': () => ({ projects: loadProjectsRegistry() }),
+        'POST /v1/projects/activate': async body => {
+          const project = resolvePrivateProject(body.projectPath);
+          if (!project) return { error: 'Projet Forge inconnu.' };
+          const association = await ensureProjectPlaceAssociation(project.path, { allowLink: true });
+          if (association.error) return association;
+          fs.writeFileSync(userDataFile('active-project.json'), JSON.stringify({
+            name: project.name,
+            path: project.path,
+            linkedStudio: project.linkedStudio,
+          }));
+          startFileSync(project.path);
+          return { success: true, project };
+        },
+        'POST /v1/agents/launch': async body => {
+          const project = resolvePrivateProject(body.projectPath);
+          if (!project) return { error: 'Aucun projet Forge actif ou reconnu.' };
+          if (!['codex', 'claude', 'antigravity'].includes(body.agentType)) {
+            return { error: 'Agent inconnu.' };
+          }
+          return agentManager.launch(body.agentType, project.path, body.prompt);
+        },
+        'GET /v1/agents': () => ({ agents: agentManager.listSessions() }),
+        'POST /v1/agents/status': body => agentManager.getStatus(body.sessionId),
+        'POST /v1/agents/stop': body => agentManager.stop(body.sessionId),
+      },
+    });
+    const address = await privateControl.start();
+    console.log(`[PrivateControl] Plugin personnel connecté sur 127.0.0.1:${address.port}`);
+  } catch (error) {
+    privateControl = null;
+    console.warn('[PrivateControl] Association privée ignorée :', error.message);
+  }
+}
 
 // ============================================
 // IPC HANDLERS — Agents
@@ -756,6 +840,53 @@ function getSupabaseConfig() {
   return { url, anonKey };
 }
 
+// Ping d'installation anonyme (analytics) : 1 ligne par install, last_seen mis à jour.
+// Fire-and-forget, ne bloque jamais le démarrage, silencieux hors-ligne.
+// Opt-out : FORGE_NO_ANALYTICS=1.
+function getOrCreateInstallId() {
+  try {
+    const f = userDataFile('install-id.txt');
+    if (fs.existsSync(f)) {
+      const id = String(fs.readFileSync(f, 'utf8')).trim();
+      if (/^[0-9a-f-]{36}$/i.test(id)) return id;
+    }
+    const id = require('crypto').randomUUID();
+    fs.writeFileSync(f, id);
+    return id;
+  } catch (e) { return null; }
+}
+
+async function pingInstallAnalytics() {
+  try {
+    if (process.env.FORGE_NO_ANALYTICS === '1') return;
+    const installId = getOrCreateInstallId();
+    const cfg = getSupabaseConfig();
+    if (!installId || !cfg) return;
+    const headers = {
+      apikey: cfg.anonKey,
+      Authorization: `Bearer ${cfg.anonKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal'
+    };
+    const payload = {
+      install_id: installId,
+      app_version: app.getVersion(),
+      platform: `${process.platform}-${process.arch}`,
+      last_seen: new Date().toISOString()
+    };
+    const res = await fetchWithTimeout(`${cfg.url}/rest/v1/app_installs`, {
+      method: 'POST', headers, body: JSON.stringify(payload)
+    }, 8000);
+    if (res && res.status === 409) {
+      await fetchWithTimeout(`${cfg.url}/rest/v1/app_installs?install_id=eq.${installId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ app_version: payload.app_version, platform: payload.platform, last_seen: payload.last_seen })
+      }, 8000).catch(() => {});
+    }
+  } catch (e) { /* analytics silencieux */ }
+}
+
 const { createLicenseClient, normalizeLicenseKey } = require('./lib/license-client');
 function getLicenseClient() {
   return createLicenseClient({ ...getSupabaseConfig(), request: fetchWithTimeout });
@@ -806,6 +937,11 @@ ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey)
   } catch (err) {
     return { error: 'La connexion a été interrompue. Si ton compte a été créé, choisis « Se connecter ».' };
   }
+});
+
+ipcMain.on('focus-login-input', (event) => {
+  const expectedUrl = require('url').pathToFileURL(path.join(__dirname, 'login.html')).href;
+  require('./lib/window-input-focus').focusLoginInput(event, BrowserWindow, expectedUrl);
 });
 
 ipcMain.handle('is-forge-connected', async () => {
@@ -1085,13 +1221,10 @@ if (loadGithubDevice()) { console.log('[GitHub] Reprise du polling au demarrage.
 // ============================================
 // SYSTEME, PRE-REQUIS & PLUGIN ROBOLOX
 // ============================================
-// Tout ce qu'il faut verifier / installer lors de l'installation de Forge.
-// L'onboarding affiche cette liste et propose une installation en un clic
-// (winget pour Node/Python/Roblox, npm pour les agents IA).
+// L'application installée fournit Node et le moteur de détourage. L'onboarding
+// ne propose donc que Roblox Studio et les agents, qui restent des choix de l'utilisateur.
 
 const REQUIREMENT_MAP = {
-  node:   { kind: 'winget', id: 'OpenJS.NodeJS.LTS',       label: 'Node.js LTS',  url: 'https://nodejs.org/' },
-  python: { kind: 'winget', id: 'Python.Python.3.12',      label: 'Python 3',     url: 'https://www.python.org/downloads/' },
   roblox: { kind: 'winget', id: 'Roblox.RobloxStudio',     label: 'Roblox Studio', url: 'https://www.roblox.com/create' },
   agents: { kind: 'npm',    pkgs: ['@openai/codex', '@anthropic-ai/claude-code'], label: 'Agents IA (Codex + Claude Code)' }
 };
@@ -1154,6 +1287,7 @@ function refreshPathEnv() {
       if (m) added.push(m.replace(/^Path\s+REG_(EXPAND_)?SZ\s+/i, ''));
     }
     if (added.length) process.env.PATH = added.concat(process.env.PATH).join(';');
+    useBundledNode();
     console.log('[System] PATH rechargé depuis le registre');
   } catch (err) {
     console.warn('[System] Relecture PATH impossible:', err.message);
@@ -1201,7 +1335,7 @@ ipcMain.handle('check-system', async () => {
   }
 
   const node = await detectVersion('node', ['--version'], parseNodeVersion);
-  const python = await detectVersion('python', ['--version'], parsePythonVersion);
+  const python = { installed: false, version: '', ok: false }; // No system Python required.
   const winget = await detectVersion('winget', ['--version']);
   // Detection via AgentManager : il connait le vrai binaire de chaque agent
   // (antigravity est lance via 'agy', pas 'antigravity').
@@ -1209,7 +1343,7 @@ ipcMain.handle('check-system', async () => {
   for (const a of ['codex', 'claude', 'antigravity']) {
     agents[a] = await agentManager.detect(a);
   }
-  const rembg = await detectVersion('rembg', ['--version']);
+  const rembg = await getBackgroundRemoval().status();
 
   // Reglage auto-rembg (fichier JSON dans le dossier utilisateur)
   let autoRemoveBg = false;
@@ -1227,6 +1361,7 @@ ipcMain.handle('check-system', async () => {
     pluginInstalled,
     nodeInstalled: node.installed,
     nodeVersion: node.version || '',
+    nodeBundled: forgeNodeCommand !== 'node',
     nodeOk: !!node.ok,
     pythonInstalled: python.installed,
     pythonVersion: python.version || '',
@@ -1234,6 +1369,8 @@ ipcMain.handle('check-system', async () => {
     wingetInstalled: winget.installed,
     rembgInstalled: rembg.installed,
     rembgVersion: rembg.version || '',
+    rembgBundled: !!rembg.bundled,
+    rembgError: rembg.error || '',
     autoRemoveBg,
     agents,
     message: robloxInstalled ? 'Roblox detecte' : 'Roblox non detecte'
@@ -1271,9 +1408,7 @@ ipcMain.handle('install-requirement', async (event, requirement) => {
 
     if (meta.kind === 'npm') {
       const node = await detectVersion('node', ['--version']);
-      if (!node.installed) {
-        return { error: 'Installe d\'abord Node.js (nécessaire à npm).' };
-      }
+      if (!node.installed) return { error: 'Le moteur Node inclus dans Forge est indisponible. Réinstalle Forge.' };
       for (const pkg of meta.pkgs) {
         const res = await runNpmGlobalInstall('Agent: ' + pkg, pkg);
         if (res.code !== 0) {
@@ -1386,7 +1521,7 @@ function writeAgentMcpConfig(mcpServerPath, projectPath) {
   
   const config = {
     mcpServers: {
-      forge_roblox: { command: 'node', args: [mcpServerPath] },
+      forge_roblox: { command: forgeNodeCommand, args: [mcpServerPath] },
       ...(projectPath && memoryMcpPath && fs.existsSync(memoryMcpPath) ? {
         forge_memory: { 
           command: memoryMcpPath, 
@@ -1417,7 +1552,7 @@ function ensureAgyMcpEntry(mcpServerPath) {
     if (!config.mcpServers || typeof config.mcpServers !== 'object') {
       config.mcpServers = {};
     }
-    config.mcpServers.forge_roblox = { command: 'node', args: [mcpServerPath], disabled: false };
+    config.mcpServers.forge_roblox = { command: forgeNodeCommand, args: [mcpServerPath], disabled: false };
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
     return true;
@@ -1440,7 +1575,7 @@ function resolveAgyCommand() {
 function ensureCodexMcpEntry(mcpServerPath) {
   try {
     const { spawnSync } = require('child_process');
-    const res = spawnSync('codex', ['mcp', 'add', 'forge_roblox', '--', 'node', mcpServerPath], {
+    const res = spawnSync('codex', ['mcp', 'add', 'forge_roblox', '--', forgeNodeCommand, mcpServerPath], {
       shell: true, timeout: 10000, windowsHide: true
     });
     if (res.status === 0) {
@@ -1512,7 +1647,7 @@ function startMcpServer() {
     console.log('[MCP] Cle Roblox injectee depuis api-keys.json');
   }
 
-  mcpServerProcess = spawn('node', [finalPath], { env: mcpEnv });
+  mcpServerProcess = spawn(forgeNodeCommand, [finalPath], { env: mcpEnv });
 
   // Le SDK MCP 0.6+ utilise NDJSON (un JSON par ligne terminee par \n)
   // et non le framing Content-Length type LSP.
@@ -1678,7 +1813,7 @@ function startSyncMcpServer() {
   if (userApiKeys.roblox) mcpEnv.ROBLOX_API_KEY = userApiKeys.roblox;
 
   syncMcpStdoutBuffer = '';
-  syncMcpProcess = spawn('node', [finalPath], { env: mcpEnv });
+  syncMcpProcess = spawn(forgeNodeCommand, [finalPath], { env: mcpEnv });
 
   syncMcpProcess.stdout.on('data', (data) => {
     syncMcpStdoutBuffer += data.toString();
@@ -1854,7 +1989,7 @@ ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
 // ============================================
 // PROJETS — Creation directe dans Documents/ForgeProjects
 // ============================================
-ipcMain.handle('create-project', async (event, projectName, language) => {
+ipcMain.handle('create-project', async (event, projectName, language, options = {}) => {
   try {
     const projectsRoot = getUserProjectsRoot();
     if (!fs.existsSync(projectsRoot)) {
@@ -1862,12 +1997,47 @@ ipcMain.handle('create-project', async (event, projectName, language) => {
     }
 
     const projectDir = path.join(projectsRoot, projectName);
-    if (fs.existsSync(projectDir)) return { error: 'Un dossier avec ce nom existe deja' };
-
     const studio = await getCurrentStudioPlaceInfo();
     if (studio.error) return studio;
-    const placeDecision = evaluateProjectPlaceLink(loadProjectsRegistry(), projectDir, studio.place);
+    const initialRegistry = loadProjectsRegistry();
+    const existingProject = initialRegistry.find(item => canonicalProjectPath(item.path) === canonicalProjectPath(projectDir));
+    const placeDecision = evaluateProjectPlaceLink(initialRegistry, projectDir, studio.place, new Date().toISOString(), {
+      allowReassign: options && options.reassignPlace === true,
+      reassignFromProjectPath: options && options.reassignFromProjectPath,
+    });
     if (placeDecision.error) return placeDecision;
+
+    // A previous attempt may have completed the durable creation before the
+    // renderer failed on a later verification. Make retries idempotent.
+    if (fs.existsSync(projectDir)) {
+      if (!existingProject) {
+        return {
+          error: 'Un dossier non enregistré existe déjà avec ce nom. Choisis un autre nom ou déplace ce dossier avant de réessayer.',
+          code: 'project-folder-unregistered',
+          path: projectDir,
+        };
+      }
+      if (placeDecision.reassignedFromProjectPath) {
+        const previous = initialRegistry.find(item => canonicalProjectPath(item.path) === canonicalProjectPath(placeDecision.reassignedFromProjectPath));
+        if (previous) previous.linkedStudio = null;
+      }
+      existingProject.linkedStudio = placeDecision.link;
+      saveProjectsRegistry(initialRegistry);
+      fs.writeFileSync(userDataFile('active-project.json'), JSON.stringify({
+        name: existingProject.name,
+        path: existingProject.path,
+        language: existingProject.language || language || 'lua',
+        linkedStudio: placeDecision.link,
+      }));
+      startFileSync(existingProject.path);
+      return {
+        success: true,
+        path: existingProject.path,
+        language: existingProject.language || language || 'lua',
+        linkedStudio: placeDecision.link,
+        resumed: true,
+      };
+    }
 
     const isTypeScript = language === 'typescript';
     let robloxAdminUserId = 0;
@@ -1964,7 +2134,19 @@ print("[Forge] Projet '${projectName}' charge !")
       linkedStudio: placeDecision.link,
     }));
 
-    addProjectToRegistry(projectName, projectDir, placeDecision.link);
+    const finalRegistry = loadProjectsRegistry();
+    if (placeDecision.reassignedFromProjectPath) {
+      const previous = finalRegistry.find(item => canonicalProjectPath(item.path) === canonicalProjectPath(placeDecision.reassignedFromProjectPath));
+      if (previous) previous.linkedStudio = null;
+    }
+    finalRegistry.push({
+      name: projectName,
+      path: projectDir,
+      language: language || 'lua',
+      createdAt: new Date().toISOString(),
+      linkedStudio: placeDecision.link,
+    });
+    saveProjectsRegistry(finalRegistry);
     startFileSync(projectDir);
 
     return {
@@ -1974,6 +2156,7 @@ print("[Forge] Projet '${projectName}' charge !")
       adminUserId: adminScaffold.adminUserId,
       adminAccessMode: adminScaffold.adminUserId > 0 ? 'roblox-user' : 'place-creator',
       linkedStudio: placeDecision.link,
+      reassignedFromProjectPath: placeDecision.reassignedFromProjectPath || null,
     };
   } catch (err) { return { error: err.message }; }
 });
@@ -2043,6 +2226,128 @@ ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
     return { success: true, name: projName };
   } catch (e) {
     return { error: e.message };
+  }
+});
+
+function agentActivityFile(projectPath) {
+  const directory = userDataFile('agent-activity');
+  fs.mkdirSync(directory, { recursive: true });
+  return path.join(directory, `${agentProjectKey(projectPath)}.json`);
+}
+
+function agentActivityStore(projectPath) {
+  return createAgentActivityStore(agentActivityFile(projectPath));
+}
+
+ipcMain.handle('agent-activity-list', async (event, projectPath) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    return { agents: agentActivityStore(projectPath).list() };
+  } catch (error) { return { error: error.message, agents: [] }; }
+});
+
+ipcMain.handle('agent-activity-update', async (event, projectPath, agentId, patch) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    return { success: true, agent: agentActivityStore(projectPath).update(agentId, patch || {}) };
+  } catch (error) { return { error: error.message }; }
+});
+
+ipcMain.handle('agent-activity-remove', async (event, projectPath, agentId) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    agentActivityStore(projectPath).remove(agentId);
+    return { success: true };
+  } catch (error) { return { error: error.message }; }
+});
+
+ipcMain.handle('project-quality-read', async (event, projectPath) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    return { success: true, ...readProjectQualityMemory(projectPath) };
+  } catch (error) { return { error: error.message }; }
+});
+
+ipcMain.handle('project-quality-write', async (event, projectPath, content) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    return { success: true, ...writeProjectQualityMemory(projectPath, content) };
+  } catch (error) { return { error: error.message }; }
+});
+
+function projectCheckpointStorageRoot() {
+  return userDataFile('project-checkpoints');
+}
+
+function runCheckpointTask(action, options) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'lib', 'project-checkpoint-worker.js'), { workerData: { action, options } });
+    let settled = false;
+    worker.once('message', message => {
+      settled = true;
+      if (message && message.success) resolve(message.result);
+      else reject(new Error(message?.error || 'Le point de retour a échoué.'));
+    });
+    worker.once('error', error => { settled = true; reject(error); });
+    worker.once('exit', code => {
+      if (!settled) reject(new Error(`Le point de retour s'est arrêté sans résultat (code ${code}).`));
+    });
+  });
+}
+
+function projectHasRunningAgents(projectPath) {
+  return [...PTYS.values()].some(entry => sameAgentProject(entry.projectPath, projectPath));
+}
+
+function validateCheckpointProject(projectPath) {
+  if (!isPathAllowed(projectPath)) throw new Error('Projet invalide ou non autorisé.');
+  return fs.realpathSync(projectPath);
+}
+
+ipcMain.handle('checkpoint-create', async (event, projectPath, label, reason) => {
+  try {
+    const project = validateCheckpointProject(projectPath);
+    if (projectHasRunningAgents(project)) return { error: 'Arrête les agents avant de créer un point de retour cohérent.' };
+    const checkpoint = await runCheckpointTask('create', {
+      projectPath: project,
+      storageRoot: projectCheckpointStorageRoot(),
+      label,
+      reason: reason === 'before-agents' ? 'before-agents' : 'manual',
+    });
+    return { success: true, checkpoint };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('checkpoint-list', async (event, projectPath) => {
+  try {
+    const project = validateCheckpointProject(projectPath);
+    return { checkpoints: listProjectCheckpoints({ projectPath: project, storageRoot: projectCheckpointStorageRoot() }) };
+  } catch (error) {
+    return { error: error.message, checkpoints: [] };
+  }
+});
+
+ipcMain.handle('checkpoint-restore', async (event, projectPath, checkpointId) => {
+  try {
+    const project = validateCheckpointProject(projectPath);
+    if (projectHasRunningAgents(project)) return { error: 'Arrête tous les agents de ce projet avant la restauration.' };
+    const result = await runCheckpointTask('restore', { projectPath: project, storageRoot: projectCheckpointStorageRoot(), checkpointId });
+    scheduleProjectIndex(project);
+    return { success: true, ...result };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('checkpoint-delete', async (event, projectPath, checkpointId) => {
+  try {
+    const project = validateCheckpointProject(projectPath);
+    const checkpoint = await runCheckpointTask('delete', { projectPath: project, storageRoot: projectCheckpointStorageRoot(), checkpointId });
+    return { success: true, checkpoint };
+  } catch (error) {
+    return { error: error.message };
   }
 });
 
@@ -2866,54 +3171,16 @@ async function downloadMediaToProject(url, projectPath, kind, data, jobId) {
   }
 }
 
-// Suppression d'arriere-plan avec rembg (Python).
-// Genere un fichier _nobg.png a cote de l'original.
-// Modele u2netp (leger ~5 Mo) : evite le telechargement de u2net (~1 Go)
-// qui echoue sur les disques presque pleins.
-// Auto-unblock : Windows SmartScreen bloque les .pyd de pip. On les debloque
-// automatiquement au premier lancement pour eviter que tous les utilisateurs
-// ne voient "cette application est potentiellement dangereuse".
-async function unblockPythonPackages() {
-  try {
-    const pythonDir = await new Promise((resolve) => {
-      const proc = spawn('python', ['-c', 'import site; print(site.getsitepackages()[0])'], { shell: true, windowsHide: true });
-      let out = '';
-      proc.stdout.on('data', d => out += d.toString());
-      proc.on('close', () => resolve(out.trim()));
-      proc.on('error', () => resolve(''));
-    });
-    if (!pythonDir || !fs.existsSync(pythonDir)) return;
-    const stamp = userDataFile('.rembg-unblocked');
-    if (fs.existsSync(stamp)) return; // deja debloque
-    const proc = spawn('powershell', [
-      '-NoProfile', '-NonInteractive', '-Command',
-      `Get-ChildItem -Path '${pythonDir}' -Recurse -Filter '*.pyd' | Unblock-File; ` +
-      `Get-ChildItem -Path '${pythonDir}' -Recurse -Filter '*.dll' | Unblock-File; ` +
-      `New-Item -ItemType File -Path '${stamp}' -Force | Out-Null`
-    ], { shell: true, windowsHide: true });
-    proc.on('close', () => console.log('[rembg] Python packages unblocked'));
-    proc.on('error', () => {});
-  } catch (e) {}
-}
-
-async function runRembg(inputPath) {
-  const outputPath = inputPath.replace(/(\.\w+)$/, '_nobg.png');
-  // Debloque les .pyd bloques par SmartScreen avant le premier lancement
-  await unblockPythonPackages();
-  return new Promise((resolve) => {
-    const proc = spawn('rembg', ['i', '-m', 'u2netp', inputPath, outputPath], { shell: true, windowsHide: true, timeout: 120000 });
-    let stderr = '';
-    proc.stderr.on('data', d => stderr += d.toString());
-    proc.on('close', (code) => {
-      if (code === 0 && fs.existsSync(outputPath)) {
-        resolve({ success: true, path: outputPath });
-      } else {
-        resolve({ success: false, error: (stderr || '').slice(-300) || 'rembg failed (code ' + code + ')' });
-      }
-    });
-    proc.on('error', (e) => resolve({ success: false, error: e.message }));
+// Suppression d'arriere-plan : runtime privé livré hors de app.asar ; aucun Python ou pip système.
+let backgroundRemoval;
+function getBackgroundRemoval() {
+  if (!backgroundRemoval) backgroundRemoval = require('./lib/background-removal').createBackgroundRemoval({
+    runtimeDir: path.join(app.isPackaged ? process.resourcesPath : __dirname, 'runtimes', 'python-win-x64-u2net'),
+    cacheDir: userDataFile('rembg-cache')
   });
+  return backgroundRemoval;
 }
+async function runRembg(inputPath) { return getBackgroundRemoval().remove(inputPath); }
 
 // Reglages globaux de l'app (accessible depuis settings.html + main.js).
 function loadAppSettings() {
@@ -2937,8 +3204,8 @@ ipcMain.handle('save-app-settings', async (event, s) => { saveAppSettings(s); re
 // Suppression d'arriere-plan en un clic depuis le renderer.
 ipcMain.handle('remove-background', async (event, filePath) => {
   if (!filePath || !fs.existsSync(filePath)) return { error: 'Fichier introuvable' };
-  const rembg = await detectVersion('rembg', ['--version']);
-  if (!rembg.installed) return { error: 'rembg non installe. Lance pip install "rembg[cpu,cli]" puis relance Forge.' };
+  const rembg = await getBackgroundRemoval().status();
+  if (!rembg.installed) return { success: false, error: rembg.error };
   return runRembg(filePath);
 });
 
@@ -3466,7 +3733,7 @@ ipcMain.handle('check-studio-open', async () => {
 // ============================================
 const PTYS = new Map();
 
-ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows) => {
+ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, agentId, agentName) => {
   if (!isPathAllowed(projectPath)) {
     return { error: 'Chemin de projet non autorise.' };
   }
@@ -3498,6 +3765,10 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows) =
       FORGE_ASSETS_DIR: assetsDir,
       FORGE_SOUNDS_DIR: soundsDir,
       FORGE_MODELS_DIR: modelsDir,
+      FORGE_AGENT_ID: String(agentId || ''),
+      FORGE_AGENT_NAME: String(agentName || agentType || 'Agent'),
+      FORGE_AGENT_ACTIVITY_FILE: agentActivityFile(projectPath),
+      FORGE_AGENT_REPORTER: path.join(__dirname, 'lib', 'agent-reporter-cli.js'),
     };
     if (userApiKeys.gemini) ptyEnv.GEMINI_API_KEY = userApiKeys.gemini;
     if (userApiKeys.elevenlabs) ptyEnv.ELEVENLABS_API_KEY = userApiKeys.elevenlabs;
@@ -3777,6 +4048,7 @@ function createWindow() {
       webSecurity: true
     }
   });
+  require('./lib/window-input-focus').attachWindowInputFocus(win);
   agentManager.setWindow(win);
   win.webContents.on('console-message', (event, level, message, line, sourceId) => {
     try { console.log('[renderer] L' + level + ' (ligne ' + line + ', ' + (sourceId || '?') + '): ' + message); } catch (e) {}
@@ -4457,6 +4729,10 @@ autoUpdater.on('error', (err) => {
 });
 
 // ============================================
+app.on('before-quit', () => {
+  if (privateControl) privateControl.close().catch(() => {});
+});
+
 app.whenReady().then(() => {
   try {
     createAgentStateStore(userDataFile('agents-state.json')).migrateLegacy(userDataFile('active-project.json'));
@@ -4467,6 +4743,8 @@ app.whenReady().then(() => {
     catch (err) { console.warn('[Media] Reprise différée :', err.message); }
   }
   createWindow();
+  startPrivateControlIfPaired();
+  pingInstallAnalytics().catch(() => {});
   // Verifier les MAJ apres 5s pour laisser le temps au window de se charger
   setTimeout(() => {
     console.log('[Updater] Verification des mises a jour...');

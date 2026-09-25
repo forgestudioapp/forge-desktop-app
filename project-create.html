@@ -258,6 +258,7 @@
     else if(state === 'spin') icon.textContent = '';
     else icon.textContent = '○';
     txt.classList.remove('pending');
+    if(text) txt.textContent = text;
     if(descId && descText) document.getElementById(descId).textContent = descText;
   }
 
@@ -278,205 +279,98 @@
     progressFill.style.width = Math.round((done/total)*100) + '%';
   }
 
+  let createdProject = null;
+  projectNameInput.addEventListener('keydown', e => {
+    if(e.key === 'Enter') createBtn.click();
+  });
+  const retryBtn = document.createElement('button');
+  retryBtn.className = 'back-link';
+  retryBtn.textContent = 'Réessayer';
+  retryBtn.hidden = true;
+  continueLink.before(retryBtn);
+  retryBtn.addEventListener('click', () => createBtn.click());
+
   createBtn.addEventListener('click', async () => {
+    if(createBtn.disabled) return;
     const rawName = projectNameInput.value.trim();
+    if(!rawName){ projectNameInput.focus(); return; }
     const projectName = slugify(rawName) || 'forge-project';
-    if(!rawName){
-      projectNameInput.style.borderColor = 'var(--error)';
-      setTimeout(() => projectNameInput.style.borderColor = '', 1000);
-      return;
-    }
-
     createBtn.disabled = true;
-    createBtn.textContent = 'Creation…';
-
-    // Transition vers la vue setup
     formView.style.display = 'none';
     setupView.style.display = 'block';
     projNameDisplay.textContent = projectName;
-
+    errorBox.classList.remove('show');
+    continueLink.classList.remove('ready');
+    retryBtn.hidden = true;
     let done = 0;
-    const total = 6;
-    let projectPath = null;
-    let projectAdminUserId = 0;
-    let projectLinkedStudio = null;
-    let hasError = false;
-
-    // --- Etape 0 : Verifier Roblox Studio ---
-    setStep('icStudio', 'txtStudio', 'spin', 'Projet ouvert dans Studio');
-    let studioOpen = false;
+    updateProgress(0, 6);
+    for(let i=1;i<=6;i++) setStepLine('s'+i,'s'+i+'t','pending','En attente');
+    let currentStep = 0;
+    const api = window.forgeAPI;
+    const checked = result => {
+      if(!result || result.error || result.success === false) throw new Error(result?.error || 'Vérification indisponible.');
+      return result;
+    };
+    const complete = text => { setStepLine('s'+currentStep,'s'+currentStep+'t','done',text); updateProgress(++done,6); };
     try {
-      if(window.forgeAPI && window.forgeAPI.checkSystem){
-        const sys = await window.forgeAPI.checkSystem();
-        if(sys.robloxInstalled){
-          const openCheck = await window.forgeAPI.checkStudioOpen?.() || { open: false };
-          studioOpen = openCheck.open;
-          setStep('icStudio', 'txtStudio', studioOpen ? 'done' : 'done', 'Projet ouvert dans Studio', 'descStudio', studioOpen ? 'Studio detecte et repond' : 'Roblox installe');
-        } else {
-          setStep('icStudio', 'txtStudio', 'error', 'Roblox non installe', 'descStudio', 'Installe Roblox Studio');
-          hasError = true;
+      setStep('icStudio','txtStudio','spin','Vérification de Studio');
+      const studio = checked(await api.checkStudioOpen());
+      if(!studio.open) throw new Error('Ouvre ta place dans Roblox Studio avant de créer le projet.');
+      setStep('icStudio','txtStudio','done','Roblox Studio ouvert','descStudio','Application détectée');
+      setStep('icPlugin','txtPlugin','spin','Connexion au plugin');
+      const plugin = checked(await api.checkPluginConnection());
+      if(!plugin.connected) throw new Error('Active le plugin Forge dans ta place Roblox Studio, puis réessaie.');
+      setStep('icPlugin','txtPlugin','done','Plugin Forge connecté','descPlugin','Connexion vérifiée');
+      currentStep = 1;
+      setStepLine('s1','s1t','spin','Création du projet…');
+      if(!createdProject) {
+        let creation = await api.createProject(projectName);
+        if(creation?.code === 'place-linked-elsewhere' && creation.conflictingProject?.path) {
+          const transfer = confirm('Cette place est liée au projet « '+creation.conflictingProject.name+' ».\n\nCréer le nouveau projet avec cette place et détacher l’ancien projet ? Les fichiers de l’ancien projet seront conservés.');
+          if(transfer) creation = await api.createProject(projectName, {
+            reassignPlace: true,
+            reassignFromProjectPath: creation.conflictingProject.path
+          });
         }
-      } else {
-        setStep('icStudio', 'txtStudio', 'done', 'Projet ouvert dans Studio', 'descStudio', 'Verification non disponible');
+        createdProject = checked(creation);
       }
-    } catch(e) {
-      setStep('icStudio', 'txtStudio', 'done', 'Projet ouvert dans Studio', 'descStudio', 'Verification non disponible');
-    }
-    await new Promise(r => setTimeout(r, 400));
-
-    // --- Etape 1 : Verifier Plugin ---
-    setStep('icPlugin', 'txtPlugin', 'spin', 'Plugin Forge Sync');
-    let pluginOk = false;
-    try {
-      if(window.forgeAPI && window.forgeAPI.checkPluginConnection){
-        const plugin = await window.forgeAPI.checkPluginConnection();
-        pluginOk = plugin.connected;
-        setStep('icPlugin', 'txtPlugin', pluginOk ? 'done' : 'error', 'Plugin Forge Sync', 'descPlugin', pluginOk ? 'Connecte' : 'Serveur MCP non accessible');
-        if(!pluginOk) hasError = true;
-      } else {
-        setStep('icPlugin', 'txtPlugin', 'done', 'Plugin Forge Sync', 'descPlugin', 'Verification non disponible');
-      }
-    } catch(e) {
-      setStep('icPlugin', 'txtPlugin', 'done', 'Plugin Forge Sync', 'descPlugin', 'Verification non disponible');
-    }
-    await new Promise(r => setTimeout(r, 400));
-
-    // --- Etape 2 : Creer le projet ---
-    setStepLine('s1', 's1t', 'spin', 'Creation du projet…');
-    try {
-      if(window.forgeAPI && window.forgeAPI.createProject){
-        const result = await window.forgeAPI.createProject(projectName);
-        if(result.error){
-          setStepLine('s1', 's1t', 'error', 'Erreur : ' + result.error);
-          showError(result.error);
-          hasError = true;
-        } else {
-          projectPath = result.path;
-          projectAdminUserId = result.adminUserId || 0;
-          projectLinkedStudio = result.linkedStudio || null;
-          setStepLine('s1', 's1t', 'done', 'Projet cree dans ' + result.path);
-          done++; updateProgress(done, total);
+      if(!createdProject.path) { createdProject = null; throw new Error('La création n’a pas renvoyé de dossier.'); }
+      complete('Projet créé dans ' + createdProject.path);
+      currentStep = 2;
+      const active = checked(await api.getActiveProject());
+      if(active.syncBlocked) throw new Error(active.syncBlocked);
+      if(active.project?.path !== createdProject.path) throw new Error('Le projet créé n’est pas le projet actif.');
+      complete('Projet actif et liaison vérifiés');
+      currentStep = 3;
+      const system = checked(await api.checkSystem());
+      complete(system.nodeBundled ? 'Moteur Forge intégré détecté' : (system.nodeInstalled && system.nodeOk !== false ? 'Node.js détecté' : 'Projet Lua prêt sans installation externe'));
+      currentStep = 4;
+      checked(await api.executeLuau('return "ForgeSyncOK"', 'Edit'));
+      complete('Studio répond');
+      currentStep = 5;
+      checked(await api.executeLuau('print("[Forge] Test Luau OK")', 'Edit'));
+      complete('Script de test exécuté');
+      currentStep = 6;
+      checked(await api.startFileSync(createdProject.path));
+      complete('Synchronisation active');
+      continueLink.textContent = "Ouvrir l’espace de travail →";
+      continueLink.classList.add('ready');
+    } catch(error) {
+      if(currentStep) setStepLine('s'+currentStep,'s'+currentStep+'t','error',error.message);
+      else {
+        for(const id of ['icStudio','icPlugin']) {
+          const icon = document.getElementById(id);
+          if(icon.classList.contains('spin')) { icon.className = 'check-icon error'; icon.textContent = '✕'; }
         }
-      } else {
-        setStepLine('s1', 's1t', 'error', 'API de creation indisponible');
-        hasError = true;
       }
-    } catch(e) {
-      setStepLine('s1', 's1t', 'error', 'Exception : ' + e.message);
-      showError(e.message);
-      hasError = true;
-    }
-    await new Promise(r => setTimeout(r, 400));
-
-    // --- Etape 3 : Panneau admin personnel ---
-    setStepLine('s2', 's2t', 'spin', 'Configuration du panneau admin…');
-    try {
-      if(projectPath && window.forgeAPI && window.forgeAPI.getActiveProject){
-        const active = await window.forgeAPI.getActiveProject();
-        if(active.project && active.project.path === projectPath){
-          const linkedPlace = projectLinkedStudio;
-          const placeLabel = linkedPlace
-            ? linkedPlace.placeName + ' · PlaceId ' + linkedPlace.placeId
-            : 'place Roblox ouverte';
-          const adminLabel = (projectAdminUserId
-            ? 'Admin Roblox ID ' + projectAdminUserId
-            : 'Admin lie au createur de la place') + ' · ' + placeLabel;
-          setStepLine('s2', 's2t', 'done', adminLabel);
-          done++; updateProgress(done, total);
-        } else {
-          setStepLine('s2', 's2t', 'done', 'Structure verifiee');
-          done++; updateProgress(done, total);
-        }
-      } else {
-        setStepLine('s2', 's2t', 'done', 'Structure verifiee');
-        done++; updateProgress(done, total);
-      }
-    } catch(e) {
-      setStepLine('s2', 's2t', 'done', 'Structure verifiee');
-      done++; updateProgress(done, total);
-    }
-    await new Promise(r => setTimeout(r, 300));
-
-    // --- Etape 4 : Dependances ---
-    setStepLine('s3', 's3t', 'spin', 'Verification de Node.js…');
-    try {
-      if(window.forgeAPI && window.forgeAPI.detectAllAgents){
-        await window.forgeAPI.detectAllAgents();
-        setStepLine('s3', 's3t', 'done', 'Node.js / npm detectes');
-        done++; updateProgress(done, total);
-      } else {
-        setStepLine('s3', 's3t', 'done', 'Dependances OK');
-        done++; updateProgress(done, total);
-      }
-    } catch(e) {
-      setStepLine('s3', 's3t', 'done', 'Dependances OK');
-      done++; updateProgress(done, total);
-    }
-    await new Promise(r => setTimeout(r, 300));
-
-    // --- Etape 5 : Paquets Roblox ---
-    setStepLine('s4', 's4t', 'spin', 'Test connexion Studio…');
-    try {
-      if(window.forgeAPI && window.forgeAPI.executeLuau){
-        const test = await window.forgeAPI.executeLuau('return "ForgeSyncOK"', 'Edit');
-        if(test.success){
-          setStepLine('s4', 's4t', 'done', 'Studio repond via MCP');
-          done++; updateProgress(done, total);
-        } else {
-          setStepLine('s4', 's4t', 'done', 'Studio connecte');
-          done++; updateProgress(done, total);
-        }
-      } else {
-        setStepLine('s4', 's4t', 'done', 'Paquets Roblox OK');
-        done++; updateProgress(done, total);
-      }
-    } catch(e) {
-      setStepLine('s4', 's4t', 'done', 'Paquets Roblox OK');
-      done++; updateProgress(done, total);
-    }
-    await new Promise(r => setTimeout(r, 300));
-
-    // --- Etape 6 : Compilation ---
-    setStepLine('s5', 's5t', 'spin', 'Compilation du script initial…');
-    try {
-      if(window.forgeAPI && window.forgeAPI.executeLuau){
-        const compileTest = await window.forgeAPI.executeLuau('print("[Forge] Compilation OK")', 'Edit');
-        setStepLine('s5', 's5t', 'done', 'Script initial compile');
-        done++; updateProgress(done, total);
-      } else {
-        setStepLine('s5', 's5t', 'done', 'Compilation OK');
-        done++; updateProgress(done, total);
-      }
-    } catch(e) {
-      setStepLine('s5', 's5t', 'done', 'Compilation OK');
-      done++; updateProgress(done, total);
-    }
-    await new Promise(r => setTimeout(r, 300));
-
-    // --- Etape 7 : Miroir Forge Sync ---
-    setStepLine('s6', 's6t', 'spin', 'Demarrage du miroir…');
-    try {
-      if(projectPath && window.forgeAPI && window.forgeAPI.startFileSync){
-        await window.forgeAPI.startFileSync(projectPath);
-        setStepLine('s6', 's6t', 'done', 'Miroir Forge Sync actif');
-        done++; updateProgress(done, total);
-      } else {
-        setStepLine('s6', 's6t', 'done', 'Miroir Forge Sync OK');
-        done++; updateProgress(done, total);
-      }
-    } catch(e) {
-      setStepLine('s6', 's6t', 'done', 'Miroir Forge Sync OK');
-      done++; updateProgress(done, total);
-    }
-
-    // Activer le bouton continuer
-    continueLink.classList.add('ready');
-    if(hasError){
-      continueLink.textContent = 'Continuer quand meme →';
-    } else {
-      continueLink.textContent = "Ouvrir l'espace de travail →";
+      showError(error.message || 'La configuration a échoué.');
+      retryBtn.hidden = false;
+    } finally {
+      createBtn.disabled = false;
+      createBtn.textContent = 'Créer le projet →';
     }
   });
+
 </script>
 
 </body>

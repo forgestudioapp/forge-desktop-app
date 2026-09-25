@@ -159,7 +159,7 @@
         <div class="setting-desc" data-i18n="setting_agent_autostart_desc">Lance automatiquement l'agent IA quand un projet est ouvert.</div>
       </div>
       <label class="toggle">
-        <input type="checkbox" id="agentAutostartToggle" onchange="toggleAgentAutostart()">
+        <input type="checkbox" id="agentAutostartToggle" disabled title="Option non disponible dans cette version" onchange="toggleAgentAutostart()">
         <span class="toggle-slider"></span>
       </label>
     </div>
@@ -181,7 +181,7 @@
         <div class="setting-desc" data-i18n="setting_auto_sync_desc">Synchronise automatiquement les fichiers modifiés vers Roblox Studio.</div>
       </div>
       <label class="toggle">
-        <input type="checkbox" id="autoSyncToggle" onchange="toggleAutoSync()">
+        <input type="checkbox" id="autoSyncToggle" disabled title="La synchronisation reste gérée par le projet" onchange="toggleAutoSync()">
         <span class="toggle-slider"></span>
       </label>
     </div>
@@ -192,7 +192,7 @@
         <div class="setting-desc" data-i18n="setting_save_interval_desc">Sauvegarde automatique des fichiers du projet.</div>
       </div>
       <div class="select-wrap">
-        <select id="saveIntervalSelect" onchange="setSaveInterval(this.value)">
+        <select id="saveIntervalSelect" disabled title="Option non disponible dans cette version" onchange="setSaveInterval(this.value)">
           <option value="0" data-i18n-option="off">Désactivé</option>
           <option value="30">30s</option>
           <option value="60">1min</option>
@@ -208,7 +208,7 @@
         <div class="setting-desc" data-i18n="setting_model_quality_desc">Résolution des thumbnails de modèles (plus haut = plus lent).</div>
       </div>
       <div class="select-wrap">
-        <select id="modelQualitySelect" onchange="setModelQuality(this.value)">
+        <select id="modelQualitySelect" disabled title="Option non disponible dans cette version" onchange="setModelQuality(this.value)">
           <option value="low" data-i18n-option="quality_low">Basse</option>
           <option value="medium" data-i18n-option="quality_medium">Moyenne</option>
           <option value="high" data-i18n-option="quality_high">Haute</option>
@@ -222,7 +222,7 @@
     <div class="setting-row">
       <div>
         <div class="setting-label">Suppression d'arrière-plan auto</div>
-        <div class="setting-desc">Supprime automatiquement l'arrière-plan des images générées par l'IA (nécessite <code style="background:var(--char3);padding:1px 4px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:11px;">rembg</code> installé via Python).</div>
+        <div class="setting-desc">Supprime automatiquement l'arrière-plan des images générées. Le moteur est inclus dans Forge pour Windows x64, sans installation de Python ni téléchargement au premier usage.</div>
       </div>
       <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ok);padding:8px 0;">Activé ✓</span>
     </div>
@@ -320,9 +320,9 @@
     try {
       const sys = await window.forgeAPI.checkSystem();
       if (sys.rembgInstalled) {
-        el.innerHTML = '<span style="color:var(--ok);">rembg ' + (sys.rembgVersion || '') + ' installé</span>';
+        el.innerHTML = '<span style="color:var(--ok);">rembg ' + (sys.rembgVersion || '') + ' intégré à Forge</span>';
       } else {
-        el.innerHTML = '<span style="color:var(--warn);">rembg non installé — lance <code>pip install "rembg[cpu,cli]"</code></span>';
+        el.textContent = sys.rembgError || 'Moteur intégré manquant : mets à jour ou réinstalle Forge.';
       }
     } catch (e) { el.textContent = ''; }
   }
@@ -384,6 +384,13 @@
   const s = loadSettings();
   document.getElementById('themeToggle').checked = s.theme === 'light';
   document.getElementById('notifSoundToggle').checked = s.notifSound !== false;
+  for(const id of ['agentAutostartToggle','autoSyncToggle','saveIntervalSelect','modelQualitySelect']){
+    const row = document.getElementById(id).closest('.setting-row');
+    const note = document.createElement('p');
+    note.className = 'setting-desc';
+    note.textContent = 'Réglage indisponible dans cette version.';
+    row.querySelector('.setting-label').after(note);
+  }
   document.getElementById('agentAutostartToggle').checked = s.agentAutostart === true;
   document.getElementById('maxAgentsInput').value = s.maxAgents || 3;
   document.getElementById('autoSyncToggle').checked = s.autoSync !== false;

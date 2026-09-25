@@ -18,3 +18,7 @@ releases/
 # Private license stock and database export files must never be committed.
 .private-licenses/
 supabase/tests/*.dry-run.sql
+
+# Generated private runtime and build downloads
+runtimes/
+.runtime-cache/

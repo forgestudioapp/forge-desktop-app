@@ -584,18 +584,31 @@ closePreview();
   async function deleteSelected(){
     if(!state.projectPath || !state.selected.length) return;
     if(!confirm('Supprimer les éléments sélectionnés ?')) return;
-    for(const s of state.selected) await window.forgeAPI.mediaDelete(state.projectPath,s.kind,s.itemId,s.variantId,s.file||null);
-    clearSelection();
-    await refresh();
+    try {
+      for(const s of [...state.selected]) {
+        const result = await window.forgeAPI.mediaDelete(state.projectPath,s.kind,s.itemId,s.variantId,s.file||null);
+        if(!result || result.error) throw new Error(result?.error || 'Suppression impossible.');
+      }
+      clearSelection();
+      await refresh();
+    } catch(error) { alert(error.message); await refresh(); }
   }
   async function downloadSelected(){
     if(!state.selected.length) return;
-    const s = state.selected[0];
-    const cat = (state.data.categories[s.kind]||{});
-    const item = (cat.items||[]).find(i=>i.id===s.itemId);
-    const entry = item && (s.variantId ? (item.variants||[]).find(v=>v.id===s.variantId) : item);
-    const file = s.file || (entry&&entry.files&&entry.files[0]);
-    if(file) await window.forgeAPI.mediaDownload(state.projectPath,file);
+    const files = new Set();
+    for(const s of state.selected) {
+      const cat = (state.data.categories[s.kind]||{});
+      const item = (cat.items||[]).find(i=>i.id===s.itemId);
+      const entry = item && (s.variantId ? (item.variants||[]).find(v=>v.id===s.variantId) : item);
+      for(const file of s.file ? [s.file] : (entry?.files || [])) files.add(file);
+    }
+    try {
+      for(const file of files) {
+        const result = await window.forgeAPI.mediaDownload(state.projectPath,file);
+        if(result?.canceled) break;
+        if(!result || result.error) throw new Error(result?.error || 'Export impossible.');
+      }
+    } catch(error) { alert(error.message); }
   }
 
 // ── Preview overlay ──
@@ -866,14 +879,22 @@ closePreview();
     if(!state.previewItem || !state.projectPath) return;
     const entry = getEntry(state.previewItem);
     const file = state.previewItem.file || (entry&&entry.files&&entry.files[0]);
-    if(file) await window.forgeAPI.mediaDownload(state.projectPath,file);
+    try {
+      if(file){
+        const result = await window.forgeAPI.mediaDownload(state.projectPath,file);
+        if(!result || result.error) throw new Error(result?.error || 'Export impossible.');
+      }
+    } catch(error) { alert(error.message); }
   }
   async function deletePreview(){
     if(!state.previewItem || !state.projectPath) return;
     if(!confirm('Supprimer cet élément ?')) return;
-    await window.forgeAPI.mediaDelete(state.projectPath,state.previewItem.kind,state.previewItem.itemId,state.previewItem.variantId,state.previewItem.file||null);
-    closePreview();
-    await refresh();
+    try {
+      const result = await window.forgeAPI.mediaDelete(state.projectPath,state.previewItem.kind,state.previewItem.itemId,state.previewItem.variantId,state.previewItem.file||null);
+      if(!result || result.error) throw new Error(result?.error || 'Suppression impossible.');
+      closePreview();
+      await refresh();
+    } catch(error) { alert(error.message); }
   }
 
   // ── Edit modal ──
@@ -950,9 +971,9 @@ closePreview();
       startPolling();
       document.getElementById('genPrompt').value='';
       await refresh();
+    }catch(error){
+      alert(error.message || 'La génération a échoué. Réessaie.');
     }finally{send.disabled=false;}
-  }
-
   }
 
   // ── Helpers ──

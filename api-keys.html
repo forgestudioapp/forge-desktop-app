@@ -161,9 +161,9 @@
   </div>
   <h1 data-i18n="api_keys_title">Cles API des services medias</h1>
   <p class="sub" data-i18n="api_keys_sub">Configure les cles pour la generation d'images, de modeles 3D et de sons.</p>
-  <p class="info-text" data-i18n-html="api_keys_info_html">
+  <p class="info-text"><span data-i18n-html="api_keys_info_html">
     Les agents de code (Claude, Codex, Antigravity) utilisent tes comptes locaux.<br>
-    Seuls les services medias necessitent une cle API.
+    Seuls les services medias necessitent une cle API.</span><br>
     <a href="#" onclick="window.forgeAPI?.openExternal?.('https://aistudio.google.com/app/apikey')">Gemini</a> · 
     <a href="#" onclick="window.forgeAPI?.openExternal?.('https://platform.tripo3d.ai')">Tripo3D</a> · 
     <a href="#" onclick="window.forgeAPI?.openExternal?.('https://elevenlabs.io/app/settings/api-keys')">ElevenLabs</a>
@@ -296,23 +296,22 @@
       const result = await window.forgeAPI.verifyApiKey(service, value);
 
       if(result.valid){
-        await window.forgeAPI.saveApiKey(service, value);
+        const saved = await window.forgeAPI.saveApiKey(service, value);
+        if(!saved?.success) throw new Error(saved?.error || 'Enregistrement impossible');
         badge.textContent = 'Configure';
         badge.className = 'api-set';
         btn.textContent = 'Enregistrer';
       } else {
         badge.textContent = result.error || 'Cle invalide';
         badge.className = 'api-set invalid';
-        input.value = '';
         input.classList.add('invalid');
         btn.textContent = 'Enregistrer';
         setTimeout(() => input.classList.remove('invalid'), 2000);
       }
     } catch(err) {
-      badge.textContent = 'Erreur reseau';
+      badge.textContent = err.message || 'Erreur réseau';
       badge.className = 'api-set invalid';
       btn.textContent = 'Enregistrer';
-      console.error(err);
     } finally {
       btn.disabled = false;
     }

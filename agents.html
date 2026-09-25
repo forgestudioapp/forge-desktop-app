@@ -348,10 +348,14 @@
     setTimeout(() => t.classList.remove('show'), 2000);
   }
 
-  function copyCmd(agent){
+  async function copyCmd(agent){
     const cmd = AGENTS[agent].installCmd;
-    navigator.clipboard.writeText(cmd);
-    showToast('Commande copiee');
+    try {
+      await navigator.clipboard.writeText(cmd);
+      showToast('Commande copiée');
+    } catch(error) {
+      showToast('Copie impossible. Sélectionne la commande affichée pour la copier.');
+    }
   }
 
   function setBadge(agent, status, text){
@@ -424,11 +428,11 @@
         : 'Non installe';
 
       if(res && res.installed){
-        setBadge(agent, 'ok', 'Pret');
+        setBadge(agent, 'ok', 'Installé');
         showInstallUI(agent, false);
         setSteps(agent, buildReadySteps(agent, meta));
         setActions(agent, `
-          <button class="agent-btn secondary" onclick="openTerminal('${agent}')">Se connecter</button>
+          <button class="agent-btn secondary" onclick="openTerminal('${agent}')">Comment se connecter</button>
           <button class="agent-btn primary" onclick="redetect('${agent}')">Re-detecter</button>
         `);
         readyCount++;
@@ -450,7 +454,7 @@
     const btn = document.getElementById('continueBtn');
     if(readyCount > 0){
       btn.disabled = false;
-      btn.textContent = `Continuer (${readyCount} agent${readyCount>1?'s':''} pret${readyCount>1?'s':''}) →`;
+      btn.textContent = `Continuer (${readyCount} agent${readyCount>1?'s':''} installé${readyCount>1?'s':''}) →`;
     } else {
       btn.disabled = true;
       btn.textContent = 'Installe au moins un agent pour continuer';
@@ -534,7 +538,14 @@
 
   function openTerminal(agent){
     const cmd = AGENTS[agent].loginCmd;
-    showToast(`Ouvre ton terminal et tape : ${cmd}`);
+    let hint = document.getElementById('login-hint-'+agent);
+    if(!hint){
+      hint = document.createElement('p');
+      hint.id = 'login-hint-'+agent;
+      hint.style.cssText = 'margin-top:12px;line-height:1.6;user-select:text;';
+      document.getElementById('actions-'+agent).after(hint);
+    }
+    hint.textContent = `Ouvre un terminal, tape « ${cmd} », puis suis les étapes de connexion. Le badge « Installé » vérifie la présence du programme, pas la connexion à ton compte.`;
   }
 
   async function redetect(agent){

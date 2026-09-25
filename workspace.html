@@ -209,6 +209,20 @@
   .preview-overlay{position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease;}
   .preview-overlay.hidden{display:none;}
   .preview-modal{background:var(--char2);border:1px solid var(--border-light);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;max-width:90vw;max-height:85vh;min-width:320px;box-shadow:0 24px 64px rgba(0,0,0,.6);animation:slideUp .2s cubic-bezier(.4,0,.2,1);}
+  .checkpoint-modal{width:min(680px,92vw);max-height:82vh;background:var(--char2);border:1px solid var(--border-light);border-radius:14px;box-shadow:0 28px 70px rgba(0,0,0,.7);display:flex;flex-direction:column;overflow:hidden;}
+  .quality-memory-body{padding:18px;display:flex;flex-direction:column;gap:12px;}
+  .quality-memory-desc{font-size:12px;line-height:1.55;color:var(--smoke);}
+  .quality-memory-input{width:100%;min-height:260px;max-height:52vh;resize:vertical;background:var(--char);color:var(--bone);border:1px solid var(--border-light);border-radius:10px;padding:13px;font:12px/1.55 'Inter',sans-serif;}
+  .quality-memory-input:focus{outline:none;border-color:var(--ember);box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+  .checkpoint-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border-light);}
+  .checkpoint-list{padding:12px;overflow:auto;display:flex;flex-direction:column;gap:8px;min-height:150px;}
+  .checkpoint-row{display:flex;gap:12px;align-items:center;padding:11px 12px;border:1px solid var(--border-light);background:var(--char3);border-radius:9px;}
+  .checkpoint-info{min-width:0;flex:1}.checkpoint-label{font-size:12px;font-weight:600;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.checkpoint-meta{font-size:10px;color:var(--smoke-dim);margin-top:3px;}
+  .checkpoint-actions{display:flex;gap:6px}.checkpoint-actions button{border:1px solid var(--border-light);background:var(--char4);color:var(--smoke);border-radius:6px;padding:5px 8px;font:500 10px 'Inter',sans-serif;cursor:pointer}.checkpoint-actions button:hover{color:var(--bone);border-color:var(--ember)}
+  .checkpoint-foot{display:flex;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--border-light);}
+  .agent-task{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;color:var(--smoke-dim);padding:2px 6px;border:1px solid transparent;border-radius:4px;}
+  .agent-task.working{color:#7FD99A;background:rgba(95,190,122,.08);border-color:rgba(95,190,122,.18)}
+  .agent-task.conflict{color:#F2C65A;background:rgba(242,198,90,.09);border-color:rgba(242,198,90,.28)}
   .preview-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
   .preview-name{font-size:13px;font-weight:600;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:400px;}
   .preview-close{width:26px;height:26px;border-radius:6px;border:none;cursor:pointer;background:transparent;color:var(--smoke-dim);font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
@@ -349,6 +363,8 @@
       <button class="add-agent-btn" onclick="createAgent('antigravity')" data-i18n="add_antigravity">+ Antigravity</button>
   </div>
   <div class="top-actions">
+    <button class="btn-top" id="qualityMemoryBtn" onclick="openQualityMemory()" data-i18n-title="quality_memory" title="Mémoire du projet">★</button>
+    <button class="btn-top" id="checkpointsBtn" onclick="openCheckpoints()" data-i18n-title="checkpoints" title="Points de retour">↶</button>
     <button class="btn-top primary" id="startAgentsBtn" onclick="startPendingAgents()" disabled data-i18n="start_agents">Start</button>
     <!-- NOTIFICATION BELL -->
     <div class="notif-bell-wrap" id="notifWrap">
@@ -378,6 +394,35 @@
     <button class="notif-bell" onclick="window.location.href='settings.html?from=workspace.html'" data-i18n-title="settings" title="Paramètres" style="margin-left:4px;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     </button>
+  </div>
+</div>
+
+<div class="preview-overlay hidden" id="qualityMemoryOverlay" onclick="closeQualityMemory(event)">
+  <div class="checkpoint-modal" onclick="event.stopPropagation()">
+    <div class="checkpoint-head">
+      <strong data-i18n="quality_memory">Mémoire du projet</strong>
+      <button class="tb-close" onclick="closeQualityMemory()" title="Fermer">×</button>
+    </div>
+    <div class="quality-memory-body">
+      <div class="quality-memory-desc" data-i18n="quality_memory_desc">Écris uniquement les décisions validées pour ce jeu.</div>
+      <textarea id="qualityMemoryInput" class="quality-memory-input" maxlength="20000" data-i18n-placeholder="quality_memory_placeholder"></textarea>
+    </div>
+    <div class="checkpoint-foot">
+      <button class="btn-top primary" id="saveQualityMemoryBtn" onclick="saveQualityMemory()" data-i18n="save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div class="preview-overlay hidden" id="checkpointOverlay" onclick="closeCheckpoints(event)">
+  <div class="checkpoint-modal" onclick="event.stopPropagation()">
+    <div class="checkpoint-head">
+      <strong data-i18n="checkpoints">Points de retour</strong>
+      <button class="tb-close" onclick="closeCheckpoints()" title="Fermer">×</button>
+    </div>
+    <div class="checkpoint-list" id="checkpointList"></div>
+    <div class="checkpoint-foot">
+      <button class="btn-top primary" id="createCheckpointBtn" onclick="createManualCheckpoint()" data-i18n="checkpoint_create">Créer un point de retour</button>
+    </div>
   </div>
 </div>
 
@@ -429,7 +474,7 @@
       <div class="tb-empty">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
         <span>Aucun projet actif</span>
-        <a href="projects.html" style="color:var(--ember);font-size:11px;margin-top:4px;text-decoration:none;opacity:.8;">Ouvrir ou créer un projet →</a>
+        <a href="projects.html" target="_self" style="color:var(--ember);font-size:11px;margin-top:4px;text-decoration:none;opacity:.8;">Ouvrir ou créer un projet →</a>
       </div>
     </div>
 
@@ -695,6 +740,15 @@ async function startPendingAgents(){
   if(!agentStateReady){showToast(t('agent_state_not_ready'));return;}
   const pending=agents.filter(function(a){return !a.sessionId&&!a.starting;});
   if(pending.length===0)return;
+  const checkpointKey='forge-session-checkpoint:'+stateProjectKey;
+  if(sessionStorage.getItem(checkpointKey)!=='1'){
+    if(!window.forgeAPI.createCheckpoint){showToast('La sauvegarde de sécurité est indisponible.');return;}
+    startAgentsBtn.disabled=true;startAgentsBtn.textContent=t('checkpoint_creating');
+    const checkpointResult=await window.forgeAPI.createCheckpoint(activeProject.path,t('checkpoint_before_agents'),'before-agents');
+    if(!checkpointResult||checkpointResult.error){showToast('Point de retour impossible : '+(checkpointResult?.error||'erreur inconnue'));updateStartButton();return;}
+    sessionStorage.setItem(checkpointKey,'1');
+    showToast(t('checkpoint_created'));
+  }
   workspaceStarted=true;
   sessionStorage.setItem('forge-agents-started:'+stateProjectKey,'1');
   pending.forEach(function(a){
@@ -705,6 +759,85 @@ async function startPendingAgents(){
   updateStartButton();
   await Promise.all(pending.map(function(a){return initPty(a);}));
   updateStartButton();
+}
+
+function checkpointDate(value){
+  try{return new Intl.DateTimeFormat(currentLang==='en'?'en-GB':'fr-FR',{dateStyle:'short',timeStyle:'short'}).format(new Date(value));}catch(e){return value||'';}
+}
+
+function checkpointSize(bytes){
+  const n=Number(bytes)||0;if(n<1024)return n+' o';if(n<1048576)return (n/1024).toFixed(1)+' Ko';return (n/1048576).toFixed(1)+' Mo';
+}
+
+async function openQualityMemory(){
+  if(!activeProject||!window.forgeAPI?.readProjectQuality){showToast(t('start_requires_project'));return;}
+  const overlay=document.getElementById('qualityMemoryOverlay');const input=document.getElementById('qualityMemoryInput');
+  overlay.classList.remove('hidden');input.disabled=true;input.value='';
+  const result=await window.forgeAPI.readProjectQuality(activeProject.path);
+  input.disabled=false;
+  if(result?.error){closeQualityMemory();showToast(result.error);return;}
+  input.value=result?.content||'';input.focus();
+}
+
+function closeQualityMemory(event){
+  const overlay=document.getElementById('qualityMemoryOverlay');
+  if(event&&event.target!==overlay)return;
+  overlay.classList.add('hidden');
+}
+
+async function saveQualityMemory(){
+  if(!activeProject||!window.forgeAPI?.writeProjectQuality)return;
+  const button=document.getElementById('saveQualityMemoryBtn');const input=document.getElementById('qualityMemoryInput');button.disabled=true;
+  try{const result=await window.forgeAPI.writeProjectQuality(activeProject.path,input.value);if(result?.error)throw new Error(result.error);closeQualityMemory();showToast(t('quality_memory_saved'));}
+  catch(error){showToast(error.message||String(error));}finally{button.disabled=false;}
+}
+
+async function openCheckpoints(){
+  if(!activeProject||!window.forgeAPI?.listCheckpoints){showToast(t('start_requires_project'));return;}
+  document.getElementById('checkpointOverlay').classList.remove('hidden');
+  await refreshCheckpoints();
+}
+
+function closeCheckpoints(event){if(event&&event.target!==document.getElementById('checkpointOverlay'))return;document.getElementById('checkpointOverlay').classList.add('hidden');}
+
+async function refreshCheckpoints(){
+  const list=document.getElementById('checkpointList');list.textContent=t('loading');
+  const result=await window.forgeAPI.listCheckpoints(activeProject.path);
+  list.textContent='';
+  if(result?.error){list.textContent=result.error;return;}
+  const checkpoints=result?.checkpoints||[];
+  if(!checkpoints.length){list.textContent=t('checkpoint_empty');return;}
+  checkpoints.forEach(function(item){
+    const row=document.createElement('div');row.className='checkpoint-row';
+    const info=document.createElement('div');info.className='checkpoint-info';
+    const label=document.createElement('div');label.className='checkpoint-label';label.textContent=item.label;
+    const meta=document.createElement('div');meta.className='checkpoint-meta';meta.textContent=checkpointDate(item.createdAt)+' · '+item.files+' fichiers · '+checkpointSize(item.bytes);
+    info.append(label,meta);
+    const actions=document.createElement('div');actions.className='checkpoint-actions';
+    const restore=document.createElement('button');restore.textContent=t('checkpoint_restore');restore.onclick=function(){restoreCheckpoint(item);};
+    const remove=document.createElement('button');remove.textContent=t('checkpoint_delete');remove.onclick=function(){removeCheckpoint(item);};
+    actions.append(restore,remove);row.append(info,actions);list.appendChild(row);
+  });
+}
+
+async function createManualCheckpoint(){
+  const label=prompt(t('checkpoint_create'),t('checkpoint_before_agents'));if(label===null)return;
+  const button=document.getElementById('createCheckpointBtn');button.disabled=true;
+  try{const result=await window.forgeAPI.createCheckpoint(activeProject.path,label,'manual');if(result?.error)throw new Error(result.error);showToast(t('checkpoint_created'));await refreshCheckpoints();}
+  catch(error){showToast(error.message||String(error));}finally{button.disabled=false;}
+}
+
+async function restoreCheckpoint(item){
+  if(!confirm('Restaurer « '+item.label+' » ? Forge créera d’abord une sauvegarde de l’état actuel.'))return;
+  const result=await window.forgeAPI.restoreCheckpoint(activeProject.path,item.id);
+  if(result?.error){showToast(result.error);return;}
+  showToast(t('checkpoint_restored'));await refreshCheckpoints();if(document.getElementById('assetsSidebar').classList.contains('open'))refreshSidebar();
+}
+
+async function removeCheckpoint(item){
+  if(!confirm(t('checkpoint_delete')+' « '+item.label+' » ?'))return;
+  const result=await window.forgeAPI.deleteCheckpoint(activeProject.path,item.id);
+  if(result?.error){showToast(result.error);return;}await refreshCheckpoints();
 }
 
 function createPanel(agent){
@@ -722,6 +855,7 @@ function createPanel(agent){
     '<span class="agent-dot" id="dot-'+agent.id+'" style="--agent-color:'+meta.color+'"></span>'
     +'<span class="agent-name">'+icon+' <span class="agent-name-text" id="name-'+agent.id+'">'+agent.name+'</span></span>'
     +'<span id="mcp-badge-'+agent.id+'" class="mcp-badge" style="display:none;font-family:\'JetBrains Mono\',monospace;font-size:9px;background:rgba(59,130,246,0.2);color:#60A5FA;border:1px solid rgba(59,130,246,0.3);border-radius:4px;padding:1px 5px;margin-left:6px;">MCP</span>'
+    +'<span id="task-'+agent.id+'" class="agent-task" title="">'+t('agent_task_none')+'</span>'
     +'<span class="agent-provider">'+meta.label+'</span>'
     +'<div class="agent-hdr-actions">'
       +'<button class="agent-hdr-btn" id="zoomout-'+agent.id+'" title="Zoom -"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>'
@@ -776,7 +910,7 @@ function createPanel(agent){
       return window.forgeAPI.ptySubmitMessage(sessionId,text,bracketedPaste);
     },
     onDraft:scheduleDraftSave,
-    onSent:function(text){if(agent._firstInput){agent._firstInput=false;updateAgentName(agent,text);}saveAgentState();}
+    onSent:function(text){if(agent._firstInput){agent._firstInput=false;updateAgentName(agent,text);}if(activeProject&&window.forgeAPI?.updateAgentActivity)window.forgeAPI.updateAgentActivity(activeProject.path,agent.id,{name:agent.name,task:text,status:'working'}).then(refreshAgentActivity);saveAgentState();}
   });
   updateStartButton();
 }
@@ -789,7 +923,7 @@ async function initPty(agent){
     agent.starting=true;
     agent.element.classList.add('starting');
     if(agent.xterm){agent.xterm.clear();agent.xterm.reset();}
-    const res=await window.forgeAPI.ptyCreate(agent.agentType,activeProject.path,agent.xterm.cols,agent.xterm.rows);
+    const res=await window.forgeAPI.ptyCreate(agent.agentType,activeProject.path,agent.xterm.cols,agent.xterm.rows,agent.id,agent.name);
     if(agent._closed||agent._launchToken!==launchToken){if(res&&res.sessionId&&window.forgeAPI.ptyKill)window.forgeAPI.ptyKill(res.sessionId);return;}
     if(res.error){if(agent.xterm)agent.xterm.writeln('\x1b[31m'+res.error+'\x1b[0m');setAgentReady(agent,t('agent_start_failed'));return;}
     agent.sessionId=res.sessionId;agent.starting=false;agent.element.classList.remove('starting');agent.element.classList.add('running');
@@ -797,7 +931,9 @@ async function initPty(agent){
     if(earlyPtyExit.has(agent.sessionId)){
       var earlyExit=earlyPtyExit.get(agent.sessionId);earlyPtyExit.delete(agent.sessionId);
       if(agent.xterm)agent.xterm.writeln('\x1b[31m[Processus terminé - code '+earlyExit.exitCode+']\x1b[0m');
-      agent.sessionId=null;hideMcpBadge(agent.id);setAgentReady(agent,t('agent_finished'));saveAgentState();return;
+      agent.sessionId=null;hideMcpBadge(agent.id);setAgentReady(agent,t('agent_finished'));
+      if(activeProject&&window.forgeAPI?.updateAgentActivity)await window.forgeAPI.updateAgentActivity(activeProject.path,agent.id,{name:agent.name,status:'done',resources:[]});
+      refreshAgentActivity();saveAgentState();return;
     }
     var dot=document.getElementById('dot-'+agent.id);if(dot)dot.classList.add('running-dot');
     setReadyOverlayVisible(agent,false);
@@ -843,6 +979,7 @@ function resetConversation(agent){
   if(agent.xterm){agent.xterm.writeln('\x1b[90m'+t('new_conversation')+'\x1b[0m');}
   setAgentReady(agent,t('agent_ready'));
   saveAgentState();
+  if(activeProject&&window.forgeAPI?.updateAgentActivity)window.forgeAPI.updateAgentActivity(activeProject.path,agent.id,{name:agent.name,task:'',status:'idle',resources:[]}).then(refreshAgentActivity);
   if(workspaceStarted)startAgentAutomatically(agent);
 }
 
@@ -874,9 +1011,30 @@ window.closeAgent=function(id){
   if(a.xterm)a.xterm.dispose();
   if(a.element)a.element.remove();
   agents.splice(i,1);updateCount();saveAgentState();
+  if(activeProject&&window.forgeAPI?.removeAgentActivity)window.forgeAPI.removeAgentActivity(activeProject.path,a.id).then(refreshAgentActivity);
 };
 if(window.forgeAPI&&window.forgeAPI.onPtyData){window.forgeAPI.onPtyData(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.write(data.data);a._lastPtyActivity=Date.now();}else{var buffered=(earlyPtyData.get(data.sessionId)||'')+data.data;earlyPtyData.set(data.sessionId,buffered.slice(-100000));}});}
-if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;hideMcpBadge(a.id);setAgentReady(a,t('agent_finished'));saveAgentState();}else{earlyPtyExit.set(data.sessionId,data);}});}
+if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;hideMcpBadge(a.id);setAgentReady(a,t('agent_finished'));if(activeProject&&window.forgeAPI?.updateAgentActivity)window.forgeAPI.updateAgentActivity(activeProject.path,a.id,{name:a.name,status:'done',resources:[]}).then(refreshAgentActivity);saveAgentState();}else{earlyPtyExit.set(data.sessionId,data);}});}
+
+let agentActivityTimer=null;
+async function refreshAgentActivity(){
+  if(!activeProject||!window.forgeAPI?.listAgentActivity)return;
+  try{
+    const result=await window.forgeAPI.listAgentActivity(activeProject.path);if(result?.error)return;
+    const byId=new Map((result?.agents||[]).map(function(item){return[item.id,item];}));
+    agents.forEach(function(agent){
+      const element=document.getElementById('task-'+agent.id);if(!element)return;
+      const item=byId.get(agent.id);const conflicts=item?.conflicts||[];
+      element.classList.toggle('working',item?.status==='working'&&!conflicts.length);
+      element.classList.toggle('conflict',conflicts.length>0);
+      element.textContent=conflicts.length?t('agent_task_conflict').replace('{agents}',conflicts.map(function(value){return value.agentName;}).join(', ')):(item?.task||t('agent_task_none'));
+      const resources=item?.resources||[];
+      element.title=(item?.task||t('agent_task_none'))+(resources.length?'\n'+t('agent_task_resources').replace('{resources}',resources.join(', ')):'')+(conflicts.length?'\n'+t('agent_task_conflict_on').replace('{resources}',conflicts.flatMap(function(value){return value.resources;}).join(', ')):'');
+    });
+  }catch(error){console.error('agent activity',error);}
+}
+agentActivityTimer=setInterval(refreshAgentActivity,1800);
+window.addEventListener('pagehide',function(){if(agentActivityTimer)clearInterval(agentActivityTimer);});
 
 let mcpActivityTimer=null;
 function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b){b.style.opacity='0';setTimeout(function(){b.style.display='none';},200);}}
@@ -1600,7 +1758,19 @@ document.addEventListener('click',function(e){
 });
 
 function clearAllNotifs(){notifications=[];renderNotifList();updateBadge();if(window.forgeAPI&&window.forgeAPI.clearNotifications)window.forgeAPI.clearNotifications();}
-function markAllRead(){notifications.forEach(function(n){n.read=true;});renderNotifList();updateBadge();}
+async function markAllRead(){
+  try {
+    if(!window.forgeAPI?.markNotificationRead) throw new Error('Enregistrement indisponible.');
+    const results = await Promise.allSettled(notifications.filter(n=>!n.read).map(async n=>{
+      const result = await window.forgeAPI.markNotificationRead(n.id);
+      if(!result?.success) throw new Error(result?.error || 'Impossible de marquer toutes les notifications comme lues.');
+      n.read = true;
+    }));
+    const failure = results.find(r=>r.status === 'rejected');
+    if(failure) throw failure.reason;
+  } catch(error) { showToast(error.message); }
+  renderNotifList();updateBadge();
+}
 
 function updateBadge(){
   const unread=notifications.filter(function(n){return !n.read;}).length;
@@ -1679,8 +1849,16 @@ function renderNotifList(){
     });
     // reprompt send
     const inp=el.querySelector('#reprompt-'+notif.id);
-    el.querySelector('.notif-reprompt-send').addEventListener('click',function(){sendReprompt(notif,inp.value);inp.value='';});
-    inp.addEventListener('keydown',function(e){if(e.key==='Enter'){sendReprompt(notif,inp.value);inp.value='';}});
+    const sendButton=el.querySelector('.notif-reprompt-send');
+    async function submitFeedback(){
+      if(sendButton.disabled)return;
+      const draft=inp.value;
+      sendButton.disabled=true;
+      try{if(await sendReprompt(notif,draft)){if(inp.value===draft)inp.value='';}}
+      finally{sendButton.disabled=false;}
+    }
+    sendButton.addEventListener('click',submitFeedback);
+    inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.isComposing){e.preventDefault();submitFeedback();}});
     // regen
     el.querySelector('#regen-'+notif.id).addEventListener('click',function(){sendReprompt(notif,'Génère une nouvelle version');});
 
@@ -1697,15 +1875,22 @@ function markRead(id){
   if(window.forgeAPI&&window.forgeAPI.markNotificationRead)window.forgeAPI.markNotificationRead(id);
 }
 
-function sendReprompt(notif,text){
-  if(!text||!text.trim())return;
-  var agent=agents.find(function(a){return a.name===notif.agentName||a.agentType===notif.agentName;});
-  if(agent&&agent.sessionId&&window.forgeAPI&&window.forgeAPI.ptyInput){
-    window.forgeAPI.ptyInput(agent.sessionId,text.trim()+'\n');
-    showToast('Retour envoyé à '+agent.name);
-  }else{
-    showToast('Agent non actif — impossible d\'envoyer');
+async function sendReprompt(notif,text){
+  if(!text||!text.trim()||notif._sending)return false;
+  const candidates=agents.filter(function(a){return a.sessionId&&(a.name===notif.agentName||a.agentType===notif.agentName);});
+  if(candidates.length!==1||!window.forgeAPI?.ptySubmitMessage){
+    showToast(candidates.length>1?'Plusieurs agents correspondent — utilise le chat de l’agent souhaité.':'Agent non actif — impossible d’envoyer');
+    return false;
   }
+  const agent=candidates[0];
+  notif._sending=true;
+  try{
+    const result=await window.forgeAPI.ptySubmitMessage(agent.sessionId,text.trim(),agent.xterm?.modes?.bracketedPasteMode===true);
+    if(!result?.success)throw new Error(result?.error||'Envoi impossible');
+    showToast('Retour envoyé à '+agent.name);
+    return true;
+  }catch(error){showToast(error.message||'Envoi impossible');return false;}
+  finally{notif._sending=false;}
 }
 
 function showToast(msg){
@@ -1805,35 +1990,42 @@ function closeReview(){
   reviewNotif=null;
 }
 
-function acceptAsset(){
+let reviewActionPending = false;
+async function acceptAsset(){
   if(!reviewNotif)return;
-  markRead(reviewNotif.id);
-  if(window.forgeAPI&&window.forgeAPI.acceptAsset){
-    window.forgeAPI.acceptAsset(reviewNotif.filePath,reviewNotif.assetType).then(function(res){
-      if(res&&res.dest)showToast('Asset enregistré → '+res.dest);
-      else showToast('Asset accepté !');
-    });
-  }else{
-    showToast('Asset accepté : '+reviewNotif.fileName);
-  }
-  closeReview();
-  refreshSidebar();
+  if(reviewActionPending)return;
+  reviewActionPending = true;
+  const asset = reviewNotif;
+  try {
+    if(!window.forgeAPI?.acceptAsset) throw new Error('Enregistrement indisponible.');
+    const result = await window.forgeAPI.acceptAsset(asset.filePath,asset.assetType);
+    if(!result?.success) throw new Error(result?.error || 'Impossible d’enregistrer cet asset.');
+    markRead(asset.id);
+    showToast(result.dest ? 'Asset enregistré → '+result.dest : 'Asset accepté !');
+    if(reviewNotif === asset) closeReview();
+    refreshSidebar();
+  } catch(error) { showToast(error.message); }
+  finally { reviewActionPending = false; }
 }
 
-function rejectAsset(){
+async function rejectAsset(){
   if(!reviewNotif)return;
+  if(reviewActionPending)return;
   if(!confirm('Rejeter cet asset ? Le fichier sera supprimé définitivement.'))return;
   const n=reviewNotif;
-  markRead(n.id);
-  // remove notification
-  notifications=notifications.filter(function(x){return x.id!==n.id;});
-  if(window.forgeAPI&&window.forgeAPI.deleteNotification)window.forgeAPI.deleteNotification(n.id);
-  renderNotifList();updateBadge();
-  if(window.forgeAPI&&window.forgeAPI.deleteFile){
-    window.forgeAPI.deleteFile(n.filePath).catch(function(){});
-  }
-  showToast('Asset rejeté');
-  closeReview();
+  reviewActionPending = true;
+  try {
+    if(!window.forgeAPI?.deleteFile) throw new Error('Suppression indisponible.');
+    const result = await window.forgeAPI.deleteFile(n.filePath);
+    if(!result?.success) throw new Error(result?.error || 'Impossible de supprimer cet asset.');
+    if(window.forgeAPI.deleteNotification) await window.forgeAPI.deleteNotification(n.id);
+    notifications=notifications.filter(function(x){return x.id!==n.id;});
+    renderNotifList();updateBadge();
+    showToast('Asset rejeté');
+    if(reviewNotif === n) closeReview();
+    refreshSidebar();
+  } catch(error) { showToast(error.message); }
+  finally { reviewActionPending = false; }
 }
 
 function downloadAsset(){

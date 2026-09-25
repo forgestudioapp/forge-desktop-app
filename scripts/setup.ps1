@@ -1,8 +1,7 @@
 # ============================================================
-#  Forge - Installation complete des pre-requis (Windows)
-#  Lance tout ce qu'il faut : Node.js, Python, Roblox Studio,
-#  les dependances npm, le rebuild node-pty, le serveur MCP,
-#  rembg, puis les agents IA.
+#  Forge - Preparation de l'environnement de developpement (Windows)
+#  Les versions installees de Forge embarquent Node.js et le moteur de detourage.
+#  Ce script reste reserve aux personnes qui construisent Forge depuis les sources.
 #  Usage : powershell -ExecutionPolicy Bypass -File setup.ps1
 #  -SkipAgents : n'installe pas les CLI Claude/Codex
 # ============================================================
@@ -60,25 +59,7 @@ if ($nodeBin) {
   }
 }
 
-# ---- 3. Python 3 ------------------------------------------------
-Step "3/7 - Python 3 (>= 3.9)"
-$pyBin = Get-Command python -ErrorAction SilentlyContinue
-if ($pyBin) {
-  try { $pyVersion = (& python --version 2>$null) } catch { $pyVersion = "" }
-  if ($pyVersion -match '(\d+)\.(\d+)') {
-    if ([int]$Matches[1] -ge 3 -and [int]$Matches[2] -ge 9) { Ok "Python detecte : $pyVersion" }
-    else { Warn "Python $pyVersion trop ancien. Mise a jour..." }
-  } else { Warn "python present mais version illisible." }
-} else {
-  Warn "Python absent. Installation via winget..."
-  winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
-  if ($LASTEXITCODE -eq 0) {
-    Ok "Python 3.12 installe (optionnel mais recommande pour GenIA Gemini)."
-  } else {
-    Warn "Echec de l'installation de Python (code $LASTEXITCODE). Il reste optionnel."
-  }
-}
-
+# Python/rembg are bundled at build time; no global Python installation.
 # ---- 4. Roblox Studio -------------------------------------------
 Step "4/7 - Roblox Studio"
 $robloxPath = Join-Path $env:LOCALAPPDATA 'Roblox'
@@ -121,24 +102,7 @@ try {
 }
 Pop-Location
 
-# ---- 5c/7 - rembg (suppression auto de fond) ----------------------
-Step "5c/7 - rembg (suppression d'arriere-plan)"
-$pyBin = Get-Command python -ErrorAction SilentlyContinue
-if ($pyBin) {
-  Write-Host "  pip install rembg[cpu,cli] ..."
-  & pip install "rembg[cpu,cli]" --quiet
-  if ($LASTEXITCODE -eq 0) {
-    Ok "rembg installe - suppression de fond auto activee."
-  } else {
-    Write-Host "  retente avec python -m pip ..."
-    & python -m pip install "rembg[cpu,cli]" --quiet
-    if ($LASTEXITCODE -eq 0) { Ok "rembg installe via python -m pip." }
-    else { Warn "Echec de l'installation de rembg (code $LASTEXITCODE) - la suppression de fond sera indisponible." }
-  }
-} else {
-  Warn "Python absent - rembg ne peut pas etre installe."
-}
-
+# For development builds: npm run runtime:prepare (build-machine Python only).
 # ---- 6. Agents IA CLI -------------------------------------------
 if ($SkipAgents) {
   Step "6/7 - Agents IA CLI (ignore via -SkipAgents)"
