@@ -323,19 +323,16 @@
     btn.removeAttribute('title');
     error.textContent = '';
     error.style.display = 'none';
-    if(window.forgeAPI && window.forgeAPI.connectRoblox){
+    try {
+      if(!window.forgeAPI?.connectRoblox) throw new Error('Connexion indisponible. Réessaie.');
       const result = await window.forgeAPI.connectRoblox();
-      if(result.error){
-        setRobloxError(result.error);
-        console.error('Erreur connexion Roblox:', result.error);
-        return;
-      }
+      if(!result?.success) throw new Error(result?.error || 'La connexion n’a pas abouti.');
       if(result.permissionsReady === false){
         setRobloxPermissionWarning(result.missingScopes);
         return;
       }
-    }
-    setRobloxConnected();
+      setRobloxConnected();
+    } catch(error) { setRobloxError(error.message); }
   });
 
   document.getElementById('robloxDiscBtn').addEventListener('click', async () => {
@@ -365,7 +362,10 @@
       console.error('[GH-start] exception:', err);
       return;
     }
-    console.log('[GH-start] resultat:', startResult);
+    if(!startResult || startResult.error || !startResult.userCode){
+      setGithubError(startResult?.error || 'Aucun code reçu. Réessaie.');
+      return;
+    }
     var ghCodeEl = document.getElementById('ghCode');
     if(ghCodeEl) ghCodeEl.textContent = (startResult && startResult.userCode) ? startResult.userCode : '(code vide)';
     var ghUrlEl = document.getElementById('ghUrl');
@@ -373,9 +373,11 @@
     var ghBox = document.getElementById('githubCodeBox');
     if(ghBox) ghBox.style.display = 'block';
     btn.textContent = 'En attente de validation…';
-    const pollResult = await window.forgeAPI.githubPoll();
-    if(pollResult.error){ setGithubError('reessayer'); return; }
-    setGithubConnected();
+    try {
+      const pollResult = await window.forgeAPI.githubPoll();
+      if(!pollResult?.success){ setGithubError(pollResult?.error || 'réessayer'); return; }
+      setGithubConnected();
+    } catch(error) { setGithubError(error.message || 'réessayer'); }
   });
 
   document.getElementById('githubCancelBtn').addEventListener('click', async () => {

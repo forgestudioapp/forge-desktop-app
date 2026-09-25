@@ -12,7 +12,9 @@
     "rebuild:pty": "npx electron-rebuild -f -w node-pty",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
-    "publish": "electron-builder --win --publish always"
+    "publish": "electron-builder --win --publish always",
+    "runtime:prepare": "python scripts/prepare-python-runtime.py && python scripts/prepare-node-runtime.py && node scripts/verify-python-runtime.cjs",
+    "runtime:verify": "node scripts/verify-python-runtime.cjs"
   },
   "keywords": [],
   "author": "Forge Studio",
@@ -95,10 +97,15 @@
         "to": "ForgePlugin.rbxmx"
       },
       {
-        "from": "../codebase-memory-mcp/codebase-memory-mcp.exe",
-        "to": "codebase-memory-mcp/codebase-memory-mcp.exe"
+        "from": "runtimes/python-win-x64-u2net",
+        "to": "runtimes/python-win-x64-u2net"
+      },
+      {
+        "from": "runtimes/node-win-x64",
+        "to": "runtimes/node-win-x64"
       }
-    ]
+    ],
+    "beforePack": "./scripts/verify-python-runtime.cjs"
   },
   "devDependencies": {
     "electron": "^32.3.3",

@@ -92,7 +92,7 @@
     backdrop-filter:blur(8px);
   }
   .err-box.show{display:block; animation:shake 0.4s ease;}
-  .err-box.success{background:rgba(74,222,128,0.08); border-color:rgba(74,222,128,0.3); color:#4ade80;}
+  .err-box.success{background:var(--success-dim); border-color:var(--success); color:var(--success);}
   .err-box.success.show{animation:none;}
   @keyframes shake{0%,100%{transform:translateX(0);} 25%{transform:translateX(-4px);} 75%{transform:translateX(4px);}}
 
@@ -170,6 +170,14 @@
   const buyLink = document.getElementById('buyLink');
 
   let mode = 'signup';
+
+  // A click in a field must activate keyboard input without an external link.
+  for (const input of [emailInput, passwordInput, licenseInput]) {
+    input.addEventListener('pointerdown', () => {
+      window.forgeAPI?.focusLoginInput?.();
+      input.focus({ preventScroll: true });
+    });
+  }
 
   document.getElementById('toggleEyeBtn').addEventListener('click', () => {
     passwordInput.type = passwordInput.type === 'password' ? 'text' : 'password';

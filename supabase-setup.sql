@@ -24,6 +24,12 @@ create table if not exists public.library_assets (
 
 alter table public.library_assets enable row level security;
 
+-- Droits Data API explicites (requis pour les tables creees apres le 30/10/2026).
+-- Les politiques RLS ci-dessous continuent de limiter chaque operation.
+revoke all on public.library_assets from public, anon, authenticated;
+grant select, insert, delete on public.library_assets to authenticated;
+grant all on public.library_assets to service_role;
+
 -- Tout utilisateur connecté peut lire la library
 drop policy if exists "library_select_authenticated" on public.library_assets;
 create policy "library_select_authenticated"

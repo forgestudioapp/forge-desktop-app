@@ -252,7 +252,25 @@
 
   document.getElementById('newProjectBtn').addEventListener('click', () => fadeNavigate('project-create.html'));
   document.getElementById('newCard').addEventListener('click', () => fadeNavigate('project-create.html'));
-  document.getElementById('refreshBtn').addEventListener('click', loadProjects);
+  document.getElementById('refreshBtn').addEventListener('click', async () => {
+    await loadActiveProject();
+    await loadProjects();
+  });
+  document.getElementById('openStudioBtn').addEventListener('click', async () => {
+    if(!activeProject) return;
+    await openProject(activeProject);
+  });
+
+  async function openProject(proj){
+    try {
+      if(!window.forgeAPI?.setActiveProject) throw new Error('API non disponible');
+      const result = await window.forgeAPI.setActiveProject(proj.path);
+      if(!result || result.error) throw new Error(result?.error || 'Impossible d’ouvrir ce projet.');
+      fadeNavigate('workspace.html');
+    } catch(error) {
+      forgeToast(error.message, 'error');
+    }
+  }
 
   async function loadProjects(){
     if(!window.forgeAPI || !window.forgeAPI.listProjects){
@@ -261,11 +279,11 @@
     }
     try {
       const res = await window.forgeAPI.listProjects();
+      if(!res || res.error) throw new Error(res?.error || 'Impossible de charger les projets.');
       projects = res.projects || [];
       renderProjects(projects);
     } catch(e) {
-      console.error('Erreur chargement projets:', e);
-      renderProjects([]);
+      forgeToast('Impossible de charger les projets : ' + e.message, 'error');
     }
   }
 
@@ -284,9 +302,11 @@
           studioSub.textContent = t('studio_linked');
         }
       } else {
+        activeProject = null;
         studioBar.classList.add('hidden');
       }
     } catch(e) {
+      activeProject = null;
       studioBar.classList.add('hidden');
     }
   }
@@ -354,7 +374,7 @@
       card.style.animationDelay = (0.12 + index * 0.06) + 's';
 
       const isActive = activeProject && activeProject.path === proj.path;
-      const badgeHtml = isActive ? '<span class="proj-badge">Open in Studio</span>' : '';
+      const badgeHtml = isActive ? '<span class="proj-badge">Projet actif</span>' : '';
       const place = proj.linkedStudio && typeof proj.linkedStudio === 'object' ? proj.linkedStudio : null;
       const placeLabel = place
         ? 'Place Roblox · ' + place.placeName + ' · ' + place.placeId
@@ -384,15 +404,11 @@
         openDeleteModal(proj);
       });
 
-      card.addEventListener('click', async () => {
-        if(window.forgeAPI && window.forgeAPI.setActiveProject){
-          const result = await window.forgeAPI.setActiveProject(proj.path);
-          if(result && result.error){
-            forgeToast(result.error, 'error');
-            return;
-          }
-        }
-        fadeNavigate('workspace.html');
+      card.addEventListener('click', () => openProject(proj));
+      card.tabIndex = 0;
+      card.setAttribute('role', 'link');
+      card.addEventListener('keydown', e => {
+        if(e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openProject(proj); }
       });
 
       projGrid.appendChild(card);

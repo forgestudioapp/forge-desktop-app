@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('forgeAPI', {
   // --- PTY (terminals interactifs in-app) ---
-  ptyCreate: (agentType, projectPath, cols, rows) => ipcRenderer.invoke('pty-create', agentType, projectPath, cols, rows),
+  ptyCreate: (agentType, projectPath, cols, rows, agentId, agentName) => ipcRenderer.invoke('pty-create', agentType, projectPath, cols, rows, agentId, agentName),
   ptyInput: (sessionId, data) => ipcRenderer.invoke('pty-input', sessionId, data),
   ptySubmitMessage: (sessionId, text, bracketedPaste) => ipcRenderer.invoke('pty-submit-message', sessionId, text, bracketedPaste),
   ptyResize: (sessionId, cols, rows) => ipcRenderer.invoke('pty-resize', sessionId, cols, rows),
@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   loadAgentState: (projectPath) => ipcRenderer.invoke('load-agent-state', projectPath),
   clearAgentState: (projectPath) => ipcRenderer.invoke('clear-agent-state', projectPath),
   reconnectPty: (sessionId, projectPath) => ipcRenderer.invoke('reconnect-pty', sessionId, projectPath),
+  listAgentActivity: (projectPath) => ipcRenderer.invoke('agent-activity-list', projectPath),
+  updateAgentActivity: (projectPath, agentId, patch) => ipcRenderer.invoke('agent-activity-update', projectPath, agentId, patch),
+  removeAgentActivity: (projectPath, agentId) => ipcRenderer.invoke('agent-activity-remove', projectPath, agentId),
+  readProjectQuality: (projectPath) => ipcRenderer.invoke('project-quality-read', projectPath),
+  writeProjectQuality: (projectPath, content) => ipcRenderer.invoke('project-quality-write', projectPath, content),
 
   // --- Systeme & Roblox ---
   ping: () => 'pong depuis le backend Electron !',
@@ -47,6 +52,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
 
   // --- Licence (paywall création de compte) ---
   buyLicense: () => ipcRenderer.invoke('buy-license'),
+  focusLoginInput: () => ipcRenderer.send('focus-login-input'),
   verifyLicense: (licenseKey) => ipcRenderer.invoke('verify-license', licenseKey),
   licenseStatus: () => ipcRenderer.invoke('license-status'),
 
@@ -80,11 +86,15 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   stopFileSync: () => ipcRenderer.invoke('stop-file-sync'),
 
   // --- Projets ---
-  createProject: (name) => ipcRenderer.invoke('create-project', name),
+  createProject: (name, options) => ipcRenderer.invoke('create-project', name, undefined, options),
   getActiveProject: () => ipcRenderer.invoke('get-active-project'),
   listProjects: () => ipcRenderer.invoke('list-projects'),
   setActiveProject: (projectPath) => ipcRenderer.invoke('set-active-project', projectPath),
   deleteProject: (projectPath, deleteFiles) => ipcRenderer.invoke('delete-project', projectPath, deleteFiles),
+  createCheckpoint: (projectPath, label, reason) => ipcRenderer.invoke('checkpoint-create', projectPath, label, reason),
+  listCheckpoints: (projectPath) => ipcRenderer.invoke('checkpoint-list', projectPath),
+  restoreCheckpoint: (projectPath, checkpointId) => ipcRenderer.invoke('checkpoint-restore', projectPath, checkpointId),
+  deleteCheckpoint: (projectPath, checkpointId) => ipcRenderer.invoke('checkpoint-delete', projectPath, checkpointId),
 
   // --- Fichiers projet ---
   listProjectFiles: (projectPath, folder) => ipcRenderer.invoke('list-project-files', projectPath, folder),

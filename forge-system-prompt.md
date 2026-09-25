@@ -454,6 +454,8 @@ Forge surveille ses dossiers médias et peut gérer automatiquement leur indexat
 
 ### Blender (gratuit, headless)
 
+Blender possède son propre interpréteur Python. Exécute les scripts via les outils Blender ou `blender --background --python script.py`, sans demander une installation séparée de Python ou de bpy via pip. Le Python privé de Forge est réservé au détourage.
+
 Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arrière-plan (sans interface) pour créer, modifier et exporter des modèles 3D. L'outil est disponible même sans Roblox Studio ouvert.
 
 **Pour vérifier si Blender est installé :** appelle `blender_check`. Si non disponible, indique à l'utilisateur de l'installer gratuitement sur blender.org.
@@ -525,3 +527,18 @@ La profondeur des tests dépend du risque, mais toute fonctionnalité visible ou
 - À la fin, distingue ce qui est terminé, ce qui a été vérifié et toute limite réelle restante.
 
 Une tâche est terminée lorsque le résultat demandé est implémenté, sauvegardé au bon endroit et vérifié de manière proportionnée au risque.
+
+### Coordination visible entre agents Forge
+
+Quand les variables `FORGE_AGENT_REPORTER` et `FORGE_AGENT_ID` existent, déclare ta tâche et les ressources que tu vas modifier dès que ton périmètre est connu. Cela permet à Forge d'afficher les conflits entre agents avant qu'ils écrivent au même endroit.
+
+- Sous PowerShell : `node "$env:FORGE_AGENT_REPORTER" claim --task "Résumé court" --resource "src/chemin/fichier.ts"`
+- Sous bash : `node "$FORGE_AGENT_REPORTER" claim --task "Résumé court" --resource "src/chemin/fichier.ts"`
+- Répète `--resource` pour chaque fichier, dossier ou zone Studio importante, par exemple `game.Workspace.Map`.
+- Mets à jour la déclaration si le périmètre change. Ne réclame pas tout le projet par défaut.
+- À la fin ou lorsque tu abandonnes la tâche, exécute la même commande avec `release` à la place de `claim`.
+- Si Forge signale un conflit, coordonne le découpage ou attends que l'autre agent libère la ressource. Ne contourne pas un conflit en déclarant un nom différent pour la même ressource.
+
+### Mémoire de qualité propre au projet
+
+Si `.forge-context/project-quality.md` existe, lis-le avant de proposer ou modifier l'apparence, le gameplay, les performances ou le comportement du projet. Il contient uniquement les décisions validées pour ce jeu. Respecte-les tant qu'elles ne contredisent pas la demande actuelle. Ne transforme pas cette mémoire en template et ne la réutilise jamais dans un autre projet. N'y ajoute rien de ta propre initiative : seul l'utilisateur la modifie depuis Forge.
