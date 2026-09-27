@@ -446,14 +446,15 @@
         <div class="router-core">FORGE</div>
         <div class="router-branches" id="routerBranches">
           <div class="r-branch" data-b="gemini"><div class="ic">Ge</div><div class="lb">Images / icônes</div></div>
-          <div class="r-branch" data-b="tripo"><div class="ic">Tr</div><div class="lb">Modèles 3D</div></div>
+          <div class="r-branch" data-b="blender"><div class="ic">Bl</div><div class="lb">Modèles 3D (gratuit, local)</div></div>
+          <div class="r-branch" data-b="tripo"><div class="ic">Tr</div><div class="lb">Image → 3D (option)</div></div>
           <div class="r-branch" data-b="eleven"><div class="ic">El</div><div class="lb">Son / musique</div></div>
         </div>
       </div>
       <div class="arch-copy">
         <ul>
           <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Génération d'images et de textures → <b>Gemini</b></li>
-          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Modèles 3D importables dans Studio → <b>Tripo3D</b></li>
+          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Modèles 3D gratuits en local → <b>Blender</b> (inclus, sans clé API) ; image → 3D en option → <b>Tripo3D</b></li>
           <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Musique, sons et voix → <b>ElevenLabs</b></li>
           <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Scripts, GUI et logique de jeu → <b>l'agent Forge lui-même</b>, exécutés directement dans Roblox Studio via le pont MCP.</li>
         </ul>
@@ -474,7 +475,7 @@
       <div class="price-num">49 $ US</div>
       <div class="price-sub" style="text-align:left;">Paiement unique — licence à vie, toutes les mises à jour incluses.</div>
       <ul class="price-list">
-        <li>✓ Génération 3D (selon tes propres clés API)</li>
+        <li>✓ Modèles 3D gratuits avec Blender (inclus, sans clé) + image → 3D via Tripo3D (selon tes propres clés API)</li>
         <li>✓ Intégration Roblox Studio (MCP)</li>
         <li>✓ Suppression d'arrière-plan automatique</li>
         <li>✓ Mises à jour au fil du développement</li>
@@ -554,6 +555,7 @@
   const routerInput = document.getElementById('routerInput');
   const requests = [
     {text:'"Fais-moi un coffre légendaire brillant"', hit:'tripo'},
+    {text:'"Modélise un monstre 3D, sans clé API"', hit:'blender'},
     {text:'"Génère une icône d\'épée en feu"', hit:'gemini'},
     {text:'"Ajoute une musique d\'ambiance de forêt"', hit:'eleven'},
   ];
@@ -574,7 +576,7 @@
   const heroTerm = document.getElementById('heroTerm');
   const lines = [
     {cls:'term-line', text:'→ Analyse de la demande…'},
-    {cls:'term-line', text:'→ Route vers Tripo3D (modèles 3D) et Gemini (icônes)'},
+    {cls:'term-line', text:'→ Route vers Blender (3D gratuite) et Gemini (icônes)'},
     {cls:'check-row', text:'✓ Carte du temple générée'},
     {cls:'check-row', text:'✓ 4 modèles 3D importés dans Studio'},
     {cls:'check-row', text:'✓ Boutique de skins câblée'},
