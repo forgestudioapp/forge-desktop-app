@@ -16,6 +16,7 @@ if (process.env.FORGE_TEST_PROFILE) {
 
 const { spawn, execFile } = require('child_process');
 const { configureBundledNode } = require('./lib/bundled-node');
+const { copyFileIfChanged } = require('./lib/copy-if-changed');
 function useBundledNode() {
   return configureBundledNode({ resourcesDir: app.isPackaged ? process.resourcesPath : __dirname, userDataDir: app.getPath('userData') });
 }
@@ -1327,7 +1328,7 @@ ipcMain.handle('check-system', async () => {
       if (!fs.existsSync(pluginsFolder)) fs.mkdirSync(pluginsFolder, { recursive: true });
       const sourcePlugin = getForgePluginPath();
       const destPlugin = pluginsFolder + '\\ForgePlugin.rbxmx';
-      if (sourcePlugin && fs.existsSync(sourcePlugin)) { fs.copyFileSync(sourcePlugin, destPlugin); pluginInstalled = true; }
+      if (sourcePlugin && fs.existsSync(sourcePlugin)) { copyFileIfChanged(sourcePlugin, destPlugin); pluginInstalled = true; }
       else if (fs.existsSync(destPlugin)) pluginInstalled = true;
     } catch (err) {
       pluginInstalled = fs.existsSync(pluginsFolder + '\\ForgePlugin.rbxmx');
