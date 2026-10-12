@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   checkStudioOpen: () => ipcRenderer.invoke('check-studio-open'),
   connectRoblox: () => ipcRenderer.invoke('connect-roblox'),
   isRobloxConnected: () => ipcRenderer.invoke('is-roblox-connected'),
+  verifyRobloxAiAccess: () => ipcRenderer.invoke('verify-roblox-ai-access'),
   disconnectRoblox: () => ipcRenderer.invoke('disconnect-roblox'),
 
   // --- Auth Forge ---
@@ -72,6 +73,10 @@ contextBridge.exposeInMainWorld('forgeAPI', {
 
   // --- MCP ---
   executeLuau: (code, datamodelType) => ipcRenderer.invoke('execute-luau', code, datamodelType),
+  qualityLabGui: (projectPath, multiDevice) => ipcRenderer.invoke('quality-lab-gui', projectPath, multiDevice),
+  qualityLabPlaytestStart: (projectPath, mode, players) => ipcRenderer.invoke('quality-lab-playtest-start', projectPath, mode, players),
+  qualityLabPlaytestOutput: (projectPath) => ipcRenderer.invoke('quality-lab-playtest-output', projectPath),
+  qualityLabPlaytestStop: (projectPath) => ipcRenderer.invoke('quality-lab-playtest-stop', projectPath),
 
   // --- Memory MCP ---
   memoryIndexProject: (projectPath) => ipcRenderer.invoke('memory-index-project', projectPath),
@@ -84,6 +89,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   // --- File Sync ---
   startFileSync: (projectPath) => ipcRenderer.invoke('start-file-sync', projectPath),
   stopFileSync: () => ipcRenderer.invoke('stop-file-sync'),
+  getFileSyncStatus: (projectPath) => ipcRenderer.invoke('get-file-sync-status', projectPath),
 
   // --- Projets ---
   createProject: (name, options) => ipcRenderer.invoke('create-project', name, undefined, options),
@@ -148,6 +154,10 @@ contextBridge.exposeInMainWorld('forgeAPI', {
 
   // --- Reglages globaux ---
   getAppSettings: () => ipcRenderer.invoke('get-app-settings'),
+  getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+  getProjectsLocation: () => ipcRenderer.invoke('get-projects-location'),
+  getActiveProjectInfo: () => ipcRenderer.invoke('get-active-project-info'),
+  chooseProjectsLocation: () => ipcRenderer.invoke('choose-projects-location'),
   saveAppSettings: (s) => ipcRenderer.invoke('save-app-settings', s),
 
   // --- Removal d'arriere-plan (rembg) ---

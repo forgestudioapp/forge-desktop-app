@@ -27,6 +27,10 @@
   .logo-pill img{width:18px;height:18px;border-radius:4px;object-fit:contain;}
   .logo-pill:hover{background:var(--char4);}
   .project-pill{display:flex;align-items:center;gap:6px;padding:4px 10px;background:var(--char3);border-radius:6px;font-size:11.5px;color:var(--smoke);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;}
+  .sync-pill{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--border-light);background:var(--char3);border-radius:6px;font:500 10px 'JetBrains Mono',monospace;color:var(--smoke-dim);white-space:nowrap;flex-shrink:0;}
+  .sync-dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 0 2px rgba(255,255,255,.03)}
+  .sync-pill.compiling,.sync-pill.scanning,.sync-pill.syncing{color:#60A5FA}.sync-pill.compiling .sync-dot,.sync-pill.scanning .sync-dot,.sync-pill.syncing .sync-dot{animation:pulse-dot 1s ease-in-out infinite}
+  .sync-pill.synced{color:#7FD99A}.sync-pill.waiting-studio{color:#F2C65A}.sync-pill.compile-error{color:#E9776B}
   .assets-btn{display:flex;align-items:center;gap:6px;padding:5px 11px;background:var(--char3);border:1px solid var(--border-light);border-radius:6px;color:var(--smoke);font-size:12px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap;transition:all .15s ease;flex-shrink:0;}
   .assets-btn:hover{border-color:var(--ember);color:var(--ember-light);background:rgba(59,130,246,.06);}
   .assets-btn.active{border-color:var(--ember);color:var(--ember-light);background:rgba(59,130,246,.1);}
@@ -220,9 +224,32 @@
   .checkpoint-info{min-width:0;flex:1}.checkpoint-label{font-size:12px;font-weight:600;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.checkpoint-meta{font-size:10px;color:var(--smoke-dim);margin-top:3px;}
   .checkpoint-actions{display:flex;gap:6px}.checkpoint-actions button{border:1px solid var(--border-light);background:var(--char4);color:var(--smoke);border-radius:6px;padding:5px 8px;font:500 10px 'Inter',sans-serif;cursor:pointer}.checkpoint-actions button:hover{color:var(--bone);border-color:var(--ember)}
   .checkpoint-foot{display:flex;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--border-light);}
+  .quality-lab-modal{width:min(900px,94vw);max-height:88vh;background:var(--char2);border:1px solid var(--border-light);border-radius:14px;box-shadow:0 28px 70px rgba(0,0,0,.7);display:flex;flex-direction:column;overflow:hidden;}
+  .quality-lab-body{padding:16px;overflow:auto;display:flex;flex-direction:column;gap:14px;}
+  .quality-lab-intro{font-size:12px;line-height:1.55;color:var(--smoke);}
+  .quality-lab-section{padding:13px;border:1px solid var(--border-light);background:var(--char3);border-radius:10px;display:flex;flex-direction:column;gap:10px;}
+  .quality-lab-section-title{font:600 12px 'Inter',sans-serif;color:var(--bone);}
+  .quality-lab-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .quality-lab-actions select{background:var(--char);border:1px solid var(--border-light);color:var(--bone);border-radius:6px;padding:6px 8px;font:11px 'Inter',sans-serif;}
+  .quality-lab-actions button{background:var(--char4);border:1px solid var(--border-light);color:var(--bone);border-radius:7px;padding:7px 10px;font:600 11px 'Inter',sans-serif;cursor:pointer;}
+  .quality-lab-actions button:hover{border-color:var(--ember);color:var(--ember-light);}
+  .quality-lab-actions button:disabled{opacity:.45;cursor:wait;}
+  .quality-lab-status{font:11px/1.45 'JetBrains Mono',monospace;color:var(--smoke-dim);min-height:16px;}
+  .quality-lab-status.error{color:var(--error);}
+  .quality-lab-report{padding:14px;border:1px solid var(--border-light);background:var(--char);border-radius:10px;min-height:120px;display:flex;flex-direction:column;gap:10px;}
+  .quality-lab-report-title{font:700 14px 'Space Grotesk',sans-serif;color:var(--bone);}
+  .quality-lab-metrics{display:flex;flex-wrap:wrap;gap:8px;}
+  .quality-lab-metric{min-width:110px;padding:9px 10px;background:var(--char3);border:1px solid var(--border-light);border-radius:8px;}
+  .quality-lab-metric strong{display:block;color:var(--bone);font-size:15px}.quality-lab-metric span{font-size:9px;color:var(--smoke-dim);text-transform:uppercase;letter-spacing:.06em;}
+  .quality-lab-list{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow:auto;}
+  .quality-lab-item{padding:8px 10px;border-left:3px solid var(--warning,#f2c65a);background:var(--char3);border-radius:5px;font:11px/1.45 'JetBrains Mono',monospace;color:var(--smoke);word-break:break-word;}
+  .quality-lab-item.error{border-left-color:var(--error)}.quality-lab-item.success{border-left-color:#5fbe7a;}
+  .quality-lab-empty{color:var(--smoke-dim);font-size:12px;line-height:1.5;}
   .agent-task{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;color:var(--smoke-dim);padding:2px 6px;border:1px solid transparent;border-radius:4px;}
   .agent-task.working{color:#7FD99A;background:rgba(95,190,122,.08);border-color:rgba(95,190,122,.18)}
   .agent-task.conflict{color:#F2C65A;background:rgba(242,198,90,.09);border-color:rgba(242,198,90,.28)}
+  .agent-task.needs-review{color:#F2C65A;background:rgba(242,198,90,.09);border-color:rgba(242,198,90,.2)}
+  .agent-task.failed{color:#E9776B;background:rgba(227,91,91,.08);border-color:rgba(227,91,91,.2)}
   .preview-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
   .preview-name{font-size:13px;font-weight:600;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:400px;}
   .preview-close{width:26px;height:26px;border-radius:6px;border:none;cursor:pointer;background:transparent;color:var(--smoke-dim);font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
@@ -352,19 +379,22 @@
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
     <span id="projectPillText">—</span>
   </div>
+  <div class="sync-pill stopped" id="syncPill" title="">
+    <span class="sync-dot"></span><span id="syncPillText">Sync arrêtée</span>
+  </div>
   <button class="assets-btn" id="assetsBtn" onclick="toggleSidebar()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
     <span data-i18n="toolbox">Toolbox</span>
   </button>
         <span class="agent-count" id="agentCount" data-i18n="agent_count_zero">0 agent</span>
   <div class="add-btns">
-      <button class="add-agent-btn" onclick="createAgent('claude')" data-i18n="add_claude">+ Claude Code</button>
-      <button class="add-agent-btn" onclick="createAgent('codex')" data-i18n="add_codex">+ Codex</button>
-      <button class="add-agent-btn" onclick="createAgent('antigravity')" data-i18n="add_antigravity">+ Antigravity</button>
+      <select id="agentTypeChoice" aria-label="Type d’agent" style="background:var(--char3);color:var(--bone);border:1px solid var(--border-light);border-radius:8px;padding:6px"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="antigravity">Antigravity</option></select>
+      <button class="add-agent-btn" onclick="createAgent(document.getElementById('agentTypeChoice').value)" data-i18n="polish_add_agent">+ Ajouter un agent</button>
   </div>
   <div class="top-actions">
-    <button class="btn-top" id="qualityMemoryBtn" onclick="openQualityMemory()" data-i18n-title="quality_memory" title="Mémoire du projet">★</button>
-    <button class="btn-top" id="checkpointsBtn" onclick="openCheckpoints()" data-i18n-title="checkpoints" title="Points de retour">↶</button>
+    <button class="btn-top" id="qualityMemoryBtn" onclick="openQualityMemory()" data-i18n="quality_memory">Mémoire du projet</button>
+    <button class="btn-top" id="checkpointsBtn" onclick="openCheckpoints()" data-i18n="checkpoints">Points de retour</button>
+    <button class="btn-top" id="qualityLabBtn" onclick="openQualityLab()" data-i18n="polish_test_game">Tester le jeu</button>
     <button class="btn-top primary" id="startAgentsBtn" onclick="startPendingAgents()" disabled data-i18n="start_agents">Start</button>
     <!-- NOTIFICATION BELL -->
     <div class="notif-bell-wrap" id="notifWrap">
@@ -422,6 +452,38 @@
     <div class="checkpoint-list" id="checkpointList"></div>
     <div class="checkpoint-foot">
       <button class="btn-top primary" id="createCheckpointBtn" onclick="createManualCheckpoint()" data-i18n="checkpoint_create">Créer un point de retour</button>
+    </div>
+  </div>
+</div>
+
+<div class="preview-overlay hidden" id="qualityLabOverlay" onclick="closeQualityLab(event)">
+  <div class="quality-lab-modal" onclick="event.stopPropagation()">
+    <div class="checkpoint-head">
+      <strong data-i18n="quality_lab">Lab qualité</strong>
+      <button class="tb-close" onclick="closeQualityLab()" title="Fermer">×</button>
+    </div>
+    <div class="quality-lab-body">
+      <div class="quality-lab-intro" data-i18n="quality_lab_desc">Teste l’interface rendue dans Studio, lance des sessions solo ou multijoueur et rassemble les preuves dans un rapport lisible.</div>
+      <div class="quality-lab-section">
+        <div class="quality-lab-section-title" data-i18n="quality_lab_gui">Interface Roblox</div>
+        <div class="quality-lab-actions">
+          <button data-lab-action onclick="runQualityGuiAudit(false)" data-i18n="quality_lab_gui_current">Analyser l’écran actuel</button>
+          <button data-lab-action onclick="runQualityGuiAudit(true)" data-i18n="quality_lab_gui_devices">Tester ordinateur, tablette et mobile</button>
+        </div>
+      </div>
+      <div class="quality-lab-section">
+        <div class="quality-lab-section-title" data-i18n="quality_lab_playtest">Playtest et scripts</div>
+        <div class="quality-lab-actions">
+          <button data-lab-action onclick="startQualityPlaytest('play')" data-i18n="quality_lab_start_solo">Démarrer en solo</button>
+          <button data-lab-action onclick="startQualityPlaytest('run')" data-i18n="quality_lab_start_server">Démarrer côté serveur</button>
+          <select id="qualityLabPlayers" aria-label="Nombre de joueurs"><option value="2">2 joueurs</option><option value="3">3 joueurs</option><option value="4">4 joueurs</option><option value="6">6 joueurs</option><option value="8">8 joueurs</option></select>
+          <button data-lab-action onclick="startQualityPlaytest('multiplayer')" data-i18n="quality_lab_start_multi">Démarrer multijoueur</button>
+          <button data-lab-action onclick="refreshQualityPlaytest()" data-i18n="quality_lab_refresh">Actualiser les logs</button>
+          <button data-lab-action onclick="stopQualityPlaytest()" data-i18n="quality_lab_stop">Arrêter</button>
+        </div>
+      </div>
+      <div class="quality-lab-status" id="qualityLabStatus"></div>
+      <div class="quality-lab-report" id="qualityLabReport"><div class="quality-lab-empty" data-i18n="quality_lab_empty">Lance un test pour afficher ses résultats ici.</div></div>
     </div>
   </div>
 </div>
@@ -691,6 +753,7 @@ function applyGridLayout(){
 
 function genId(){return 'a_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);}
 let createAgentLock = false;
+document.getElementById('agentTypeChoice').value = ['claude','codex','antigravity'].includes(forgePreferences().preferredAgent) ? forgePreferences().preferredAgent : 'claude';
 function createAgent(type){
   if(!agentStateReady){showToast(t('agent_state_not_ready'));return;}
   if(createAgentLock) return;
@@ -800,6 +863,77 @@ async function openCheckpoints(){
 
 function closeCheckpoints(event){if(event&&event.target!==document.getElementById('checkpointOverlay'))return;document.getElementById('checkpointOverlay').classList.add('hidden');}
 
+let qualityLabPollTimer=null;
+function openQualityLab(report){
+  if(!activeProject){showToast(t('start_requires_project'));return;}
+  document.getElementById('qualityLabOverlay').classList.remove('hidden');
+  if(report)renderQualityLabReport(t('quality_lab_animation'),report,'animation');
+}
+
+function closeQualityLab(event){
+  const overlay=document.getElementById('qualityLabOverlay');if(event&&event.target!==overlay)return;overlay.classList.add('hidden');
+}
+
+function setQualityLabBusy(busy,message,isError){
+  document.querySelectorAll('[data-lab-action]').forEach(function(button){button.disabled=busy;});
+  const status=document.getElementById('qualityLabStatus');status.textContent=message||'';status.classList.toggle('error',!!isError);
+}
+
+function addQualityMetric(parent,label,value){
+  const metric=document.createElement('div');metric.className='quality-lab-metric';
+  const strong=document.createElement('strong');strong.textContent=String(value ?? '—');
+  const span=document.createElement('span');span.textContent=label;metric.append(strong,span);parent.appendChild(metric);
+}
+
+function addQualityItems(parent,items,formatter){
+  const list=document.createElement('div');list.className='quality-lab-list';
+  (items||[]).forEach(function(item){const row=document.createElement('div');row.className='quality-lab-item'+((item?.messageType==='MessageError'||item?.level==='error')?' error':'');row.textContent=formatter(item);list.appendChild(row);});
+  if(!list.childElementCount){const empty=document.createElement('div');empty.className='quality-lab-empty';empty.textContent=t('quality_lab_no_issue');list.appendChild(empty);}parent.appendChild(list);
+}
+
+function renderQualityLabReport(title,data,kind){
+  const report=document.getElementById('qualityLabReport');report.textContent='';
+  const heading=document.createElement('div');heading.className='quality-lab-report-title';heading.textContent=title;report.appendChild(heading);
+  const metrics=document.createElement('div');metrics.className='quality-lab-metrics';report.appendChild(metrics);
+  if(kind==='gui'){
+    const summary=data.summary||data;addQualityMetric(metrics,t('quality_lab_inspected'),summary.inspected ?? summary.totalDevices);addQualityMetric(metrics,t('quality_lab_issues'),summary.issueCount ?? summary.totalIssues ?? 0);addQualityMetric(metrics,t('quality_lab_incomplete'),summary.incomplete?'Oui':'Non');
+    const issues=data.crossDeviceIssues||data.issues||[];addQualityItems(report,issues,function(item){return [item.severity,item.kind,item.path,item.devices?.join(', '),item.other].filter(Boolean).join(' · ');});
+  }else if(kind==='playtest'){
+    addQualityMetric(metrics,t('quality_lab_running'),data.isRunning?t('quality_lab_yes'):t('quality_lab_no'));addQualityMetric(metrics,t('quality_lab_logs'),data.outputCount ?? data.output?.length ?? 0);addQualityMetric(metrics,t('quality_lab_result'),data.testError?t('error'):(data.testResult||'—'));
+    addQualityItems(report,data.output||[],function(item){return '['+(item.messageType||'Output')+'] '+(item.message||String(item));});
+    if(data.testError){const error=document.createElement('div');error.className='quality-lab-item error';error.textContent=data.testError;report.appendChild(error);}
+  }else{
+    const errors=data.errors||data.issues?.filter(function(item){return item.level==='error';})||[];const warnings=data.warnings||data.issues?.filter(function(item){return item.level!=='error';})||[];
+    addQualityMetric(metrics,t('quality_lab_errors'),errors.length);addQualityMetric(metrics,t('quality_lab_warnings'),warnings.length);addQualityMetric(metrics,t('quality_lab_animations'),data.summary?.totalAnimations ?? '—');addQualityMetric(metrics,t('quality_lab_bones'),data.summary?.totalBones ?? '—');addQualityMetric(metrics,t('quality_lab_result'),data.valid===false?t('error'):t('success'));
+    const animationItems=[...errors.map(function(message){return {level:'error',message};}),...warnings.map(function(message){return {level:'warning',message};}),...(data.unverified||[]).map(function(message){return {level:'warning',message:t('quality_lab_unverified')+' : '+message};})];
+    addQualityItems(report,animationItems,function(item){return [item.code,item.message,item.object,item.path].filter(Boolean).join(' · ');});
+  }
+}
+
+async function runQualityGuiAudit(multiDevice){
+  if(!activeProject||!window.forgeAPI?.qualityLabGui){showToast(t('start_requires_project'));return;}openQualityLab();setQualityLabBusy(true,t('quality_lab_working'));
+  try{const result=await window.forgeAPI.qualityLabGui(activeProject.path,!!multiDevice);if(result?.error)throw new Error(result.error);renderQualityLabReport(multiDevice?t('quality_lab_gui_devices'):t('quality_lab_gui_current'),result.data,'gui');setQualityLabBusy(false,t('quality_lab_done'));}
+  catch(error){setQualityLabBusy(false,error.message||String(error),true);}
+}
+
+async function startQualityPlaytest(mode){
+  if(!activeProject||!window.forgeAPI?.qualityLabPlaytestStart){showToast(t('start_requires_project'));return;}const players=document.getElementById('qualityLabPlayers').value;setQualityLabBusy(true,t('quality_lab_starting'));
+  try{const result=await window.forgeAPI.qualityLabPlaytestStart(activeProject.path,mode,players);if(result?.error)throw new Error(result.error);setQualityLabBusy(false,result.data?.message||t('quality_lab_started'));await refreshQualityPlaytest();clearInterval(qualityLabPollTimer);qualityLabPollTimer=setInterval(refreshQualityPlaytest,2000);}
+  catch(error){setQualityLabBusy(false,error.message||String(error),true);}
+}
+
+async function refreshQualityPlaytest(){
+  if(!activeProject||!window.forgeAPI?.qualityLabPlaytestOutput)return;
+  try{const result=await window.forgeAPI.qualityLabPlaytestOutput(activeProject.path);if(result?.error)throw new Error(result.error);renderQualityLabReport(t('quality_lab_playtest_report'),result.data,'playtest');setQualityLabBusy(false,result.data?.isRunning?t('quality_lab_running_now'):t('quality_lab_finished'));if(!result.data?.isRunning){clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;}}
+  catch(error){setQualityLabBusy(false,error.message||String(error),true);clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;}
+}
+
+async function stopQualityPlaytest(){
+  if(!activeProject||!window.forgeAPI?.qualityLabPlaytestStop)return;setQualityLabBusy(true,t('quality_lab_stopping'));
+  try{const result=await window.forgeAPI.qualityLabPlaytestStop(activeProject.path);if(result?.error)throw new Error(result.error);clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;renderQualityLabReport(t('quality_lab_playtest_report'),result.data,'playtest');setQualityLabBusy(false,t('quality_lab_finished'));}
+  catch(error){setQualityLabBusy(false,error.message||String(error),true);}
+}
+
 async function refreshCheckpoints(){
   const list=document.getElementById('checkpointList');list.textContent=t('loading');
   const result=await window.forgeAPI.listCheckpoints(activeProject.path);
@@ -856,7 +990,7 @@ function createPanel(agent){
     +'<span class="agent-name">'+icon+' <span class="agent-name-text" id="name-'+agent.id+'">'+agent.name+'</span></span>'
     +'<span id="mcp-badge-'+agent.id+'" class="mcp-badge" style="display:none;font-family:\'JetBrains Mono\',monospace;font-size:9px;background:rgba(59,130,246,0.2);color:#60A5FA;border:1px solid rgba(59,130,246,0.3);border-radius:4px;padding:1px 5px;margin-left:6px;">MCP</span>'
     +'<span id="task-'+agent.id+'" class="agent-task" title="">'+t('agent_task_none')+'</span>'
-    +'<span class="agent-provider">'+meta.label+'</span>'
+    +'<span class="agent-provider" id="state-'+agent.id+'" role="status">'+t('polish_ready')+'</span>'
     +'<div class="agent-hdr-actions">'
       +'<button class="agent-hdr-btn" id="zoomout-'+agent.id+'" title="Zoom -"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>'
       +'<button class="agent-hdr-btn" id="zoomin-'+agent.id+'" title="Zoom +"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>'
@@ -869,7 +1003,7 @@ function createPanel(agent){
 
   const wrap=document.createElement('div');wrap.className='xterm-wrap';wrap.id='xterm-'+agent.id;
   panel.appendChild(hdr);panel.appendChild(wrap);agentGrid.appendChild(panel);agent.element=panel;
-  try { agent._fontSize = parseInt(localStorage.getItem('forge_agent_fontsize_'+agent.id),10) || 12; } catch(e) { agent._fontSize = 12; }
+  try { agent._fontSize = Math.max(8,Math.min(24,parseInt(localStorage.getItem('forge_agent_fontsize_'+agent.id),10) || Number(forgePreferences().terminalFontSize) || 12)); } catch(e) { agent._fontSize = 12; }
   agent._fullscreen=false;agent._firstInput=true;
 
   hdr.querySelector('#fullscreen-'+agent.id).addEventListener('click',function(e){
@@ -931,9 +1065,7 @@ async function initPty(agent){
     if(earlyPtyExit.has(agent.sessionId)){
       var earlyExit=earlyPtyExit.get(agent.sessionId);earlyPtyExit.delete(agent.sessionId);
       if(agent.xterm)agent.xterm.writeln('\x1b[31m[Processus terminé - code '+earlyExit.exitCode+']\x1b[0m');
-      agent.sessionId=null;hideMcpBadge(agent.id);setAgentReady(agent,t('agent_finished'));
-      if(activeProject&&window.forgeAPI?.updateAgentActivity)await window.forgeAPI.updateAgentActivity(activeProject.path,agent.id,{name:agent.name,status:'done',resources:[]});
-      refreshAgentActivity();saveAgentState();return;
+      await finishAgentProcess(agent,earlyExit.exitCode);return;
     }
     var dot=document.getElementById('dot-'+agent.id);if(dot)dot.classList.add('running-dot');
     setReadyOverlayVisible(agent,false);
@@ -1014,7 +1146,16 @@ window.closeAgent=function(id){
   if(activeProject&&window.forgeAPI?.removeAgentActivity)window.forgeAPI.removeAgentActivity(activeProject.path,a.id).then(refreshAgentActivity);
 };
 if(window.forgeAPI&&window.forgeAPI.onPtyData){window.forgeAPI.onPtyData(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.write(data.data);a._lastPtyActivity=Date.now();}else{var buffered=(earlyPtyData.get(data.sessionId)||'')+data.data;earlyPtyData.set(data.sessionId,buffered.slice(-100000));}});}
-if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');a.sessionId=null;hideMcpBadge(a.id);setAgentReady(a,t('agent_finished'));if(activeProject&&window.forgeAPI?.updateAgentActivity)window.forgeAPI.updateAgentActivity(activeProject.path,a.id,{name:a.name,status:'done',resources:[]}).then(refreshAgentActivity);saveAgentState();}else{earlyPtyExit.set(data.sessionId,data);}});}
+async function finishAgentProcess(agent,exitCode){
+  agent.sessionId=null;hideMcpBadge(agent.id);
+  const succeeded=Number(exitCode)===0;
+  setAgentReady(agent,succeeded?t('agent_needs_review'):t('agent_failed'));
+  if(activeProject&&window.forgeAPI?.updateAgentActivity){
+    await window.forgeAPI.updateAgentActivity(activeProject.path,agent.id,{name:agent.name,status:succeeded?'needs-review':'failed',resources:[]});
+  }
+  await refreshAgentActivity();saveAgentState();
+}
+if(window.forgeAPI&&window.forgeAPI.onPtyExit){window.forgeAPI.onPtyExit(function(data){var a=agents.find(function(a){return a.sessionId===data.sessionId;});if(a&&a.xterm){a.xterm.writeln('\x1b[31m[Processus terminé - code '+data.exitCode+']\x1b[0m');finishAgentProcess(a,data.exitCode);}else{earlyPtyExit.set(data.sessionId,data);}});}
 
 let agentActivityTimer=null;
 async function refreshAgentActivity(){
@@ -1025,9 +1166,14 @@ async function refreshAgentActivity(){
     agents.forEach(function(agent){
       const element=document.getElementById('task-'+agent.id);if(!element)return;
       const item=byId.get(agent.id);const conflicts=item?.conflicts||[];
+      const state=document.getElementById('state-'+agent.id);
+      if(state)state.textContent=agent.starting?t('agent_starting'):t(item?.status==='failed'?'polish_failed':item?.status==='needs-review'?'polish_review':item?.status==='working'?'polish_working':agent.sessionId?'polish_running':'polish_ready');
       element.classList.toggle('working',item?.status==='working'&&!conflicts.length);
       element.classList.toggle('conflict',conflicts.length>0);
-      element.textContent=conflicts.length?t('agent_task_conflict').replace('{agents}',conflicts.map(function(value){return value.agentName;}).join(', ')):(item?.task||t('agent_task_none'));
+      element.classList.toggle('needs-review',item?.status==='needs-review'&&!conflicts.length);
+      element.classList.toggle('failed',item?.status==='failed'&&!conflicts.length);
+      const task=item?.task||t('agent_task_none');
+      element.textContent=conflicts.length?t('agent_task_conflict').replace('{agents}',conflicts.map(function(value){return value.agentName;}).join(', ')):(item?.status==='needs-review'?t('agent_task_needs_review').replace('{task}',task):(item?.status==='failed'?t('agent_task_failed').replace('{task}',task):task));
       const resources=item?.resources||[];
       element.title=(item?.task||t('agent_task_none'))+(resources.length?'\n'+t('agent_task_resources').replace('{resources}',resources.join(', ')):'')+(conflicts.length?'\n'+t('agent_task_conflict_on').replace('{resources}',conflicts.flatMap(function(value){return value.resources;}).join(', ')):'');
     });
@@ -1035,6 +1181,22 @@ async function refreshAgentActivity(){
 }
 agentActivityTimer=setInterval(refreshAgentActivity,1800);
 window.addEventListener('pagehide',function(){if(agentActivityTimer)clearInterval(agentActivityTimer);});
+
+let fileSyncStatusTimer=null;
+async function refreshFileSyncStatus(){
+  const pill=document.getElementById('syncPill'),label=document.getElementById('syncPillText');
+  if(!pill||!label||!activeProject||!window.forgeAPI?.getFileSyncStatus)return;
+  try{
+    const status=await window.forgeAPI.getFileSyncStatus(activeProject.path);if(status?.error)return;
+    const phase=status?.phase||'stopped';
+    const labels={stopped:'sync_stopped',scanning:'sync_scanning',compiling:'sync_compiling',syncing:'sync_syncing','waiting-studio':'sync_waiting_studio','compile-error':'sync_compile_error',synced:'sync_synced'};
+    pill.className='sync-pill '+phase;
+    label.textContent=t(labels[phase]||'sync_stopped')+(status.pending?' ('+status.pending+')':'');
+    pill.title=status.error||label.textContent;
+  }catch(error){pill.className='sync-pill waiting-studio';label.textContent=t('sync_waiting_studio');pill.title=error.message||String(error);}
+}
+fileSyncStatusTimer=setInterval(refreshFileSyncStatus,1200);refreshFileSyncStatus();
+window.addEventListener('pagehide',function(){if(fileSyncStatusTimer)clearInterval(fileSyncStatusTimer);});
 
 let mcpActivityTimer=null;
 function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b){b.style.opacity='0';setTimeout(function(){b.style.display='none';},200);}}
@@ -1909,9 +2071,9 @@ function pushNotification(data){
   renderNotifList();
   updateBadge();
   // play sound if enabled
-  try{var s=JSON.parse(localStorage.getItem('forge_settings')||'{}');if(s.notifSound!==false){var audio=new Audio('data:audio/wav;base64,UklGRl9vT19teleQBAABABABAAEARBYAAABhYWRkYXRlAgAACKAAAPhUkQAA');audio.volume=0.3;audio.play().catch(function(){});}}catch(e){}
+  if(forgePreferences().notifSound!==false)playResultSound();
   // auto-open panel briefly
-  if(!notifPanelOpen){
+  if(!notifPanelOpen && forgePreferences().notifAutoOpen !== false){
     document.getElementById('notifPanel').classList.add('open');
     notifPanelOpen=true;
   }
@@ -1919,6 +2081,18 @@ function pushNotification(data){
 }
 
 // Listen for IPC notifications from agents
+async function playResultSound(){
+  let audio;
+  try{
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;if(!AudioContextClass)return;
+    audio=new AudioContextClass();await audio.resume();
+    const oscillator=audio.createOscillator(),gain=audio.createGain();
+    oscillator.type='sine';oscillator.frequency.value=660;
+    gain.gain.setValueAtTime(0.08,audio.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,audio.currentTime+0.18);
+    oscillator.connect(gain);gain.connect(audio.destination);oscillator.start();oscillator.stop(audio.currentTime+0.2);
+    oscillator.onended=()=>audio.close().catch(()=>{});
+  }catch(_){if(audio)audio.close().catch(()=>{});}
+}
 if(window.forgeAPI&&window.forgeAPI.onNotification){
   window.forgeAPI.onNotification(function(data){pushNotification(data);});
 }
@@ -2325,7 +2499,7 @@ function loadFBXViewer(canvas, filePath) {
       if (result.warnings.length > 0) {
         console.warn('[Forge] Animation warnings:', result.warnings);
       }
-      canvas._validationReport = validator.generateReport(result);
+      canvas._validationReport = { ...result, reportText: validator.generateReport(result) };
     }
 
     const container = document.createElement('div');
@@ -2523,8 +2697,7 @@ function loadFBXViewer(canvas, filePath) {
 
     validateBtn.onclick = () => {
       if (canvas._validationReport) {
-        console.log(canvas._validationReport);
-        alert('Rapport de validation affiché dans la console (F12)');
+        openQualityLab(canvas._validationReport);
       } else {
         alert('Aucun rapport de validation disponible');
       }

@@ -4,9 +4,10 @@
    ============================================ */
 
 :root {
-  --char:#14110E;--char2:#1C1712;--char3:#221C15;--char4:#2A2318;
-  --border:#2C2419;--border-light:#3A3024;--border-hover:#4A3E30;
-  --bone:#F3EDE3;--smoke:#948B7C;--smoke-dim:#6B6255;
+  color-scheme:dark;
+  --char:#101318;--char2:#181D25;--char3:#202733;--char4:#293343;
+  --border:#2B3442;--border-light:#3B485B;--border-hover:#64748B;
+  --bone:#F1F5FA;--smoke:#B2BDCC;--smoke-dim:#95A3B8;
   --ember:#3B82F6;--ember-light:#60A5FA;--ember-dim:#1E3A5F;
   --success:#5FBE7A;--success-dim:#233327;
   --error:#E35B5B;--error-dim:#2A1515;
@@ -14,36 +15,67 @@
   --info:#5B9BE3;
 
   /* Card / overlay backgrounds — utilisent les variables au lieu de rgba hardcoded */
-  --card-bg:rgba(28,23,18,0.5);
-  --card-bg-solid:rgba(28,23,18,0.97);
-  --card-bg-hover:rgba(28,23,18,0.7);
-  --sidebar-bg:rgba(18,15,12,0.98);
-  --overlay-bg:rgba(20,17,14,0.7);
-  --header-bg:rgba(34,28,21,0.4);
-  --toast-bg:rgba(28,23,18,0.92);
-  --tooltip-bg:rgba(28,23,18,0.95);
-  --input-bg:rgba(28,23,18,0.6);
-  --modal-bg:rgba(20,17,14,0.85);
+  --card-bg:rgba(24,29,37,0.85);
+  --card-bg-solid:#181D25;
+  --card-bg-hover:#202733;
+  --sidebar-bg:#141922;
+  --overlay-bg:rgba(16,19,24,0.7);
+  --header-bg:#1B222D;
+  --toast-bg:#202733;
+  --tooltip-bg:#202733;
+  --input-bg:#181D25;
+  --modal-bg:rgba(16,19,24,0.9);
 }
 
 html.light-theme {
-  --char:#F5F2ED;--char2:#EDEAE4;--char3:#E5E1DA;--char4:#DDD9D1;
-  --border:#D5D0C8;--border-light:#C8C2B8;--border-hover:#B8B2A8;
-  --bone:#1A1612;--smoke:#6B6255;--smoke-dim:#948B7C;
-  --ember:#2563EB;--ember-light:#60A5FA;--ember-dim:#DBEAFE;
+  color-scheme:light;
+  --char:#F5F7FA;--char2:#FFFFFF;--char3:#EDF1F7;--char4:#E2E8F0;
+  --border:#DCE2EC;--border-light:#C4CDDC;--border-hover:#8998AF;
+  --bone:#192334;--smoke:#4B586A;--smoke-dim:#586579;
+  --ember:#2563EB;--ember-light:#1D4ED8;--ember-dim:#DBEAFE;
   --success:#3A9A55;--success-dim:#D4F0DC;
   --error:#CC3333;--error-dim:#F5D4D4;
   --ok:#3A9A55;--ko:#CC3333;
   --info:#3A7ACC;
 
-  --card-bg:rgba(237,234,228,0.5);
-  --card-bg-solid:rgba(237,234,228,0.97);
-  --card-bg-hover:rgba(237,234,228,0.7);
-  --sidebar-bg:rgba(245,242,237,0.98);
+  --card-bg:#FFFFFF;
+  --card-bg-solid:#FFFFFF;
+  --card-bg-hover:#EDF1F7;
+  --sidebar-bg:#FFFFFF;
   --overlay-bg:rgba(237,234,228,0.7);
-  --header-bg:rgba(229,225,218,0.4);
+  --header-bg:#EDF1F7;
   --toast-bg:rgba(237,234,228,0.92);
   --tooltip-bg:rgba(237,234,228,0.95);
-  --input-bg:rgba(237,234,228,0.6);
+  --input-bg:#FFFFFF;
   --modal-bg:rgba(237,234,228,0.85);
 }
+
+/* Shared shell and accessible interaction states. */
+.forge-navigation{position:fixed;inset:0 0 auto;z-index:100;height:58px;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:0 28px;background:var(--sidebar-bg);border-bottom:1px solid var(--border);font:500 13px Inter,system-ui,sans-serif;}
+.forge-navigation a{color:var(--smoke);text-decoration:none;padding:10px 14px;border-radius:8px;white-space:nowrap;}
+.forge-navigation a:hover{background:var(--char3);color:var(--bone);}
+.forge-navigation a[aria-current]{color:var(--ember-light);background:var(--ember-dim);}
+.forge-navigation .forge-brand{font-weight:800;letter-spacing:2px;color:var(--bone);margin-right:24px;}
+.forge-shell:not(.forge-workspace){padding-top:102px!important;}
+.forge-shell:not(.forge-workspace)>.top-bar{top:72px!important;}
+.forge-shell>.back-btn{top:70px!important;padding:7px 12px!important;}
+.forge-workspace .forge-navigation{position:relative;flex-shrink:0;}
+.forge-shell.forge-media{padding:0!important;}
+.forge-media .forge-navigation{position:relative;flex-shrink:0;}
+.forge-workspace>.top-bar{height:auto!important;min-height:60px;flex-wrap:wrap;padding:12px 20px!important;gap:10px!important;}
+.forge-workspace>.top-bar>.logo-pill,.forge-workspace>.top-bar>.media-btn{display:none;}
+.forge-workspace .top-actions{margin-left:auto;flex-wrap:wrap;}
+.forge-shell :is(button,input,select,textarea,a):focus-visible{outline:2px solid var(--ember-light)!important;outline-offset:3px;}
+.forge-shell :is(button,select){min-height:32px;}
+.forge-shell button:disabled{opacity:.45;cursor:not-allowed;}
+.forge-shell :is(.proj-card,.acc-card,.agent-card,.settings-card){border-color:var(--border);}
+.forge-shell :is(.btn-mini.primary,.btn-top.primary){color:#fff;}
+.forge-shell .btn-top:not(.primary){color:var(--bone);background:var(--char3);border:1px solid var(--border-light);}
+.forge-shell .btn-top:not(.primary):hover{border-color:var(--ember);}
+.forge-workspace .agent-header{flex-wrap:wrap;}
+.forge-workspace .agent-panel{min-width:0;}
+html[data-density=compact] .forge-shell :is(.proj-card,.setting-row){padding:12px;}
+html[data-density=compact] .forge-navigation{height:48px;}
+html.reduce-motion *,html.reduce-motion *::before,html.reduce-motion *::after{animation-duration:.01ms!important;animation-delay:0ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0ms!important;transition-duration:.01ms!important;}}
+@media(max-width:760px){.forge-navigation{padding:0 8px;gap:0;overflow:auto;}.forge-navigation a{padding:9px;}.forge-navigation .forge-brand{margin-right:4px;}.forge-shell:not(.forge-workspace){padding-left:16px!important;padding-right:16px!important;}.forge-workspace .top-actions{margin-left:0;}}

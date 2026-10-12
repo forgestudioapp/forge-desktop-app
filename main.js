@@ -67,7 +67,8 @@ const {
 MAX_ATTEMPTS,
 } = require('./lib/artistic-quality-loop');
 
-const { isSyncableScript, buildStudioSyncCode, mcpToolResultError } = require('./lib/file-sync');
+const { isSyncableScript, buildStudioSyncCode, buildStudioDeleteCode, mcpToolResultError } = require('./lib/file-sync');
+const { collectCompiledScripts, changedCompiledScripts } = require('./lib/typescript-sync');
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
 const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
 const {
@@ -229,7 +230,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
       const proc = spawn(cmd, args, {
         cwd: projectPath,
         shell: true,
-        env: { ...process.env, FORCE_COLOR: '1', CLICOLOR_FORCE: '1' }
+        env: { ...process.env, ...getRobloxMcpEnv(), FORCE_COLOR: '1', CLICOLOR_FORCE: '1' }
       });
 
       this.sessions.set(sessionId, {
@@ -783,6 +784,8 @@ function userDataFile(name) {
 // Racine des projets propre au compte courant.
 function getUserProjectsRoot() {
   const key = getCurrentUserKey();
+  const customRoot = loadAppSettings().projectsDirectory;
+  if (typeof customRoot === 'string' && isPathAllowed(customRoot)) return key ? path.join(customRoot, key) : customRoot;
   return key ? path.join(FORGE_PROJECTS_ROOT, key) : FORGE_PROJECTS_ROOT;
 }
 
@@ -1100,6 +1103,27 @@ ipcMain.handle('is-roblox-connected', async () => {
     };
   } catch {
     return { connected: false };
+  }
+});
+
+ipcMain.handle('verify-roblox-ai-access', async () => {
+  const tokenPath = userDataFile('roblox-token.json');
+  if (!fs.existsSync(tokenPath)) return { connected: false, aiAccessReady: false, error: 'Aucun compte Roblox connecté.' };
+  try {
+    const result = await syncMcpCallTool('forge_get_roblox_account', {}, 15000);
+    const toolError = mcpToolResultError(result);
+    if (toolError) return { connected: true, aiAccessReady: false, error: toolError };
+    const account = parseMcpJsonResult(result);
+    if (!account || account.error) {
+      return { connected: true, aiAccessReady: false, error: account?.error || 'Le MCP n’a pas renvoyé le compte Roblox.' };
+    }
+    return {
+      connected: true,
+      aiAccessReady: Boolean(account.sub),
+      account: { id: account.sub || null, username: account.preferred_username || account.nickname || null },
+    };
+  } catch (err) {
+    return { connected: true, aiAccessReady: false, error: err.message || String(err) };
   }
 });
 
@@ -1511,6 +1535,13 @@ function getForgePluginPath() {
   return getBundledResourcePath('ForgePlugin.rbxmx');
 }
 
+function getRobloxMcpEnv() {
+  return {
+    FORGE_ROBLOX_TOKEN_FILE: userDataFile('roblox-token.json'),
+    FORGE_ROBLOX_CLIENT_ID: ROBLOX_CLIENT_ID,
+  };
+}
+
 function writeAgentMcpConfig(mcpServerPath, projectPath) {
   const configDir = path.join(app.getPath('userData'), 'mcp');
   fs.mkdirSync(configDir, { recursive: true });
@@ -1522,7 +1553,7 @@ function writeAgentMcpConfig(mcpServerPath, projectPath) {
   
   const config = {
     mcpServers: {
-      forge_roblox: { command: forgeNodeCommand, args: [mcpServerPath] },
+      forge_roblox: { command: forgeNodeCommand, args: [mcpServerPath], env: getRobloxMcpEnv() },
       ...(projectPath && memoryMcpPath && fs.existsSync(memoryMcpPath) ? {
         forge_memory: { 
           command: memoryMcpPath, 
@@ -1553,7 +1584,7 @@ function ensureAgyMcpEntry(mcpServerPath) {
     if (!config.mcpServers || typeof config.mcpServers !== 'object') {
       config.mcpServers = {};
     }
-    config.mcpServers.forge_roblox = { command: forgeNodeCommand, args: [mcpServerPath], disabled: false };
+    config.mcpServers.forge_roblox = { command: forgeNodeCommand, args: [mcpServerPath], env: getRobloxMcpEnv(), disabled: false };
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
     return true;
@@ -1576,16 +1607,30 @@ function resolveAgyCommand() {
 function ensureCodexMcpEntry(mcpServerPath) {
   try {
     const { spawnSync } = require('child_process');
-    const res = spawnSync('codex', ['mcp', 'add', 'forge_roblox', '--', forgeNodeCommand, mcpServerPath], {
-      shell: true, timeout: 10000, windowsHide: true
+    const robloxEnv = getRobloxMcpEnv();
+    // Forge owns this named entry. Replacing it ensures an entry created by an
+    // older version also receives the OAuth token path used by the AI tools.
+    spawnSync('codex', ['mcp', 'remove', 'forge_roblox'], {
+      shell: false, timeout: 10000, windowsHide: true
+    });
+    const res = spawnSync('codex', [
+      'mcp', 'add', 'forge_roblox',
+      '--env', `FORGE_ROBLOX_TOKEN_FILE=${robloxEnv.FORGE_ROBLOX_TOKEN_FILE}`,
+      '--env', `FORGE_ROBLOX_CLIENT_ID=${robloxEnv.FORGE_ROBLOX_CLIENT_ID}`,
+      '--', forgeNodeCommand, mcpServerPath
+    ], {
+      shell: false, timeout: 10000, windowsHide: true
     });
     if (res.status === 0) {
       console.log('[Agents] MCP forge_roblox enregistre pour Codex.');
+      return true;
     } else {
       console.warn('[Agents] codex mcp add retourne', res.status, (res.stderr || '').toString().slice(0, 200));
+      return false;
     }
   } catch (e) {
     console.error('[Agents] Impossible d\'enregistrer le MCP Codex:', e.message);
+    return false;
   }
 }
 
@@ -1631,8 +1676,7 @@ function startMcpServer() {
   // lu paresseusement, donc on passe toujours le chemin meme s'il n'existe pas
   // encore (l'utilisateur peut connecter son compte apres le demarrage).
   const mcpEnv = { ...process.env };
-  mcpEnv.FORGE_ROBLOX_TOKEN_FILE = userDataFile('roblox-token.json');
-  mcpEnv.FORGE_ROBLOX_CLIENT_ID = ROBLOX_CLIENT_ID;
+  Object.assign(mcpEnv, getRobloxMcpEnv());
 
   // Injecter les cles API sauvegardees par l'utilisateur (page Cles API).
   // Le serveur MCP lit TRIPO_API_KEY / ROBLOX_API_KEY via process.env ;
@@ -1807,8 +1851,7 @@ function startSyncMcpServer() {
   if (!finalPath) { console.error('[SyncMCP] Serveur introuvable'); return; }
 
   const mcpEnv = { ...process.env };
-  mcpEnv.FORGE_ROBLOX_TOKEN_FILE = userDataFile('roblox-token.json');
-  mcpEnv.FORGE_ROBLOX_CLIENT_ID = ROBLOX_CLIENT_ID;
+  Object.assign(mcpEnv, getRobloxMcpEnv());
   const userApiKeys = loadApiKeys();
   if (userApiKeys.tripo) mcpEnv.TRIPO_API_KEY = userApiKeys.tripo;
   if (userApiKeys.roblox) mcpEnv.ROBLOX_API_KEY = userApiKeys.roblox;
@@ -1985,6 +2028,60 @@ ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
     console.error('[MCP] Erreur execute_luau:', err.message);
     return { error: err.message };
   }
+});
+
+async function runQualityLabTool(projectPath, toolName, args, timeoutMs = 15000, verifyPlace = false) {
+  if (!projectPath || !isPathAllowed(projectPath)) return { error: 'Projet invalide ou non autorisé.' };
+  if (verifyPlace) {
+    const association = await ensureProjectPlaceAssociation(projectPath);
+    if (association.error) return association;
+  }
+  try {
+    const result = await syncMcpCallTool(toolName, args || {}, timeoutMs);
+    const toolError = mcpToolResultError(result);
+    if (toolError) return { error: toolError };
+    const data = parseMcpJsonResult(result);
+    if (!data) return { error: 'Réponse invalide du plugin Forge dans Roblox Studio.' };
+    if (data.error) return { error: data.message || String(data.error), data };
+    return { success: true, data };
+  } catch (err) {
+    return { error: err.message || String(err) };
+  }
+}
+
+ipcMain.handle('quality-lab-gui', async (event, projectPath, multiDevice) => {
+  const devices = [
+    { name: 'Desktop', width: 1920, height: 1080, orientation: 'Landscape' },
+    { name: 'Tablet', width: 1024, height: 768, orientation: 'Landscape' },
+    { name: 'Mobile', width: 390, height: 844, orientation: 'Portrait' },
+  ];
+  return runQualityLabTool(
+    projectPath,
+    multiDevice ? 'test_gui_multi_device' : 'inspect_gui',
+    multiDevice ? { rootPath: '', devices } : { rootPath: '' },
+    multiDevice ? 30000 : 15000,
+    true
+  );
+});
+
+ipcMain.handle('quality-lab-playtest-start', async (event, projectPath, mode, players) => {
+  const safeMode = ['play', 'run', 'multiplayer'].includes(mode) ? mode : 'play';
+  const safePlayers = Math.max(1, Math.min(8, Number.parseInt(players, 10) || 2));
+  return runQualityLabTool(
+    projectPath,
+    'start_playtest',
+    safeMode === 'multiplayer' ? { mode: safeMode, players: safePlayers } : { mode: safeMode },
+    30000,
+    true
+  );
+});
+
+ipcMain.handle('quality-lab-playtest-output', async (event, projectPath) => {
+  return runQualityLabTool(projectPath, 'get_playtest_output', {}, 10000);
+});
+
+ipcMain.handle('quality-lab-playtest-stop', async (event, projectPath) => {
+  return runQualityLabTool(projectPath, 'stop_playtest', {}, 15000);
 });
 
 // ============================================
@@ -3200,6 +3297,24 @@ function saveAppSettings(s) {
 }
 
 ipcMain.handle('get-app-settings', async () => loadAppSettings());
+ipcMain.handle('get-app-info', async () => ({ version: app.getVersion(), platform: process.platform }));
+ipcMain.handle('get-projects-location', async () => ({ path: getUserProjectsRoot() }));
+ipcMain.handle('get-active-project-info', async () => {
+  try {
+    const file = userDataFile('active-project.json');
+    return { project: fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('choose-projects-location', async () => {
+  const result = await dialog.showOpenDialog({ title: 'Dossier des nouveaux projets Forge', properties: ['openDirectory', 'createDirectory'] });
+  if (result.canceled || !result.filePaths[0]) return { canceled: true };
+  const directory = result.filePaths[0];
+  if (!isPathAllowed(directory)) return { error: 'Choisis un dossier dans Documents, Bureau ou tes dossiers de développement autorisés.' };
+  const settings = loadAppSettings(); settings.projectsDirectory = directory;
+  // Unlike legacy saveAppSettings, propagate a write failure to the interface.
+  fs.writeFileSync(userDataFile('forge-settings.json'), JSON.stringify(settings, null, 2));
+  return { path: getUserProjectsRoot() };
+});
 ipcMain.handle('save-app-settings', async (event, s) => { saveAppSettings(s); return { success: true }; });
 
 // Suppression d'arriere-plan en un clic depuis le renderer.
@@ -3770,6 +3885,7 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
       FORGE_AGENT_NAME: String(agentName || agentType || 'Agent'),
       FORGE_AGENT_ACTIVITY_FILE: agentActivityFile(projectPath),
       FORGE_AGENT_REPORTER: path.join(__dirname, 'lib', 'agent-reporter-cli.js'),
+      ...getRobloxMcpEnv(),
     };
     if (userApiKeys.gemini) ptyEnv.GEMINI_API_KEY = userApiKeys.gemini;
     if (userApiKeys.elevenlabs) ptyEnv.ELEVENLABS_API_KEY = userApiKeys.elevenlabs;
@@ -4069,6 +4185,11 @@ let fileSyncFlushInProgress = false;
 const fileSyncDebounceTimers = new Map();
 const pendingScriptSyncs = new Map();
 const knownScriptSignatures = new Map();
+const knownCompiledSignatures = new Map();
+let typescriptBuildTimer = null;
+let typescriptBuildInProgress = false;
+let typescriptBuildRequested = false;
+let fileSyncStatus = { phase: 'stopped', error: null, pending: 0, lastSyncedAt: null };
 const MCP_HTTP_PORT = 58741;
 
 // Extensions → asset type + target folder
@@ -4446,6 +4567,57 @@ function scheduleSourceFileSync(srcPath, filename, delayMs = 250) {
   fileSyncDebounceTimers.set(key, timer);
 }
 
+function scheduleTypeScriptBuild(projectPath, delayMs = 350) {
+  if (typescriptBuildTimer) clearTimeout(typescriptBuildTimer);
+  typescriptBuildTimer = setTimeout(() => {
+    typescriptBuildTimer = null;
+    runTypeScriptBuild(projectPath);
+  }, delayMs);
+}
+
+async function runTypeScriptBuild(projectPath) {
+  if (projectPath !== currentSyncProjectPath) return;
+  if (typescriptBuildInProgress) {
+    typescriptBuildRequested = true;
+    return;
+  }
+  typescriptBuildInProgress = true;
+  fileSyncStatus = { ...fileSyncStatus, phase: 'compiling', error: null };
+  try {
+    const result = await compileTypeScript(projectPath);
+    if (projectPath !== currentSyncProjectPath) return;
+    if (!result.success) {
+      fileSyncStatus = { ...fileSyncStatus, phase: 'compile-error', error: result.error };
+      console.error('[FileSync] Echec compilation TypeScript:', result.error);
+      return;
+    }
+    const compiled = collectCompiledScripts(projectPath);
+    for (const [filename, entry] of changedCompiledScripts(knownCompiledSignatures, compiled)) {
+      enqueueScriptSync(filename, entry.source);
+    }
+    for (const filename of knownCompiledSignatures.keys()) {
+      if (!compiled.has(filename)) enqueueScriptDelete(filename);
+    }
+    knownCompiledSignatures.clear();
+    for (const [filename, entry] of compiled) knownCompiledSignatures.set(filename, entry.hash);
+    fileSyncStatus = {
+      ...fileSyncStatus,
+      phase: pendingScriptSyncs.size ? 'syncing' : 'synced',
+      error: null,
+      pending: pendingScriptSyncs.size,
+    };
+  } catch (error) {
+    fileSyncStatus = { ...fileSyncStatus, phase: 'compile-error', error: error.message };
+    console.error('[FileSync] Echec lecture du resultat compile:', error.message);
+  } finally {
+    typescriptBuildInProgress = false;
+    if (typescriptBuildRequested && currentSyncProjectPath) {
+      typescriptBuildRequested = false;
+      scheduleTypeScriptBuild(currentSyncProjectPath, 50);
+    }
+  }
+}
+
 async function processSourceFile(srcPath, filename) {
   if (path.dirname(srcPath) !== currentSyncProjectPath) return;
   const filePath = path.join(srcPath, filename);
@@ -4455,20 +4627,7 @@ async function processSourceFile(srcPath, filename) {
   if (ext === '.ts' || ext === '.tsx') {
     const projectPath = path.dirname(srcPath);
     if (fs.existsSync(path.join(projectPath, 'tsconfig.json'))) {
-      console.log('[FileSync] Compilation TypeScript pour:', filename);
-      const result = await compileTypeScript(projectPath);
-      if (!result.success) {
-        console.error('[FileSync] Echec compilation TypeScript:', result.error);
-        return;
-      }
-      const normalized = filename.replace(/\\/g, '/');
-      const compiledRelative = normalized.replace(/\.(?:ts|tsx)$/i, '.luau');
-      const compiledPath = path.join(projectPath, 'out', ...compiledRelative.split('/'));
-      if (!fs.existsSync(compiledPath)) {
-        console.warn('[FileSync] Fichier compile introuvable:', compiledPath);
-        return;
-      }
-      enqueueScriptSync(compiledRelative, fs.readFileSync(compiledPath, 'utf8'));
+      scheduleTypeScriptBuild(projectPath);
       return;
     }
   }
@@ -4501,6 +4660,18 @@ function reconcileSourceScripts(srcPath, force = false) {
     if (!present.has(key)) {
       knownScriptSignatures.delete(key);
       indexChanged = true;
+      if (/\.(?:ts|tsx)$/i.test(key) && fs.existsSync(path.join(path.dirname(srcPath), 'tsconfig.json'))) {
+        const compiled = key.replace(/\.(?:ts|tsx)$/i, '.luau');
+        if (knownCompiledSignatures.has(compiled)) {
+          const oldOutput = path.join(path.dirname(srcPath), 'out', ...compiled.split('/'));
+          try { fs.rmSync(oldOutput, { force: true }); } catch (error) { console.warn('[FileSync] Sortie obsolete non supprimee:', error.message); }
+          knownCompiledSignatures.delete(compiled);
+          enqueueScriptDelete(compiled);
+        }
+        scheduleTypeScriptBuild(path.dirname(srcPath));
+      } else if (/\.luau?$/i.test(key)) {
+        enqueueScriptDelete(key);
+      }
     }
   }
   if (indexChanged) scheduleProjectIndex(path.dirname(srcPath));
@@ -4509,6 +4680,14 @@ function reconcileSourceScripts(srcPath, force = false) {
 function enqueueScriptSync(filename, source) {
   const key = filename.replace(/\\/g, '/');
   pendingScriptSyncs.set(key, { filename: key, source, projectPath: currentSyncProjectPath });
+  fileSyncStatus = { ...fileSyncStatus, phase: 'syncing', pending: pendingScriptSyncs.size };
+  flushPendingScriptSyncs();
+}
+
+function enqueueScriptDelete(filename) {
+  const key = filename.replace(/\\/g, '/');
+  pendingScriptSyncs.set(key, { filename: key, deleted: true, projectPath: currentSyncProjectPath });
+  fileSyncStatus = { ...fileSyncStatus, phase: 'syncing', pending: pendingScriptSyncs.size };
   flushPendingScriptSyncs();
 }
 
@@ -4528,6 +4707,7 @@ async function flushPendingScriptSyncs() {
     const association = await ensureProjectPlaceAssociation(currentSyncProjectPath);
     if (association.error) {
       console.warn('[FileSync] Synchronisation bloquee:', association.error);
+      fileSyncStatus = { ...fileSyncStatus, phase: 'waiting-studio', error: association.error, pending: pendingScriptSyncs.size };
       return;
     }
     while (pendingScriptSyncs.size > 0) {
@@ -4536,9 +4716,21 @@ async function flushPendingScriptSyncs() {
         pendingScriptSyncs.delete(key);
         continue;
       }
-      const result = await syncScriptToStudio(job.filename, job.source);
-      if (!result.success) break;
+      const result = job.deleted
+        ? await deleteScriptFromStudio(job.filename)
+        : await syncScriptToStudio(job.filename, job.source);
+      if (!result.success) {
+        fileSyncStatus = { ...fileSyncStatus, phase: 'waiting-studio', error: result.error, pending: pendingScriptSyncs.size };
+        break;
+      }
       if (pendingScriptSyncs.get(key) === job) pendingScriptSyncs.delete(key);
+      fileSyncStatus = {
+        ...fileSyncStatus,
+        phase: pendingScriptSyncs.size ? 'syncing' : 'synced',
+        error: null,
+        pending: pendingScriptSyncs.size,
+        lastSyncedAt: new Date().toISOString(),
+      };
     }
   } finally {
     fileSyncFlushInProgress = false;
@@ -4563,6 +4755,7 @@ function startFileSync(projectPath) {
 
   console.log('[FileSync] Surveillance activee pour:', srcPath);
   currentSyncProjectPath = projectPath;
+  fileSyncStatus = { phase: 'scanning', error: null, pending: 0, lastSyncedAt: null };
 
 
   try {
@@ -4582,6 +4775,8 @@ function startFileSync(projectPath) {
   // Un scan régulier rattrape les événements fs.watch manqués, les créations
   // atomiques et les changements effectués pendant que Studio était fermé.
   reconcileSourceScripts(srcPath, true);
+  if (fs.existsSync(path.join(projectPath, 'tsconfig.json'))) scheduleTypeScriptBuild(projectPath, 100);
+  else if (pendingScriptSyncs.size === 0) fileSyncStatus = { ...fileSyncStatus, phase: 'synced' };
   sourceReconcileTimer = setInterval(() => reconcileSourceScripts(srcPath), 1500);
   if (sourceReconcileTimer.unref) sourceReconcileTimer.unref();
 
@@ -4593,6 +4788,9 @@ function startFileSync(projectPath) {
 }
 
 function stopFileSync() {
+  if (typescriptBuildTimer) clearTimeout(typescriptBuildTimer);
+  typescriptBuildTimer = null;
+  typescriptBuildRequested = false;
   if (fileWatcher) {
     fileWatcher.close();
     fileWatcher = null;
@@ -4607,7 +4805,9 @@ function stopFileSync() {
   fileSyncDebounceTimers.clear();
   pendingScriptSyncs.clear();
   knownScriptSignatures.clear();
+  knownCompiledSignatures.clear();
   currentSyncProjectPath = null;
+  fileSyncStatus = { phase: 'stopped', error: null, pending: 0, lastSyncedAt: null };
   console.log('[FileSync] Surveillance arretee');
 }
 
@@ -4681,6 +4881,20 @@ async function syncScriptToStudio(filename, source) {
   }
 }
 
+async function deleteScriptFromStudio(filename) {
+  let plan;
+  try { plan = buildStudioDeleteCode(filename); }
+  catch (error) { return { error: error.message }; }
+  try {
+    const result = await syncMcpCallTool('execute_luau', { code: plan.code, datamodel_type: 'Edit' }, 8000);
+    const toolError = mcpToolResultError(result);
+    if (toolError) throw new Error(toolError);
+    return { success: true };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
 ipcMain.handle('start-file-sync', async (event, projectPath) => {
   const association = await ensureProjectPlaceAssociation(projectPath);
   if (association.error) return association;
@@ -4691,6 +4905,14 @@ ipcMain.handle('start-file-sync', async (event, projectPath) => {
 ipcMain.handle('stop-file-sync', async () => {
   stopFileSync();
   return { success: true };
+});
+
+ipcMain.handle('get-file-sync-status', async (event, projectPath) => {
+  if (!isPathAllowed(projectPath)) return { error: 'Chemin de projet non autorise.' };
+  if (path.resolve(projectPath) !== path.resolve(currentSyncProjectPath || '')) {
+    return { phase: 'stopped', error: null, pending: 0, lastSyncedAt: null };
+  }
+  return { ...fileSyncStatus, pending: pendingScriptSyncs.size };
 });
 
 // ============================================

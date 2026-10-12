@@ -1,651 +1,76 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FORGE — Génère ton jeu Roblox avec l'IA</title>
-<link rel="icon" href="favicon.ico" type="image/x-icon">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root{
-    --char:#14110E;
-    --char2:#1C1712;
-    --char3:#221C15;
-    --border:#2C2419;
-    --border-light:#3A3024;
-    --bone:#F3EDE3;
-    --smoke:#948B7C;
-    --smoke-dim:#6B6255;
-    --ember:#3B82F6;
-    --ember-light:#60A5FA;
-    --ember-dim:#1E3A5F;
-    --success:#5FBE7A;
-    --success-dim:#233327;
-  }
-  *{margin:0;padding:0;box-sizing:border-box;}
-  html{scroll-behavior:smooth; scroll-padding-top:110px;}
-  section[id]{scroll-margin-top:80px;}
-  body{
-    background:var(--char);
-    color:var(--bone);
-    font-family:'Inter',sans-serif;
-    line-height:1.5;
-    overflow-x:hidden;
-  }
-  h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;font-weight:600;letter-spacing:-0.02em;}
-  .mono{font-family:'JetBrains Mono',monospace;}
-  a{color:inherit;text-decoration:none;}
-  img{max-width:100%;display:block;}
-  .wrap{max-width:1180px;margin:0 auto;padding:0 28px;}
-  ::selection{background:var(--ember);color:var(--char);}
-
-  /* focus visibility */
-  button:focus-visible, a:focus-visible, summary:focus-visible{
-    outline:2px solid var(--ember-light); outline-offset:3px;
-  }
-
-  @media (prefers-reduced-motion: reduce){
-    *{animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important;}
-  }
-
-  /* ---------- eyebrow / labels ---------- */
-  .eyebrow{
-    font-family:'JetBrains Mono',monospace;
-    font-size:12px;
-    letter-spacing:0.08em;
-    color:var(--ember-light);
-    display:flex;
-    align-items:center;
-    gap:10px;
-    margin-bottom:14px;
-  }
-  .eyebrow::before{content:"";width:16px;height:1px;background:var(--ember);display:inline-block;}
-  .section-tag{
-    font-family:'JetBrains Mono',monospace;
-    font-size:12px;
-    color:var(--smoke-dim);
-    letter-spacing:0.06em;
-    margin-bottom:8px;
-  }
-
-  /* ---------- header ---------- */
-  header{
-    position:sticky; top:0; z-index:50;
-    background:rgba(20,17,14,0.86);
-    backdrop-filter:blur(10px);
-    border-bottom:1px solid var(--border);
-  }
-  .promo-bar{
-    background:var(--ember);
-    color:var(--char);
-    text-align:center;
-    font-family:'JetBrains Mono',monospace;
-    font-size:13px;
-    font-weight:600;
-    padding:8px 12px;
-    letter-spacing:0.02em;
-  }
-  .nav{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:16px 28px;
-    max-width:1180px; margin:0 auto;
-  }
-  .logo{
-    display:flex; align-items:center; gap:9px;
-    font-family:'Space Grotesk',sans-serif;
-    font-weight:700; font-size:19px; letter-spacing:-0.01em;
-  }
-  .logo-mark{
-    width:28px;height:28px;border-radius:7px;
-    display:block;object-fit:contain;
-  }
-  .nav-links{display:flex; gap:32px; font-size:14.5px; color:var(--smoke);}
-  .nav-links a:hover{color:var(--bone);}
-  .nav-right{display:flex; align-items:center; gap:20px; font-size:14.5px;}
-  .btn{
-    display:inline-flex; align-items:center; justify-content:center; gap:8px;
-    font-family:'Inter',sans-serif; font-weight:600; font-size:14.5px;
-    padding:11px 20px; border-radius:9px; border:none; cursor:pointer;
-    transition:transform .15s ease, background .15s ease, opacity .15s ease;
-  }
-  .btn:active{transform:scale(0.97);}
-  .btn-primary{background:var(--ember); color:var(--char);}
-  .btn-primary:hover{background:var(--ember-light);}
-  .btn-ghost{background:transparent; color:var(--bone); border:1px solid var(--border-light);}
-  .btn-ghost:hover{border-color:var(--ember);}
-  @media(max-width:860px){ .nav-links{display:none;} }
-
-  /* ---------- hero ---------- */
-  .hero{padding:88px 0 60px; position:relative;}
-  .hero-grid{
-    display:grid; grid-template-columns:1.05fr 0.95fr; gap:56px; align-items:center;
-  }
-  @media(max-width:960px){ .hero-grid{grid-template-columns:1fr;} }
-  .hero h1{font-size:clamp(36px,5vw,58px); line-height:1.04; margin-bottom:22px;}
-  .hero h1 em{font-style:normal; color:var(--ember-light);}
-  .hero p.lead{font-size:17px; color:var(--smoke); max-width:480px; margin-bottom:30px;}
-  .hero-cta{display:flex; gap:14px; margin-bottom:38px; flex-wrap:wrap;}
-  .badges{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:44px;}
-  .badge{
-    font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--smoke);
-    border:1px solid var(--border); padding:6px 12px; border-radius:100px;
-  }
-  .stats{display:flex; gap:40px; flex-wrap:wrap;}
-  .stat-num{font-family:'JetBrains Mono',monospace; font-size:28px; font-weight:600; color:var(--bone);}
-  .stat-label{font-size:12.5px; color:var(--smoke-dim); margin-top:2px;}
-
-  /* hero terminal mock */
-  .term{
-    background:var(--char2); border:1px solid var(--border); border-radius:14px;
-    overflow:hidden; box-shadow:0 30px 80px -30px rgba(0,0,0,0.6);
-  }
-  .term-bar{
-    display:flex; align-items:center; gap:7px; padding:12px 16px;
-    border-bottom:1px solid var(--border); background:var(--char3);
-  }
-  .dot{width:10px;height:10px;border-radius:50%;}
-  .term-body{padding:22px; font-family:'JetBrains Mono',monospace; font-size:13.5px; min-height:230px;}
-  .term-line{color:var(--smoke); margin-bottom:12px;}
-  .term-you{color:var(--bone);}
-  .term-you::before{content:"❯ "; color:var(--ember-light);}
-  .cursor{display:inline-block; width:7px; height:15px; background:var(--ember-light); vertical-align:middle; animation:blink 1s steps(1) infinite;}
-  @keyframes blink{50%{opacity:0;}}
-  .check-row{display:flex; align-items:center; gap:9px; margin-top:8px; opacity:0; animation:fadeUp .4s ease forwards;}
-  .check-row svg{flex-shrink:0;}
-  .check-row span{color:var(--smoke);}
-  @keyframes fadeUp{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
-
-  /* ---------- generic section ---------- */
-  section{padding:96px 0;}
-  .section-head{max-width:620px; margin-bottom:52px;}
-  .section-head h2{font-size:clamp(26px,3.4vw,38px); line-height:1.1; margin-bottom:14px;}
-  .section-head p{color:var(--smoke); font-size:15.5px;}
-  .divider{height:1px; background:var(--border); width:100%;}
-
-  /* ---------- showcase ---------- */
-  .showcase-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
-  @media(max-width:860px){.showcase-grid{grid-template-columns:1fr;}}
-  .show-card{
-    background:var(--char2); border:1px solid var(--border); border-radius:14px; overflow:hidden;
-    transition:border-color .2s ease, transform .2s ease;
-  }
-  .show-card:hover{border-color:var(--border-light); transform:translateY(-3px);}
-  .show-thumb{
-    height:150px; display:flex; align-items:center; justify-content:center;
-    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:15px; color:var(--char);
-  }
-  .show-body{padding:18px 20px;}
-  .show-genre{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ember-light); margin-bottom:6px;}
-  .show-name{font-size:16px; font-weight:600; margin-bottom:6px;}
-  .show-meta{font-size:13px; color:var(--smoke-dim); display:flex; justify-content:space-between; align-items:center;}
-
-  /* ---------- 3 steps ---------- */
-  .steps3{display:grid; grid-template-columns:repeat(3,1fr); gap:24px;}
-  @media(max-width:860px){.steps3{grid-template-columns:1fr;}}
-  .step3-card{padding:26px; border:1px solid var(--border); border-radius:14px; background:var(--char2);}
-  .step3-num{font-family:'JetBrains Mono',monospace; color:var(--ember-light); font-size:13px; margin-bottom:14px;}
-  .step3-card h3{font-size:19px; margin-bottom:10px;}
-  .step3-card p{color:var(--smoke); font-size:14.5px;}
-
-  /* ---------- INSTALL SIMULATOR ---------- */
-  .sim-wrap{
-    display:grid; grid-template-columns:260px 1fr; gap:0;
-    border:1px solid var(--border); border-radius:16px; overflow:hidden;
-    background:var(--char2);
-  }
-  @media(max-width:860px){.sim-wrap{grid-template-columns:1fr;}}
-  .sim-nav{border-right:1px solid var(--border); padding:10px;}
-  @media(max-width:860px){.sim-nav{border-right:none; border-bottom:1px solid var(--border); display:flex; overflow-x:auto; gap:4px;}}
-  .sim-nav button{
-    display:block; width:100%; text-align:left; background:transparent; border:none; color:var(--smoke);
-    font-family:'JetBrains Mono',monospace; font-size:12.5px; padding:12px 14px; border-radius:9px; cursor:pointer;
-    white-space:nowrap;
-  }
-  .sim-nav button:hover{background:var(--char3); color:var(--bone);}
-  .sim-nav button.active{background:var(--ember-dim); color:var(--ember-light);}
-  .sim-stage{
-    background:#100D0A; min-height:460px; position:relative;
-    display:flex; align-items:center; justify-content:center; padding:28px;
-  }
-  .sim-screen{width:100%; max-width:560px; display:none;}
-  .sim-screen.active{display:block; animation:fadeUp .35s ease;}
-
-  /* installer wizard look */
-  .wiz{display:flex; border-radius:10px; overflow:hidden; border:1px solid var(--border); box-shadow:0 20px 50px -20px rgba(0,0,0,.7);}
-  .wiz-side{
-    width:38%; background:var(--char); padding:34px 20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
-    border-right:1px solid var(--border);
-  }
-  .wiz-logo{width:52px;height:52px;border-radius:12px; display:flex;align-items:center;justify-content:center; overflow:hidden;}
-  .wiz-logo img{width:100%;height:100%;object-fit:contain;}
-  .wiz-side .name{font-family:'Space Grotesk',sans-serif; font-weight:700; letter-spacing:0.08em; font-size:13px;}
-  .wiz-side .sub{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--ember-light); letter-spacing:0.14em;}
-  .wiz-main{flex:1; background:#F3EDE3; color:#1C1712; padding:26px 24px;}
-  .wiz-main h4{font-size:16px; margin-bottom:12px; color:#14110E;}
-  .wiz-main p{font-size:12.5px; color:#5c5347; margin-bottom:10px; line-height:1.55;}
-  .wiz-btns{display:flex; justify-content:flex-end; gap:8px; margin-top:20px;}
-  .wiz-btns button{font-size:12px; padding:8px 16px; border-radius:5px; border:1px solid #d8cfc0; background:#fff; cursor:pointer; font-family:'Inter';}
-  .wiz-btns .next{background:var(--ember); border-color:var(--ember); color:#fff; font-weight:600;}
-  .wiz-progress{margin-top:16px; height:6px; border-radius:4px; background:#e5ddd0; overflow:hidden;}
-  .wiz-progress-fill{height:100%; background:var(--ember); width:0%; transition:width 1.4s ease;}
-  .wiz-progress-fill.go{width:100%;}
-  .wiz-pct{font-family:'JetBrains Mono',monospace; font-size:11px; color:#8a8175; margin-top:6px;}
-
-  /* setup screen look (dark, dots progress) */
-  .setup{background:#14110E; border:1px solid var(--border); border-radius:10px; padding:30px 26px; box-shadow:0 20px 50px -20px rgba(0,0,0,.7);}
-  .setup-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px;}
-  .setup-dots{display:flex; gap:5px;}
-  .setup-dots i{width:16px; height:3px; border-radius:2px; background:var(--border-light); display:block;}
-  .setup-dots i.on{background:var(--ember);}
-  .setup-lang{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--smoke-dim); display:flex; gap:8px; align-items:center;}
-  .setup-lang b{color:var(--bone);}
-  .setup-step-name{text-align:center; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--smoke-dim); margin-bottom:26px;}
-  .setup-icon{width:56px;height:56px;border-radius:50%; margin:0 auto 18px; display:flex; align-items:center; justify-content:center; background:var(--char3); border:1px solid var(--border-light);}
-  .setup h4{text-align:center; font-size:22px; margin-bottom:10px;}
-  .setup p.desc{text-align:center; color:var(--smoke); font-size:12.5px; max-width:360px; margin:0 auto 22px; line-height:1.6;}
-  .check-item{
-    display:flex; gap:11px; padding:13px 15px; border:1px solid var(--border); border-radius:9px; margin-bottom:9px; background:var(--char2);
-  }
-  .check-item .t{font-size:13px; font-weight:600; margin-bottom:2px;}
-  .check-item .d{font-size:11.5px; color:var(--smoke-dim);}
-  .setup-cta{width:100%; margin-top:8px;}
-  .setup-footstep{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--smoke-dim); margin-top:18px;}
-
-  .acc-card{border:1px solid var(--ember); border-radius:10px; padding:16px; margin-bottom:12px; background:rgba(59,130,246,0.06);}
-  .acc-card.dim{border-color:var(--border); background:transparent;}
-  .acc-top{display:flex; align-items:center; gap:11px; margin-bottom:8px;}
-  .acc-icon{width:32px;height:32px;border-radius:8px; background:var(--ember-dim); display:flex; align-items:center; justify-content:center;}
-  .acc-name{font-weight:700; font-size:13.5px;}
-  .acc-badge{font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--ember-light); border:1px solid var(--ember); padding:2px 7px; border-radius:100px; margin-left:6px;}
-  .acc-badge.opt{color:var(--smoke); border-color:var(--border-light);}
-  .acc-desc{font-size:11.5px; color:var(--smoke); margin-bottom:11px; margin-left:43px;}
-
-  .api-card{border:1px solid var(--border); border-radius:9px; padding:14px 16px; margin-bottom:10px; background:var(--char2);}
-  .api-top{display:flex; justify-content:space-between; align-items:center;}
-  .api-name{font-weight:700; font-size:13px;}
-  .api-desc{font-size:11px; color:var(--smoke-dim); margin-top:2px;}
-  .api-set{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--success); border:1px solid var(--success-dim); background:var(--success-dim); padding:3px 9px; border-radius:100px;}
-
-  .dash-top{display:flex; justify-content:space-between; align-items:center; background:var(--char2); border:1px solid var(--ember); border-radius:9px; padding:14px 16px; margin-bottom:18px;}
-  .dash-top .l{font-size:12px;}
-  .dash-top .l b{display:block; font-size:13.5px;}
-  .dash-top .tag{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ember-light); letter-spacing:0.06em;}
-  .proj-grid{display:grid; grid-template-columns:1fr 1fr; gap:9px;}
-  .proj-card{border:1px solid var(--border); border-radius:9px; padding:12px 13px; font-size:11.5px;}
-  .proj-card.active{border-color:var(--ember); background:rgba(59,130,246,0.06);}
-  .proj-card .n{font-weight:700; font-size:12.5px; margin-bottom:3px;}
-  .proj-card .p{color:var(--smoke-dim); font-family:'JetBrains Mono',monospace; font-size:10px;}
-
-  /* ---------- architecture / router diagram ---------- */
-  .arch{display:grid; grid-template-columns:1fr 1fr; gap:52px; align-items:center;}
-  @media(max-width:900px){.arch{grid-template-columns:1fr;}}
-  .router{position:relative; background:var(--char2); border:1px solid var(--border); border-radius:16px; padding:36px 24px; overflow:hidden;}
-  .router-input{
-    background:var(--char3); border:1px solid var(--border-light); border-radius:9px; padding:12px 14px;
-    font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--bone); margin-bottom:26px;
-  }
-  .router-core{
-    width:64px;height:64px;border-radius:50%; margin:0 auto 26px; background:linear-gradient(150deg,var(--ember),var(--ember-light));
-    display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--char); font-size:12px;
-    box-shadow:0 0 0 8px var(--ember-dim);
-  }
-  .router-branches{display:flex; justify-content:space-between; gap:10px;}
-  .r-branch{flex:1; text-align:center; padding:14px 8px; border-radius:10px; border:1px solid var(--border); position:relative; opacity:0.45; transition:opacity .3s ease, border-color .3s ease;}
-  .r-branch.hit{opacity:1; border-color:var(--ember);}
-  .r-branch .ic{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:15px; margin-bottom:6px;}
-  .r-branch .lb{font-size:10.5px; color:var(--smoke);}
-  .arch-copy p{color:var(--smoke); font-size:15px; margin-bottom:16px;}
-  .arch-copy ul{list-style:none;}
-  .arch-copy li{display:flex; gap:10px; margin-bottom:12px; font-size:14px; color:var(--bone);}
-  .arch-copy li svg{flex-shrink:0; margin-top:3px;}
-
-  /* ---------- asset library ---------- */
-  .asset-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px;}
-  @media(max-width:860px){.asset-grid{grid-template-columns:repeat(2,1fr);}}
-  .asset-card{border:1px solid var(--border); border-radius:12px; padding:20px; background:var(--char2);}
-  .asset-card .count{font-family:'JetBrains Mono',monospace; color:var(--ember-light); font-size:22px; margin-bottom:6px;}
-  .asset-card .label{font-size:14px; font-weight:600;}
-
-  /* ---------- pricing ---------- */
-  .price-card{
-    max-width:440px; margin:0 auto; background:var(--char2); border:1px solid var(--border-light); border-radius:18px; padding:40px 34px;
-    position:relative;
-  }
-  .price-num{font-family:'JetBrains Mono',monospace; font-size:44px; font-weight:700; margin:14px 0 4px;}
-  .price-sub{color:var(--smoke); font-size:13.5px; margin-bottom:26px;}
-  .price-list{list-style:none; margin-bottom:28px;}
-  .price-list li{display:flex; gap:10px; font-size:14px; margin-bottom:11px; color:var(--bone);}
-
-  /* ---------- FAQ ---------- */
-  .faq-item{border-bottom:1px solid var(--border);}
-  .faq-item summary{
-    list-style:none; cursor:pointer; padding:20px 0; display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:15.5px;
-  }
-  .faq-item summary::-webkit-details-marker{display:none;}
-  .faq-item summary .plus{font-family:'JetBrains Mono',monospace; color:var(--ember-light); transition:transform .2s ease;}
-  .faq-item[open] summary .plus{transform:rotate(45deg);}
-  .faq-item p{color:var(--smoke); font-size:14.5px; padding-bottom:20px; max-width:680px;}
-
-  footer{border-top:1px solid var(--border); padding:44px 0; margin-top:20px;}
-  .foot-grid{display:flex; justify-content:space-between; flex-wrap:wrap; gap:24px; align-items:center;}
-  .foot-links{display:flex; gap:22px; font-size:13.5px; color:var(--smoke);}
-  .foot-note{font-size:12px; color:var(--smoke-dim); margin-top:20px;}
-
-  .cta-final{text-align:center; padding:100px 0; background:radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.10), transparent 60%);}
-  .cta-final h2{font-size:clamp(28px,4vw,44px); margin-bottom:20px;}
-</style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080b11">
+<title>Forge — Ton imagination. Un vrai jeu Roblox.</title>
+<meta name="description" content="Crée et améliore ton jeu Roblox avec Forge : gameplay, modèles 3D, interfaces et miniatures. Découvre les créations et la licence Windows à 49 $ US.">
+<link rel="canonical" href="https://forgestudioapp.github.io/forge-desktop-app/">
+<meta property="og:type" content="website"><meta property="og:title" content="Forge — Ton imagination. Un vrai jeu Roblox."><meta property="og:description" content="Décris. Crée. Joue. Découvre ce que tu peux construire dans Roblox Studio avec Forge."><meta property="og:image" content="https://forgestudioapp.github.io/forge-desktop-app/assets/showcase/dragon.webp"><meta property="og:locale" content="fr_FR">
+<link rel="icon" href="favicon.ico"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="landing.css"><script src="landing.js" defer></script><script src="analytics.js" defer></script>
 </head>
 <body>
+<svg class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+<symbol id="i-cube" viewBox="0 0 24 24"><path d="m12 3 9 5v9l-9 5-9-5V8Zm0 10v9M3 8l9 5 9-5M7.5 5.5l9 5"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-windows" viewBox="0 0 24 24"><path d="m3 5 8-1v7H3Zm10-1 8-1v8h-8ZM3 13h8v7l-8-1Zm10 0h8v8l-8-1Z"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-16-2 20"/></symbol>
+</defs></svg>
+<a class="skip-link" href="#main">Aller au contenu</a>
+<header class="header"><div class="nav wrap">
+<a class="brand" href="#" aria-label="Forge, accueil"><img src="assets/logos/forge-logo.jpg" width="32" height="32" alt=""><span>forge<span class="brand-dot">.</span></span></a>
+<nav class="nav-links" aria-label="Navigation principale" id="navigation"><a href="#creations">Créations</a><a href="#how">Comment ça marche</a><a href="#pricing">Tarif</a><a href="#faq">FAQ</a></nav>
+<div class="nav-actions"><a class="nav-download" href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe">Télécharger <svg class="icon"><use href="#i-arrow"/></svg></a><button class="menu-button" type="button" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="navigation"><span></span><span></span></button></div>
+</div></header>
+<main id="main">
+<section class="hero wrap" aria-labelledby="hero-title"><div class="hero-aura" aria-hidden="true"></div>
+<div class="hero-copy"><div class="eyebrow"><span class="status-dot"></span> LA CRÉATION ROBLOX, AVEC L’IA</div><h1 id="hero-title">Ton imagination.<br><span>Un vrai jeu Roblox.</span></h1><p class="lead">Un dragon qui prend vie. Une boutique qui fonctionne.<br class="desktop-br"> Décris ton idée, construis-la avec Forge, teste-la dans Roblox.</p>
+<div class="hero-actions"><a class="button primary" href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe"><svg class="icon"><use href="#i-windows"/></svg>Télécharger Forge <svg class="icon"><use href="#i-arrow"/></svg></a><a class="button secondary" href="#demo"><svg class="icon"><use href="#i-play"/></svg>Voir ce qu’on peut créer</a></div><p class="hero-meta">Windows <span>·</span> Licence à 49 $ US, une seule fois <span>·</span> Accès IA séparé</p></div>
+<div class="demo-window" id="demo"><div class="window-bar"><div class="window-project"><span class="project-symbol"><svg class="icon"><use href="#i-cube"/></svg></span>steal-an-egg <span class="project-extension">/ aperçu des créations</span></div><span class="recorded"><span class="status-dot"></span>Captures réelles</span></div>
+<div class="demo-layout"><div class="demo-sidebar"><span class="small-label">À TOI D’IMAGINER</span><h2>Une idée.<br>Plusieurs possibilités.</h2>
+<div class="demo-tabs" role="tablist" aria-label="Exemples de créations">
+<button id="tab-dragon" type="button" role="tab" aria-selected="true" aria-controls="demo-panel" data-demo="dragon" class="demo-tab active"><svg class="icon"><use href="#i-cube"/></svg><span>Donner vie à un dragon<small>Modèles & animations</small></span><span class="tab-arrow">↗</span></button>
+<button id="tab-shop" type="button" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="shop" class="demo-tab"><svg class="icon"><use href="#i-grid"/></svg><span>Créer sa boutique<small>Interfaces & achats</small></span><span class="tab-arrow">↗</span></button>
+<button id="tab-thumbnail" type="button" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="thumbnail" class="demo-tab"><svg class="icon"><use href="#i-spark"/></svg><span>Imaginer sa miniature<small>Images & identité</small></span><span class="tab-arrow">↗</span></button></div>
+<div class="sidebar-note"><span class="mini-logo">F</span><p>Construit avec Forge.<br><strong>Testé dans Roblox Studio.</strong></p></div></div>
+<div class="demo-content" id="demo-panel" role="tabpanel" aria-labelledby="tab-dragon" tabindex="0"><div class="demo-media"><video id="demo-video" muted loop playsinline preload="none" poster="assets/showcase/dragon.webp" aria-label="Extrait enregistré : dragon violet animé dans Roblox"><source src="assets/showcase/dragon.mp4" type="video/mp4"></video><img id="demo-image" src="assets/showcase/thumbnail.webp" width="1120" height="630" alt="Miniature Steal an Egg générée avec Forge : personnage Roblox, œuf doré et dragon" hidden><div class="media-top"><span id="demo-tag">MODÈLES & ANIMATIONS</span><button type="button" id="play-toggle" aria-label="Lire la démonstration">Lire l’extrait <svg class="icon"><use href="#i-play"/></svg></button></div></div>
+<div class="prompt-strip"><span class="prompt-icon"><svg class="icon"><use href="#i-spark"/></svg></span><div><span class="small-label">L’IDÉE DE DÉPART</span><p id="demo-prompt">« Améliore l’animation du dragon. »</p></div><span class="prompt-enter">↵</span></div><div class="demo-caption"><span id="demo-caption">Extrait de notre projet Steal an Egg, après plusieurs itérations.</span><span>FORGE → ROBLOX</span></div></div></div></div>
+<div class="toolbelt"><span>TON ESPACE DE CRÉATION,<br><strong>AVEC TES OUTILS.</strong></span><div>Roblox Studio</div><div>Codex</div><div>Blender</div><div>Gemini</div><div>ElevenLabs</div></div></section>
 
-<header>
-  <div class="nav">
-    <div class="logo"><img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">FORGE</div>
-    <nav class="nav-links">
-      <a href="#how">Formation</a>
-      <a href="#pricing">Tarifs</a>
-      <a href="#faq">FAQ</a>
-      <a href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe">Installer</a>
-      <a href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe">Connexion</a>
-      <a href="https://discord.gg/VbZtpDne6" target="_blank" rel="noopener">Discord</a>
-    </nav>
-    <div class="nav-right">
-      <a href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe" class="btn btn-ghost" style="padding:9px 16px;">Connexion</a>
-      <a href="https://forgestudioapp.itch.io/forge" target="_blank" rel="noopener" class="btn btn-primary">Acheter — 49 $ US</a>
-    </div>
-  </div>
-</header>
+<section class="section wrap" id="creations"><div class="section-heading"><div><span class="eyebrow">01 / DE L’IDÉE À L’ÉCRAN</span><h2>Regarde ce qui<br><span class="muted-heading">prend vie.</span></h2></div><p>Du premier prototype aux derniers détails.<br>Voici ce qu’on construit avec Forge.</p></div>
+<div class="creation-grid">
+<a href="#demo" data-select-demo="dragon" class="creation-card dragon-card"><div class="card-media"><img src="assets/showcase/dragon.webp" width="1280" height="654" loading="lazy" alt="Dragon violet au-dessus de sa base dans Steal an Egg"><span class="image-label">DANS ROBLOX STUDIO</span><span class="circle-arrow">↗</span></div><div class="card-copy"><div><span class="small-label">GAMEPLAY · 3D · ANIMATION</span><h3>Un œuf. Un dragon. Ton univers.</h3></div><p>Crée une mécanique, teste-la, puis pousse ton idée plus loin.</p></div></a>
+<a href="#demo" data-select-demo="thumbnail" class="creation-card thumbnail-card"><div class="card-media"><img src="assets/showcase/thumbnail.webp" width="1120" height="630" loading="lazy" alt="Miniature colorée Steal an Egg avec un personnage bacon et un œuf niveau 9999"><span class="image-label">GÉNÉRÉ AVEC FORGE</span><span class="circle-arrow">↗</span></div><div class="card-copy"><div><span class="small-label">MINIATURES · ICÔNES</span><h3>Un jeu qui donne envie de cliquer.</h3></div><p>Génère des visuels et affine-les avec tes instructions.</p></div></a>
+<a href="#demo" data-select-demo="shop" class="creation-card shop-card"><div class="card-copy"><span class="small-label">INTERFACES · BOUTIQUES</span><h3>Du style.<br>Et des boutons qui servent.</h3><p>Assemble les images, les textes et les interactions pour créer une interface à ton image.</p><span class="text-link">Voir la boutique <svg class="icon"><use href="#i-arrow"/></svg></span></div><div class="card-media"><img src="assets/showcase/shop.webp" width="1120" height="600" loading="lazy" alt="Boutique Roblox avec dragon VIP, boost de vitesse et œuf doré"></div></a>
+<div class="creation-card assets-card"><div class="asset-icons"><img src="assets/showcase/icon-vip-dragon.webp" width="384" height="384" loading="lazy" alt="Icône de dragon violet"><img src="assets/showcase/icon-speed-boost.webp" width="384" height="384" loading="lazy" alt="Icône de boost bleu"><img src="assets/showcase/icon-golden-egg.webp" width="384" height="384" loading="lazy" alt="Icône d’œuf doré"></div><div class="card-copy"><span class="small-label">UNE IDENTITÉ COHÉRENTE</span><h3>Les petits détails font le jeu.</h3><p>Icônes, objets et visuels pensés pour appartenir au même univers.</p></div></div>
+</div></section>
 
-<section class="hero">
-  <div class="wrap hero-grid">
-    <div>
-      <div class="eyebrow">[ F-001 / GÉNÉRATION IA ]</div>
-      <h1>Décris ton jeu.<br><em>Forge</em> le construit.</h1>
-      <p class="lead">Cartes, modèles 3D, scripts, interfaces, sons — une IA orchestre les meilleurs modèles spécialisés et livre le résultat directement dans Roblox Studio.</p>
-      <div class="hero-cta">
-        <a href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe" class="btn btn-primary">Télécharger Forge pour Windows</a>
-        <a href="#how" class="btn btn-ghost">Voir comment ça marche</a>
-      </div>
-      <div class="badges">
-        <span class="badge">49 $ US — paiement unique</span>
-        <span class="badge">Tout-en-un</span>
-        <span class="badge">En développement actif</span>
-      </div>
-      <div class="stats">
-        <div><div class="stat-num" data-count="3">0</div><div class="stat-label">créateurs actifs</div></div>
-        <div><div class="stat-num" data-count="2">0</div><div class="stat-label">licences vendues</div></div>
-        <div><div class="stat-num" data-count="15">0</div><div class="stat-label">versions publiées</div></div>
-      </div>
-    </div>
+<section class="process-section" id="how"><div class="wrap section"><div class="section-heading"><div><span class="eyebrow">02 / TON NOUVEAU COÉQUIPIER</span><h2>Tu gardes l’idée.<br><span class="muted-heading">Forge t’aide à la construire.</span></h2></div><p>Commence petit. Teste souvent.<br>Chaque demande fait avancer ton projet.</p></div>
+<div class="steps"><article><div class="step-heading"><span>01</span><svg class="icon"><use href="#i-spark"/></svg></div><h3>Décris ce que tu imagines.</h3><p>Un coffre mystérieux, une animation, une boutique… Une demande claire suffit pour commencer.</p><div class="step-example">« Ajoute plusieurs raretés au coffre. »<span>↵</span></div></article><article><div class="step-heading"><span>02</span><svg class="icon"><use href="#i-code"/></svg></div><h3>Construis avec ton IA.</h3><p>Forge réunit tes outils pour créer les scripts, les modèles et les visuels de ton projet.</p><div class="step-tags"><span>Scripts</span><span>Modèles 3D</span><span>Images</span></div></article><article><div class="step-heading"><span>03</span><svg class="icon"><use href="#i-play"/></svg></div><h3>Joue. Ajuste. Recommence.</h3><p>Teste dans Roblox Studio. Demande une correction, ajoute un détail et publie quand ton jeu est prêt.</p><div class="step-example success"><span class="status-dot"></span>Ton idée devient jouable.</div></article></div>
+<div class="installation-link"><span>Première fois avec Forge ? On te guide.</span><button type="button" class="text-link" data-open-tutorial>Voir le tutoriel d’installation <svg class="icon"><use href="#i-arrow"/></svg></button><a href="https://www.youtube.com/watch?v=65_QLxxXN1w" target="_blank" rel="noopener" class="tutorial-fallback">Ouvrir sur YouTube ↗</a></div></div></section>
 
-    <div class="term">
-      <div class="term-bar">
-        <span class="dot" style="background:#E9776B"></span>
-        <span class="dot" style="background:#E8B65E"></span>
-        <span class="dot" style="background:#63C77D"></span>
-      </div>
-      <div class="term-body" id="heroTerm">
-        <div class="term-line term-you">Un obby dans un temple englouti, avec une boutique de skins<span class="cursor"></span></div>
-      </div>
-    </div>
-  </div>
-</section>
+<section class="section wrap vision-section"><span class="eyebrow">UN RACCOURCI VERS LA CRÉATION.</span><h2>Les grandes idées<br>ne sortent pas parfaites<br><span>du premier prompt.</span></h2><div class="vision-bottom"><span class="vision-star" aria-hidden="true">✳</span><div><p>Et c’est là que tout devient intéressant.</p><p>Forge t’aide à passer de l’idée au prototype, puis du prototype à un jeu qui te ressemble. Tu apportes les choix, les tests et la créativité. L’IA t’aide à avancer.</p></div></div></section>
 
-<section style="padding:48px 0 0;">
-  <div class="wrap">
-    <div class="section-head" style="text-align:center; max-width:700px; margin:0 auto 32px;">
-      <div class="section-tag">§ VIDEO</div>
-      <h2 style="font-size:clamp(22px,2.8vw,30px);">Comment installer Forge</h2>
-      <p style="color:var(--smoke); font-size:15px;">Regarde la video tutoriel pour tout comprendre en 5 minutes.</p>
-    </div>
-    <div style="position:relative; padding-bottom:56.25%; height:0; border-radius:16px; overflow:hidden; border:1px solid var(--border); box-shadow:0 20px 60px -20px rgba(0,0,0,0.6);">
-      <iframe src="https://www.youtube.com/embed/65_QLxxXN1w" title="Comment installer Forge" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="position:absolute; top:0; left:0; width:100%; height:100%;"></iframe>
-    </div>
-  </div>
-</section>
+<section class="section wrap pricing-section" id="pricing"><div class="pricing-intro"><span class="eyebrow">03 / UN ESPACE À TOI</span><h2>Ton prochain projet.<br><span class="muted-heading">Un seul achat.</span></h2><p>Une licence Forge à vie pour construire, expérimenter et continuer à améliorer tes créations.</p><div class="cost-note"><svg class="icon"><use href="#i-spark"/></svg><div><strong>Ton IA, ton abonnement.</strong><p>Les abonnements et consommations des fournisseurs IA sont séparés. La licence Forge n’inclut pas leurs crédits.</p></div></div><a class="text-link" href="https://discord.gg/jh9WT9sPm" target="_blank" rel="noopener">Une question avant de te lancer ? <svg class="icon"><use href="#i-arrow"/></svg></a></div>
+<div class="price-card"><div class="price-top"><span class="brand">forge<span class="brand-dot">.</span></span><span class="license-pill">LICENCE À VIE</span></div><div class="price">49 <span>$ US</span></div><p class="price-description">Un paiement. Toutes les mises à jour incluses.</p><ul class="price-list"><li><svg class="icon"><use href="#i-check"/></svg>Application Forge pour Windows</li><li><svg class="icon"><use href="#i-check"/></svg>Connexion à Roblox Studio</li><li><svg class="icon"><use href="#i-check"/></svg>Scripts, interfaces et visuels avec ton IA</li><li><svg class="icon"><use href="#i-check"/></svg>Blender local et suppression d’arrière-plan</li><li><svg class="icon"><use href="#i-check"/></svg>Mises à jour de Forge incluses</li></ul><a id="buyBtn" class="button primary" href="https://forgestudioapp.itch.io/forge" target="_blank" rel="noopener">Acheter ma licence <svg class="icon"><use href="#i-arrow"/></svg></a><p class="checkout-note">Paiement sur itch.io en dollars US.<br>Les frais de change éventuels dépendent de ta banque.</p><a class="download-first" href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe"><svg class="icon"><use href="#i-download"/></svg>Télécharger l’application</a></div></section>
 
-<div class="wrap"><div class="divider"></div></div>
+<section class="community wrap"><div><span class="eyebrow">ON CONSTRUIT ENSEMBLE</span><h2>Tes idées méritent<br>de sortir du brouillon.</h2><p>Partage ton projet, pose tes questions et propose les prochaines améliorations de Forge sur Discord.</p><a class="button secondary" href="https://discord.gg/jh9WT9sPm" target="_blank" rel="noopener">Rejoindre la communauté <svg class="icon"><use href="#i-arrow"/></svg></a></div><div class="community-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><img src="assets/logos/forge-logo.jpg" width="110" height="110" alt=""><span class="orbit-label label-one">Une idée</span><span class="orbit-label label-two">Un projet</span><span class="orbit-label label-three">Ta communauté</span></div></section>
 
-<section id="how">
-  <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">§ 01 — LE FLUX</div>
-      <h2>Trois étapes, un jeu publié</h2>
-      <p>De l'idée à la publication sur Roblox, sans écrire une seule ligne de code.</p>
-    </div>
-    <div class="steps3">
-      <div class="step3-card">
-        <div class="step3-num">01</div>
-        <h3>Tu décris</h3>
-        <p>En langage naturel, comme à un ami : le thème, l'ambiance, les mécaniques que tu veux.</p>
-      </div>
-      <div class="step3-card">
-        <div class="step3-num">02</div>
-        <h3>Forge orchestre</h3>
-        <p>L'agent choisit la bonne IA spécialisée pour chaque élément et assemble le résultat dans Studio.</p>
-      </div>
-      <div class="step3-card">
-        <div class="step3-num">03</div>
-        <h3>Tu publies</h3>
-        <p>Le jeu est jouable sur Roblox, avec sa boutique, ses gamepasses et ses scripts déjà câblés.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">§ 02 — LE CERVEAU DE FORGE</div>
-      <h2>Une IA qui choisit la meilleure IA pour chaque tâche</h2>
-      <p>Tu ne choisis jamais l'outil. Forge route ta demande vers le modèle spécialisé adapté, récupère le résultat, et l'installe directement dans Roblox Studio.</p>
-    </div>
-    <div class="arch">
-      <div class="router">
-        <div class="router-input mono" id="routerInput">"Fais-moi un coffre légendaire brillant"</div>
-        <div class="router-core">FORGE</div>
-        <div class="router-branches" id="routerBranches">
-          <div class="r-branch" data-b="gemini"><div class="ic">Ge</div><div class="lb">Images / icônes</div></div>
-          <div class="r-branch" data-b="blender"><div class="ic">Bl</div><div class="lb">Modèles 3D (gratuit, local)</div></div>
-          <div class="r-branch" data-b="tripo"><div class="ic">Tr</div><div class="lb">Image → 3D (option)</div></div>
-          <div class="r-branch" data-b="eleven"><div class="ic">El</div><div class="lb">Son / musique</div></div>
-        </div>
-      </div>
-      <div class="arch-copy">
-        <ul>
-          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Génération d'images et de textures → <b>Gemini</b></li>
-          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Modèles 3D gratuits en local → <b>Blender</b> (inclus, sans clé API) ; image → 3D en option → <b>Tripo3D</b></li>
-          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Musique, sons et voix → <b>ElevenLabs</b></li>
-          <li><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="8" stroke="#5FBE7A" stroke-width="1.5"/><path d="M5.5 9L7.8 11.3L12.5 6.5" stroke="#5FBE7A" stroke-width="1.6" stroke-linecap="round"/></svg> Scripts, GUI et logique de jeu → <b>l'agent Forge lui-même</b>, exécutés directement dans Roblox Studio via le pont MCP.</li>
-        </ul>
-        <p>Chaque service utilise ta propre clé API — stockée localement, jamais transmise à nos serveurs.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="section-head">
-      <div class="section-tag">§ 03 — TOUT CE QUE FORGE SAIT FAIRE</div>
-      <h2>Un jeu complet, sans toucher au code</h2>
-      <p>Tu décris, Forge orchestre les bonnes IA et assemble tout directement dans Roblox Studio.</p>
-    </div>
-    <div class="steps3">
-      <div class="step3-card">
-        <div class="step3-num">💻</div>
-        <h3>Scripts & gameplay</h3>
-        <p>Mécaniques, sauvegardes, boucles de jeu, systèmes de monnaie : l'agent écrit tout le code à ta place.</p>
-      </div>
-      <div class="step3-card">
-        <div class="step3-num">🖼️</div>
-        <h3>Miniatures & icônes</h3>
-        <p>Visuels pro pour ta page de jeu, tes gamepasses et tes interfaces, dans un style cohérent.</p>
-      </div>
-      <div class="step3-card">
-        <div class="step3-num">🧊</div>
-        <h3>Modèles 3D</h3>
-        <p>Créés gratuitement en local avec Blender. L'option Tripo3D transforme aussi tes images en 3D.</p>
-      </div>
-      <div class="step3-card">
-        <div class="step3-num">🛒</div>
-        <h3>Interfaces & shops</h3>
-        <p>Menus, inventaires, boutiques, HUD : des interfaces complètes et fonctionnelles.</p>
-      </div>
-      <div class="step3-card">
-        <div class="step3-num">🎵</div>
-        <h3>Sons & musiques</h3>
-        <p>Ambiances, effets et musiques pour habiller ton jeu.</p>
-      </div>
-      <div class="step3-card">
-        <div class="step3-num">🚀</div>
-        <h3>Publication & monétisation</h3>
-        <p>Ton jeu publié sur Roblox, avec gamepasses et produits développeur déjà câblés pour rapporter.</p>
-      </div>
-    </div>
-    <div class="step3-card" style="margin-top:24px; border-color:var(--ember-dim);">
-      <h3>Ce que tu apportes : ton IA, c'est tout</h3>
-      <p>Forge ne revend aucun abonnement : tu viens avec le tien. <b>Notre conseil pour débuter : Codex.</b> Miniatures, icônes, code, modèles — il fait presque tout en un seul abonnement.</p>
-      <p style="margin-top:10px;">🎁 <b>En bonus (optionnel) :</b> tes clés API Gemini, Tripo3D ou ElevenLabs débloquent leurs services dédiés. Sans elles, Forge fonctionne déjà avec ton IA + Blender gratuit.</p>
-    </div>
-  </div>
-</section>
-
-<section id="pricing">
-  <div class="wrap" style="text-align:center;">
-    <div class="section-head" style="margin:0 auto 52px;">
-      <div class="section-tag">§ 04 — ACCÈS</div>
-      <h2>Un paiement unique. À vie.</h2>
-    </div>
-    <div class="price-card">
-      <div class="section-tag" style="text-align:left;">FORGE — LICENCE À VIE</div>
-      <div class="price-num">49 $ US</div>
-      <div class="price-sub" style="text-align:left;">Paiement unique — licence à vie, toutes les mises à jour incluses.</div>
-      <ul class="price-list">
-        <li>✓ Modèles 3D gratuits avec Blender (inclus, sans clé) + image → 3D via Tripo3D (selon tes propres clés API)</li>
-        <li>✓ Intégration Roblox Studio (MCP)</li>
-        <li>✓ Suppression d'arrière-plan automatique</li>
-        <li>✓ Mises à jour au fil du développement</li>
-      </ul>
-      <a href="https://forgestudioapp.itch.io/forge" target="_blank" rel="noopener" id="buyBtn" class="btn btn-primary" style="width:100%;">Acheter Forge — 49 $ US</a>
-      <p style="margin-top:12px;font-size:12px;color:var(--smoke-dim);">Installe Forge depuis ce site, puis achète ta clé sur itch.io depuis l’app. Après paiement, récupère la clé sur ta page d’achat et colle-la dans Forge avec ton email et ton mot de passe.</p>
-    </div>
-  </div>
-</section>
-
-<section id="faq">
-  <div class="wrap" style="max-width:760px;">
-    <div class="section-head">
-      <div class="section-tag">§ 05 — QUESTIONS FRÉQUENTES</div>
-      <h2>Tout ce qu'il faut savoir</h2>
-    </div>
-    <div class="faq-list">
-      <details class="faq-item"><summary>Comment installer et activer Forge ? <span class="plus">+</span></summary><p>Télécharge l’app sur ce site. Sur l’écran de création de compte, clique sur « Acheter une licence » pour payer sur itch.io. Sur la page de téléchargement itch.io, clique sur « Request key », copie la clé, puis reviens dans Forge : clé, email et mot de passe suffisent pour créer ton compte. Confirme ensuite ton adresse avec le mail reçu. Si tu as déjà un compte, choisis « Se connecter ».</p></details>
-      <details class="faq-item" open><summary>Ai-je besoin de clés API séparées ? <span class="plus">+</span></summary><p>Les accès aux agents et fournisseurs IA se configurent dans Forge. Selon le fournisseur, utilise ton abonnement ou ta clé API ; leur consommation est distincte de la licence Forge.</p></details>
-      <details class="faq-item"><summary>Combien ça coûte ? <span class="plus">+</span></summary><p>49 $ US, paiement unique — licence à vie et toutes les mises à jour incluses. Le prix de lancement pourra augmenter plus tard.</p></details>
-      <details class="faq-item"><summary>Ça marche sur Mac ? <span class="plus">+</span></summary><p>Forge est disponible pour Windows. Une version Mac est en réflexion selon la demande.</p></details>
-      <details class="faq-item"><summary>Puis-je utiliser Forge sur un projet Roblox existant ? <span class="plus">+</span></summary><p>Non, Forge fonctionne en TypeScript et n'est pas compatible avec un projet Luau existant créé avant l'installation. Il faut démarrer un nouveau projet dans l'app.</p></details>
-      <details class="faq-item"><summary>Quel niveau technique faut-il ? <span class="plus">+</span></summary><p>Aucun prérequis en programmation. Tu décris ce que tu veux en français ou en anglais, Forge s'occupe du reste.</p></details>
-    </div>
-  </div>
-</section>
-
-<section class="cta-final">
-  <div class="wrap">
-    <h2>Ton prochain jeu Roblox commence<br>par une phrase.</h2>
-    <a href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe" class="btn btn-primary" style="padding:15px 30px; font-size:16px;">Télécharger Forge pour Windows</a>
-  </div>
-</section>
-
-<footer>
-  <div class="wrap">
-    <div class="foot-grid">
-      <div class="logo"><img class="logo-mark" src="assets/logos/forge-logo.jpg" alt="Forge">FORGE</div>
-      <div class="foot-links">
-        <a href="#how">Formation</a>
-        <a href="#pricing">Tarifs</a>
-        <a href="#faq">FAQ</a>
-        <a href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe">Installer</a>
-        <a href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe">Connexion</a>
-        <a href="https://discord.gg/VbZtpDne6" target="_blank" rel="noopener">Discord</a>
-        <a href="privacy.html">Confidentialité</a>
-        <a href="terms.html">Conditions</a>
-      </div>
-    </div>
-    <p class="foot-note">Forge n'est pas affilié à Roblox Corporation, Google, Tripo3D ou ElevenLabs. Les noms de marques citées appartiennent à leurs propriétaires respectifs.</p>
-  </div>
-</footer>
-
-<script>
-  // ---- counters ----
-  const counters = document.querySelectorAll('.stat-num, .count');
-  const io = new IntersectionObserver((entries)=>{
-    entries.forEach(e=>{
-      if(e.isIntersecting){
-        const el = e.target;
-        const target = parseInt(el.dataset.count,10) || 0;
-        let cur = 0;
-        const step = Math.max(1, Math.ceil(target/60));
-        const t = setInterval(()=>{
-          cur += step;
-          if(cur>=target){cur=target; clearInterval(t);}
-          el.textContent = cur.toLocaleString('fr-FR');
-        },20);
-        io.unobserve(el);
-      }
-    });
-  },{threshold:0.4});
-  counters.forEach(c=>io.observe(c));
-
-  // ---- router animation ----
-  const branches = document.querySelectorAll('.r-branch');
-  const routerInput = document.getElementById('routerInput');
-  const requests = [
-    {text:'"Fais-moi un coffre légendaire brillant"', hit:'tripo'},
-    {text:'"Modélise un monstre 3D, sans clé API"', hit:'blender'},
-    {text:'"Génère une icône d\'épée en feu"', hit:'gemini'},
-    {text:'"Ajoute une musique d\'ambiance de forêt"', hit:'eleven'},
-  ];
-  let ri = 0;
-  function cycleRouter(){
-    branches.forEach(b=>b.classList.remove('hit'));
-    const req = requests[ri % requests.length];
-    routerInput.textContent = req.text;
-    setTimeout(()=>{
-      document.querySelector('.r-branch[data-b="'+req.hit+'"]').classList.add('hit');
-    }, 500);
-    ri++;
-  }
-  cycleRouter();
-  setInterval(cycleRouter, 3200);
-
-  // ---- hero terminal typing demo ----
-  const heroTerm = document.getElementById('heroTerm');
-  const lines = [
-    {cls:'term-line', text:'→ Analyse de la demande…'},
-    {cls:'term-line', text:'→ Route vers Blender (3D gratuite) et Gemini (icônes)'},
-    {cls:'check-row', text:'✓ Carte du temple générée'},
-    {cls:'check-row', text:'✓ 4 modèles 3D importés dans Studio'},
-    {cls:'check-row', text:'✓ Boutique de skins câblée'},
-  ];
-  let li = 0;
-  function typeNext(){
-    if(li >= lines.length) return;
-    const l = lines[li];
-    const div = document.createElement('div');
-    div.className = l.cls;
-    if(l.cls==='check-row'){
-      div.innerHTML = '<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6.5" stroke="#5FBE7A" stroke-width="1.4"/><path d="M4.5 7.5L6.5 9.5L10.5 5.5" stroke="#5FBE7A" stroke-width="1.4" stroke-linecap="round"/></svg><span>'+l.text.slice(2)+'</span>';
-    } else {
-      div.textContent = l.text;
-    }
-    heroTerm.appendChild(div);
-    li++;
-    setTimeout(typeNext, 900);
-  }
-  setTimeout(typeNext, 1200);
-</script>
-<script src="analytics.js" defer></script>
-
-</body>
-</html>
+<section class="section wrap faq-section" id="faq"><div><span class="eyebrow">04 / AVANT DE TE LANCER</span><h2>Tout simplement.</h2><p>Les réponses aux questions<br>que tu te poses.</p></div><div class="faq-list">
+<details><summary>Comment installer et activer Forge ?<span>+</span></summary><p>Télécharge l’application Windows, puis achète une licence sur itch.io. Depuis ta page d’achat, utilise « Request key » pour récupérer ta clé. Reviens dans Forge et crée ton compte avec cette clé, ton email et ton mot de passe, puis confirme ton adresse email.</p><button class="text-link" data-open-tutorial type="button">Voir le tutoriel d’installation ↗</button></details>
+<details><summary>Qu’est-ce qui est inclus dans les 49 $ US ?<span>+</span></summary><p>La licence à vie de Forge et ses mises à jour. Les abonnements IA et les consommations API éventuelles sont distincts et réglés auprès des fournisseurs que tu utilises.</p></details>
+<details><summary>Faut-il savoir programmer ?<span>+</span></summary><p>Tu peux décrire tes demandes en français ou en anglais et laisser l’IA t’aider à écrire le code. Tu gardes la main sur les tests et les décisions : il faut toujours vérifier le résultat dans Roblox Studio.</p></details>
+<details><summary>Quels outils IA dois-je connecter ?<span>+</span></summary><p>Configure un agent compatible, comme Codex, avec ton propre accès. Selon tes besoins, tu peux aussi connecter des services dédiés aux images, à la 3D ou à l’audio. Blender permet de travailler sur la 3D localement. Les disponibilités et limites dépendent de chaque fournisseur.</p></details>
+<details><summary>Forge fonctionne-t-il sur Mac ou téléphone ?<span>+</span></summary><p>Cette version de Forge est proposée pour Windows et s’utilise avec Roblox Studio. Le site et les démonstrations peuvent être consultés sur mobile.</p></details>
+<details><summary>Est-ce que Forge crée un jeu à succès en cinq minutes ?<span>+</span></summary><p>Forge peut accélérer la création d’un prototype et de ses systèmes. Un jeu abouti demande ensuite des idées, du travail, des tests et des améliorations. Aucun succès ni revenu n’est garanti.</p></details>
+</div></section>
+<section class="final-cta wrap"><span class="eyebrow">LA SUITE, C’EST TOI QUI LA CRÉES.</span><h2>Alors, on crée quoi ?</h2><a class="button primary" href="https://github.com/forgestudioapp/forge-desktop-app/releases/download/v1.5.5/Forge-Setup-1.5.5.exe"><svg class="icon"><use href="#i-windows"/></svg>Télécharger Forge <svg class="icon"><use href="#i-arrow"/></svg></a><p>Windows · Licence à 49 $ US · Accès IA séparé</p></section>
+</main>
+<footer class="footer wrap"><div class="footer-top"><a href="#" class="brand"><img src="assets/logos/forge-logo.jpg" width="28" height="28" alt=""><span>forge<span class="brand-dot">.</span></span></a><span>De l’idée au jeu.</span><nav aria-label="Liens utiles"><a href="https://discord.gg/jh9WT9sPm" target="_blank" rel="noopener">Discord ↗</a><a href="privacy.html">Confidentialité</a><a href="terms.html">Conditions</a></nav></div><p>© 2026 Forge. Forge est un outil indépendant, non affilié à Roblox ni aux fournisseurs IA cités. Leurs marques appartiennent à leurs propriétaires respectifs.</p></footer>
+<dialog id="tutorial-dialog" aria-labelledby="tutorial-title"><div class="dialog-head"><h2 id="tutorial-title">Installer Forge, étape par étape.</h2><button class="dialog-close" type="button" aria-label="Fermer le tutoriel">×</button></div><div class="tutorial-video" id="tutorial-frame"></div><p><a href="https://www.youtube.com/watch?v=65_QLxxXN1w" target="_blank" rel="noopener">Ouvrir sur YouTube ↗</a></p></dialog>
+</body></html>

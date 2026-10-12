@@ -278,6 +278,13 @@
         setRobloxConnected();
         if(result.permissionsReady === false){
           setRobloxPermissionWarning(result.missingScopes);
+          return;
+        }
+        if(window.forgeAPI.verifyRobloxAiAccess){
+          const access = await window.forgeAPI.verifyRobloxAiAccess();
+          if(!access.aiAccessReady){
+            setRobloxError('Compte Roblox connecté, mais l’accès de l’IA n’est pas prêt : '+(access.error||'réessaie après avoir relancé Forge.'));
+          }
         }
       }
     }
@@ -330,6 +337,10 @@
       if(result.permissionsReady === false){
         setRobloxPermissionWarning(result.missingScopes);
         return;
+      }
+      if(window.forgeAPI.verifyRobloxAiAccess){
+        const access = await window.forgeAPI.verifyRobloxAiAccess();
+        if(!access.aiAccessReady) throw new Error('Compte connecté, mais l’accès de l’IA a échoué : '+(access.error||'relance Forge puis réessaie.'));
       }
       setRobloxConnected();
     } catch(error) { setRobloxError(error.message); }

@@ -177,6 +177,8 @@
   </div>
 
   <div class="wrap">
+    <section class="project-welcome" style="margin:16px 0 30px"><p style="color:var(--ember-light);font-size:11px;letter-spacing:2px;margin-bottom:8px">FORGE / STUDIO</p><h1 style="font-size:30px;margin-bottom:10px" data-i18n="polish_welcome">Tes idées, ton prochain jeu.</h1><p style="color:var(--smoke);line-height:1.6" data-i18n="polish_welcome_desc">Reprends ton projet ou commence une nouvelle création.</p><button class="btn-mini primary" id="resumeProjectBtn" hidden style="margin-top:18px" data-i18n="polish_resume">Reprendre le projet</button></section>
+    <details class="project-guide" style="background:var(--char2);border:1px solid var(--border);padding:16px 20px;border-radius:12px;margin-bottom:24px"><summary style="cursor:pointer;font-weight:600" data-i18n="polish_guide">Bien démarrer avec Forge</summary><ol style="padding-left:20px;color:var(--smoke);line-height:2;margin-top:12px"><li><a href="accounts.html" target="_self" data-i18n="polish_connect">Connecter ton compte Roblox</a></li><li data-i18n="polish_studio">Ouvrir ta place dans Studio et activer le plugin Forge.</li><li data-i18n="polish_create">Créer un projet lié à cette place, puis ajouter un agent.</li></ol></details>
     <div class="studio-bar hidden" id="studioBar">
       <div class="studio-left">
         <div class="studio-icon">
@@ -201,6 +203,8 @@
       </div>
     </div>
 
+    <input type="search" id="projectSearch" aria-label="Rechercher un projet" placeholder="Rechercher un projet…" style="width:100%;padding:12px 16px;border:1px solid var(--border-light);border-radius:9px;background:var(--char2);color:var(--bone);font:inherit;margin-bottom:20px">
+    <p id="noProjectsFound" hidden style="color:var(--smoke);margin-bottom:18px" data-i18n="polish_no_results">Aucun projet trouvé.</p>
     <div class="proj-grid" id="projGrid">
       <div class="new-card" id="newCard">
         <div class="plus">+</div>
@@ -231,12 +235,16 @@
 <script>
   (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
   initLang();
+  document.getElementById('projectSearch').placeholder=t('polish_search_projects');
+  document.getElementById('projectSearch').setAttribute('aria-label',t('polish_search_projects'));
   const projGrid = document.getElementById('projGrid');
   const studioBar = document.getElementById('studioBar');
   const studioTitle = document.getElementById('studioTitle');
   const studioSub = document.getElementById('studioSub');
   let activeProject = null;
   let projects = [];
+  document.getElementById('resumeProjectBtn').addEventListener('click',()=>{if(activeProject)openProject(activeProject);});
+  document.getElementById('projectSearch').addEventListener('input',()=>renderProjects(projects));
 
   function fadeNavigate(href){
     document.body.style.opacity = '0';
@@ -288,11 +296,14 @@
   }
 
   async function loadActiveProject(){
+    document.getElementById('resumeProjectBtn').hidden=true;
     if(!window.forgeAPI || !window.forgeAPI.getActiveProject) return;
     try {
       const res = await window.forgeAPI.getActiveProject();
       if(res.project){
         activeProject = res.project;
+        document.getElementById('resumeProjectBtn').hidden=false;
+        document.getElementById('resumeProjectBtn').textContent=t('polish_resume')+' · '+activeProject.name;
         studioBar.classList.remove('hidden');
         if(res.syncBlocked){
           studioTitle.textContent = 'Projet non lié à cette place';
@@ -364,6 +375,10 @@
 
   function renderProjects(list){
     projGrid.innerHTML = '';
+    const query=document.getElementById('projectSearch').value.trim().toLocaleLowerCase();
+    list=list.filter(proj=>String(proj.name).toLocaleLowerCase().includes(query));
+    list.sort((a,b)=>Number(b.path===activeProject?.path)-Number(a.path===activeProject?.path));
+    document.getElementById('noProjectsFound').hidden=!query||list.length>0;
 
     list.forEach((proj, index) => {
       const card = document.createElement('div');
@@ -416,7 +431,9 @@
 
     const newCard = document.createElement('div');
     newCard.className = 'new-card';
-    newCard.innerHTML = '<div class="plus">+</div><div>New Project</div>';
+    newCard.innerHTML = '<div class="plus">+</div><div>'+escapeHtml(t('new_project'))+'</div>';
+    newCard.tabIndex=0;newCard.setAttribute('role','button');
+    newCard.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();fadeNavigate('project-create.html');}});
     newCard.addEventListener('click', () => fadeNavigate('project-create.html'));
     projGrid.appendChild(newCard);
   }

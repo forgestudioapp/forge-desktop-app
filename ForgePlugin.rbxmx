@@ -21,9 +21,8 @@ elements.connectButton.Activated:Connect(function()
 		Communication.activatePlugin(State.getActiveTabIndex())
 	end
 end)
--- Connexion automatique au chargement du plugin, sans afficher le GUI
+-- Connexion automatique au chargement du plugin, sans clic manuel
 Communication.activatePlugin(State.getActiveTabIndex())
-elements.screenGui.Enabled = false
 button.Click:Connect(function()
 	elements.screenGui.Enabled = not elements.screenGui.Enabled
 end)
@@ -93,6 +92,10 @@ local routeMap = {
 	["/api/edit-script-lines"] = ScriptHandlers.editScriptLines,
 	["/api/insert-script-lines"] = ScriptHandlers.insertScriptLines,
 	["/api/delete-script-lines"] = ScriptHandlers.deleteScriptLines,
+	["/api/set-script-source-with-version"] = ScriptHandlers.setScriptSource,
+	["/api/edit-script-lines-with-version"] = ScriptHandlers.editScriptLines,
+	["/api/insert-script-lines-with-version"] = ScriptHandlers.insertScriptLines,
+	["/api/delete-script-lines-with-version"] = ScriptHandlers.deleteScriptLines,
 	["/api/search-replace-scripts"] = ScriptHandlers.searchReplaceScripts,
 	["/api/fill-terrain"] = TerrainHandlers.fillTerrain,
 	["/api/fill-terrain-sphere"] = TerrainHandlers.fillTerrainSphere,
@@ -3023,7 +3026,8 @@ end
 local function setScriptSource(requestData)
 	local instancePath = requestData.instancePath
 	local newSource = requestData.source
-	if not (instancePath ~= "" and instancePath) or not (newSource ~= "" and newSource) then
+	local expectedSource = requestData.expectedSource
+	if not (instancePath ~= "" and instancePath) or not (type(newSource) == "string") then
 		return {
 			error = "Instance path and source are required",
 		}
@@ -3041,8 +3045,18 @@ local function setScriptSource(requestData)
 	end
 	local sourceToSet = normalizeEscapes(newSource)
 	local updateSuccess, updateResult = pcall(function()
+		-- Atomic version check inside callback
+		if expectedSource ~= nil then
+			local currentSource = readScriptSource(instance)
+			if currentSource ~= expectedSource then
+				error(`Version conflict: script was modified by another process. Expected source length {#expectedSource}, got {#currentSource}. Re-read the script and re-apply your changes.`)
+			end
+		end
 		local oldSourceLength = #readScriptSource(instance)
-		ScriptEditorService:UpdateSourceAsync(instance, function()
+		ScriptEditorService:UpdateSourceAsync(instance, function(currentSource)
+			if expectedSource ~= nil and currentSource ~= expectedSource then
+				error("Version conflict: re-read the script before writing.")
+			end
 			return sourceToSet
 		end)
 		ChangeHistoryService:SetWaypoint(`Set script source: {instance.Name}`)
@@ -3057,6 +3071,12 @@ local function setScriptSource(requestData)
 	end)
 	if updateSuccess then
 		return updateResult
+	end
+	-- Fallback paths: if expectedSource was provided, don't attempt destructive fallbacks
+	if expectedSource ~= nil then
+		return {
+			error = `Version conflict or UpdateSourceAsync failed: {updateResult}. Fallbacks disabled when expectedSource is provided to prevent overwriting concurrent changes.`,
+		}
 	end
 	local directSuccess, directResult = pcall(function()
 		local oldSource = instance.Source
@@ -3108,7 +3128,13 @@ local function editScriptLines(requestData)
 	local startLine = requestData.startLine
 	local endLine = requestData.endLine
 	local newContent = requestData.newContent
-	if not (instancePath ~= "" and instancePath) or not (startLine ~= 0 and startLine == startLine and startLine) or not (endLine ~= 0 and endLine == endLine and endLine) or not (newContent ~= "" and newContent) then
+	local expectedSource = requestData.expectedSource
+	local _condition = not (instancePath ~= "" and instancePath) or not (startLine ~= 0 and startLine == startLine and startLine) or not (endLine ~= 0 and endLine == endLine and endLine)
+	if not _condition then
+		local _newContent = newContent
+		_condition = not (type(_newContent) == "string")
+	end
+	if _condition then
 		return {
 			error = "Instance path, startLine, endLine, and newContent are required",
 		}
@@ -3126,7 +3152,15 @@ local function editScriptLines(requestData)
 		}
 	end
 	local success, result = pcall(function()
-		local lines, hadTrailingNewline = splitLines(readScriptSource(instance))
+		-- Atomic version check inside callback
+		if expectedSource ~= nil then
+			local currentSource = readScriptSource(instance)
+			if currentSource ~= expectedSource then
+				error(`Version conflict: script was modified by another process. Expected source length {#expectedSource}, got {#currentSource}. Re-read the script and re-apply your changes.`)
+			end
+		end
+		local snapshotSource = readScriptSource(instance)
+		local lines, hadTrailingNewline = splitLines(snapshotSource)
 		local totalLines = #lines
 		if startLine < 1 or startLine > totalLines then
 			error(`startLine out of range (1-{totalLines})`)
@@ -3172,7 +3206,10 @@ local function editScriptLines(requestData)
 			end
 		end
 		local newSource = joinLines(resultLines, hadTrailingNewline)
-		ScriptEditorService:UpdateSourceAsync(instance, function()
+		ScriptEditorService:UpdateSourceAsync(instance, function(currentSource)
+			if currentSource ~= snapshotSource then
+				error("Version conflict: re-read the script before editing lines.")
+			end
 			return newSource
 		end)
 		ChangeHistoryService:SetWaypoint(`Edit script lines {startLine}-{endLine}: {instance.Name}`)
@@ -3204,7 +3241,13 @@ local function insertScriptLines(requestData)
 	end
 	local afterLine = _condition
 	local newContent = requestData.newContent
-	if not (instancePath ~= "" and instancePath) or not (newContent ~= "" and newContent) then
+	local expectedSource = requestData.expectedSource
+	local _condition_1 = not (instancePath ~= "" and instancePath)
+	if not _condition_1 then
+		local _newContent = newContent
+		_condition_1 = not (type(_newContent) == "string")
+	end
+	if _condition_1 then
 		return {
 			error = "Instance path and newContent are required",
 		}
@@ -3222,7 +3265,15 @@ local function insertScriptLines(requestData)
 		}
 	end
 	local success, result = pcall(function()
-		local lines, hadTrailingNewline = splitLines(readScriptSource(instance))
+		-- Atomic version check inside callback
+		if expectedSource ~= nil then
+			local currentSource = readScriptSource(instance)
+			if currentSource ~= expectedSource then
+				error(`Version conflict: script was modified by another process. Expected source length {#expectedSource}, got {#currentSource}. Re-read the script and re-apply your changes.`)
+			end
+		end
+		local snapshotSource = readScriptSource(instance)
+		local lines, hadTrailingNewline = splitLines(snapshotSource)
 		local totalLines = #lines
 		if afterLine < 0 or afterLine > totalLines then
 			error(`afterLine out of range (0-{totalLines})`)
@@ -3265,7 +3316,10 @@ local function insertScriptLines(requestData)
 			end
 		end
 		local newSource = joinLines(resultLines, hadTrailingNewline)
-		ScriptEditorService:UpdateSourceAsync(instance, function()
+		ScriptEditorService:UpdateSourceAsync(instance, function(currentSource)
+			if currentSource ~= snapshotSource then
+				error("Version conflict: re-read the script before editing lines.")
+			end
 			return newSource
 		end)
 		ChangeHistoryService:SetWaypoint(`Insert script lines after line {afterLine}: {instance.Name}`)
@@ -3289,6 +3343,7 @@ local function deleteScriptLines(requestData)
 	local instancePath = requestData.instancePath
 	local startLine = requestData.startLine
 	local endLine = requestData.endLine
+	local expectedSource = requestData.expectedSource
 	if not (instancePath ~= "" and instancePath) or not (startLine ~= 0 and startLine == startLine and startLine) or not (endLine ~= 0 and endLine == endLine and endLine) then
 		return {
 			error = "Instance path, startLine, and endLine are required",
@@ -3306,7 +3361,15 @@ local function deleteScriptLines(requestData)
 		}
 	end
 	local success, result = pcall(function()
-		local lines, hadTrailingNewline = splitLines(readScriptSource(instance))
+		-- Atomic version check inside callback
+		if expectedSource ~= nil then
+			local currentSource = readScriptSource(instance)
+			if currentSource ~= expectedSource then
+				error(`Version conflict: script was modified by another process. Expected source length {#expectedSource}, got {#currentSource}. Re-read the script and re-apply your changes.`)
+			end
+		end
+		local snapshotSource = readScriptSource(instance)
+		local lines, hadTrailingNewline = splitLines(snapshotSource)
 		local totalLines = #lines
 		if startLine < 1 or startLine > totalLines then
 			error(`startLine out of range (1-{totalLines})`)
@@ -3348,7 +3411,10 @@ local function deleteScriptLines(requestData)
 			end
 		end
 		local newSource = joinLines(resultLines, hadTrailingNewline)
-		ScriptEditorService:UpdateSourceAsync(instance, function()
+		ScriptEditorService:UpdateSourceAsync(instance, function(currentSource)
+			if currentSource ~= snapshotSource then
+				error("Version conflict: re-read the script before editing lines.")
+			end
 			return newSource
 		end)
 		ChangeHistoryService:SetWaypoint(`Delete script lines {startLine}-{endLine}: {instance.Name}`)
@@ -3770,11 +3836,18 @@ local function cleanupStopListener()
 end
 local function startPlaytest(requestData)
 	local mode = requestData.mode
-	if mode ~= "play" and mode ~= "run" then
+	if mode ~= "play" and mode ~= "run" and mode ~= "multiplayer" then
 		return {
-			error = 'mode must be "play" or "run"',
+			error = 'mode must be "play", "run", or "multiplayer"',
 		}
 	end
+	local players = requestData.players
+	if mode == "multiplayer" and (players == nil or players < 1 or players > 8 or math.floor(players) ~= players) then
+		return {
+			error = "players must be an integer from 1 to 8",
+		}
+	end
+	local testArgs = if requestData.args ~= nil then requestData.args else {}
 	if testRunning then
 		return {
 			error = "A test is already running",
@@ -3805,10 +3878,14 @@ local function startPlaytest(requestData)
 	end
 	task.spawn(function()
 		local ok, result = pcall(function()
-			if mode == "play" then
-				return StudioTestService:ExecutePlayModeAsync({})
+			if mode == "multiplayer" then
+				local multiplayerService = StudioTestService
+				return multiplayerService.ExecuteMultiplayerTestAsync(players, testArgs)
 			end
-			return StudioTestService:ExecuteRunModeAsync({})
+			if mode == "play" then
+				return StudioTestService:ExecutePlayModeAsync(testArgs)
+			end
+			return StudioTestService:ExecuteRunModeAsync(testArgs)
 		end)
 		if ok then
 			testResult = result
@@ -3824,6 +3901,8 @@ local function startPlaytest(requestData)
 	end)
 	return {
 		success = true,
+		mode = mode,
+		players = if mode == "multiplayer" then players else nil,
 		message = `Playtest started in {mode} mode`,
 	}
 end
@@ -3874,7 +3953,7 @@ return {
         <Properties>
           <string name="Name">State</string>
           <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
-local CURRENT_VERSION = "2.3.1"
+local CURRENT_VERSION = "2.3.3"
 local MAX_CONNECTIONS = 5
 local BASE_PORT = 58741
 local activeTabIndex = 0
