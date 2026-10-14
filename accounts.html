@@ -169,7 +169,7 @@
     </div>
   </div>
 
-  <button class="continue-btn" id="continueBtn" data-i18n="continue_btn">Continuer →</button>
+  <button class="continue-btn" id="continueBtn" data-i18n="return_projects">Continuer →</button>
   <button class="skip-link" id="skipBtn" data-i18n="skip">Passer pour l'instant</button>
 
   <div class="step-footer mono" data-i18n="step_4_6">Étape 4 sur 6</div>
@@ -406,8 +406,8 @@
     btn.disabled = false;
   });
 
-  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('agents.html'));
-  document.getElementById('skipBtn').addEventListener('click', () => fadeNavigate('agents.html'));
+  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('projects.html'));
+  document.getElementById('skipBtn').addEventListener('click', () => fadeNavigate('projects.html'));
 </script>
 
 </body>

@@ -313,7 +313,7 @@
     </div>
   </div>
 
-  <button class="continue-btn" id="continueBtn" disabled data-i18n="continue_btn">Continuer →</button>
+  <button class="continue-btn" id="continueBtn" disabled data-i18n="return_projects">Continuer →</button>
 
   <div class="step-footer mono" data-i18n="step_5_6">Étape 5 sur 6</div>
   <div class="toast" id="toast"></div>
@@ -452,13 +452,8 @@
 
   function updateContinueBtn(){
     const btn = document.getElementById('continueBtn');
-    if(readyCount > 0){
-      btn.disabled = false;
-      btn.textContent = `Continuer (${readyCount} agent${readyCount>1?'s':''} installé${readyCount>1?'s':''}) →`;
-    } else {
-      btn.disabled = true;
-      btn.textContent = 'Installe au moins un agent pour continuer';
-    }
+    btn.disabled = false;
+    btn.textContent = localStorage.getItem('forge_lang')==='en' ? 'Back to projects →' : 'Retour aux projets →';
   }
 
   async function autoInstall(agent){
@@ -559,7 +554,7 @@
 
   detectAll();
 
-  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('api-keys.html'));
+  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('projects.html'));
 </script>
 
 </body>

@@ -1,6 +1,6 @@
 {
   "name": "forge-desktop-app",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "description": "Forge - Génère ton jeu Roblox avec l'IA",
   "main": "main.js",
   "scripts": {
@@ -65,6 +65,7 @@
       "roblox-studio.html",
       "projects.html",
       "project-create.html",
+      "project-settings.html",
       "project-setup.html",
       "workspace.html",
       "agents.html",

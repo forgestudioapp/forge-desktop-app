@@ -162,6 +162,35 @@ function loadProjectsRegistry() {
 
 function saveProjectsRegistry(projects) {
   fs.writeFileSync(getProjectsRegistryPath(), JSON.stringify(projects, null, 2));
+  for (const project of projects) writeProjectAgentContext(project);
+}
+
+function projectAgentContextPath(projectPath) {
+  const directory = userDataFile('project-context');
+  fs.mkdirSync(directory, { recursive: true });
+  return path.join(directory, require('node:crypto').createHash('sha256').update(agentProjectKey(projectPath)).digest('hex') + '.json');
+}
+function writeProjectAgentContext(project) {
+  const file = projectAgentContextPath(project.path);
+  fs.writeFileSync(file, JSON.stringify({ projectPath: project.path, placeId: project.linkedStudio?.placeId || (typeof project.linkedStudio === 'string' ? project.linkedStudio : null) }));
+  return file;
+}
+function getProjectAgentEnv(projectPath) {
+  const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+  return { FORGE_PROJECT_CONTEXT_FILE: writeProjectAgentContext(project || { path: projectPath }) };
+}
+function readActiveProject() {
+  const file = userDataFile('active-project.json');
+  if (!fs.existsSync(file)) return null;
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return saved?.path ? loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(saved.path)) || null : null;
+}
+function setProjectSyncPaused(projectPath, paused) {
+  const registry = loadProjectsRegistry();
+  const project = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+  if (!project) throw new Error('Projet inconnu.');
+  project.syncPaused = paused;
+  saveProjectsRegistry(registry);
 }
 
 function addProjectToRegistry(name, projectPath, linkedStudio = null) {
@@ -230,7 +259,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
       const proc = spawn(cmd, args, {
         cwd: projectPath,
         shell: true,
-        env: { ...process.env, ...getRobloxMcpEnv(), FORCE_COLOR: '1', CLICOLOR_FORCE: '1' }
+        env: { ...process.env, ...getRobloxMcpEnv(), ...getProjectAgentEnv(projectPath), FORCE_COLOR: '1', CLICOLOR_FORCE: '1' }
       });
 
       this.sessions.set(sessionId, {
@@ -1542,10 +1571,14 @@ function getRobloxMcpEnv() {
   };
 }
 
+function getAgentMcpEnv(projectPath) {
+  return { ...getRobloxMcpEnv(), FORGE_PROJECT_CONTEXT_DIR: userDataFile('project-context'), ...(projectPath ? getProjectAgentEnv(projectPath) : {}) };
+}
+
 function writeAgentMcpConfig(mcpServerPath, projectPath) {
   const configDir = path.join(app.getPath('userData'), 'mcp');
   fs.mkdirSync(configDir, { recursive: true });
-  const configName = projectPath ? `forge-roblox-${path.basename(projectPath)}.json` : 'forge-roblox.json';
+  const configName = projectPath ? `forge-roblox-${require('node:crypto').createHash('sha256').update(agentProjectKey(projectPath)).digest('hex')}.json` : 'forge-roblox.json';
   const configPath = path.join(configDir, configName);
   
   const memoryMcpPath = getMemoryMcpPath();
@@ -1553,7 +1586,7 @@ function writeAgentMcpConfig(mcpServerPath, projectPath) {
   
   const config = {
     mcpServers: {
-      forge_roblox: { command: forgeNodeCommand, args: [mcpServerPath], env: getRobloxMcpEnv() },
+      forge_roblox: { command: forgeNodeCommand, args: [mcpServerPath], env: getAgentMcpEnv(projectPath) },
       ...(projectPath && memoryMcpPath && fs.existsSync(memoryMcpPath) ? {
         forge_memory: { 
           command: memoryMcpPath, 
@@ -1584,7 +1617,7 @@ function ensureAgyMcpEntry(mcpServerPath) {
     if (!config.mcpServers || typeof config.mcpServers !== 'object') {
       config.mcpServers = {};
     }
-    config.mcpServers.forge_roblox = { command: forgeNodeCommand, args: [mcpServerPath], env: getRobloxMcpEnv(), disabled: false };
+    config.mcpServers.forge_roblox = { command: forgeNodeCommand, args: [mcpServerPath], env: getAgentMcpEnv(), disabled: false };
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
     return true;
@@ -1617,6 +1650,7 @@ function ensureCodexMcpEntry(mcpServerPath) {
       'mcp', 'add', 'forge_roblox',
       '--env', `FORGE_ROBLOX_TOKEN_FILE=${robloxEnv.FORGE_ROBLOX_TOKEN_FILE}`,
       '--env', `FORGE_ROBLOX_CLIENT_ID=${robloxEnv.FORGE_ROBLOX_CLIENT_ID}`,
+      '--env', `FORGE_PROJECT_CONTEXT_DIR=${userDataFile('project-context')}`,
       '--', forgeNodeCommand, mcpServerPath
     ], {
       shell: false, timeout: 10000, windowsHide: true
@@ -1930,10 +1964,12 @@ async function isStudioConnected() {
     const result = await mcpSend('tools/call', {
       name: 'execute_luau',
       arguments: { code: 'return "ForgePing"', datamodel_type: 'Edit' }
-    }, 2000);
-    return { connected: true, result };
+    }, 10000);
+    const toolError = mcpToolResultError(result);
+    if (toolError) throw new Error(toolError);
+    return { connected: true, open: true, result };
   } catch (err) {
-    return { connected: false, error: err.message };
+    return { connected: false, open: false, error: err.message };
   }
 }
 
@@ -2015,6 +2051,10 @@ ipcMain.handle('memory-get-snippet', async (event, projectPath, qualifiedName) =
 // ============================================
 ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
   try {
+    const project = readActiveProject();
+    if (!project) return { error: 'Choisis un projet avant une action Studio.' };
+    const association = await ensureProjectPlaceAssociation(project.path);
+    if (association.error) return association;
     const ping = await isStudioConnected();
     if (!ping.connected) {
       return { error: 'Roblox Studio non connecte. Ouvre Studio et assure-toi que le plugin Forge est charge.\nDetail: ' + ping.error };
@@ -2023,6 +2063,8 @@ ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
       code: code,
       datamodel_type: datamodelType || 'Edit'
     });
+    const toolError = mcpToolResultError(result);
+    if (toolError) return { success: false, error: toolError };
     return { success: true, result };
   } catch (err) {
     console.error('[MCP] Erreur execute_luau:', err.message);
@@ -2030,7 +2072,7 @@ ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
   }
 });
 
-async function runQualityLabTool(projectPath, toolName, args, timeoutMs = 15000, verifyPlace = false) {
+async function runQualityLabTool(projectPath, toolName, args, timeoutMs = 15000, verifyPlace = true) {
   if (!projectPath || !isPathAllowed(projectPath)) return { error: 'Projet invalide ou non autorisé.' };
   if (verifyPlace) {
     const association = await ensureProjectPlaceAssociation(projectPath);
@@ -2089,21 +2131,17 @@ ipcMain.handle('quality-lab-playtest-stop', async (event, projectPath) => {
 // ============================================
 ipcMain.handle('create-project', async (event, projectName, language, options = {}) => {
   try {
+    if (typeof projectName !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(projectName) || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(projectName)) return { error: 'Choisis un nom de 1 à 80 lettres, chiffres ou tirets.', code: 'project-name-invalid' };
     const projectsRoot = getUserProjectsRoot();
     if (!fs.existsSync(projectsRoot)) {
       fs.mkdirSync(projectsRoot, { recursive: true });
     }
 
     const projectDir = path.join(projectsRoot, projectName);
-    const studio = await getCurrentStudioPlaceInfo();
-    if (studio.error) return studio;
     const initialRegistry = loadProjectsRegistry();
     const existingProject = initialRegistry.find(item => canonicalProjectPath(item.path) === canonicalProjectPath(projectDir));
-    const placeDecision = evaluateProjectPlaceLink(initialRegistry, projectDir, studio.place, new Date().toISOString(), {
-      allowReassign: options && options.reassignPlace === true,
-      reassignFromProjectPath: options && options.reassignFromProjectPath,
-    });
-    if (placeDecision.error) return placeDecision;
+    // Local creation never calls Studio or requires a published place.
+    const placeDecision = { link: existingProject?.linkedStudio || null };
 
     // A previous attempt may have completed the durable creation before the
     // renderer failed on a later verification. Make retries idempotent.
@@ -2127,7 +2165,8 @@ ipcMain.handle('create-project', async (event, projectName, language, options = 
         language: existingProject.language || language || 'lua',
         linkedStudio: placeDecision.link,
       }));
-      startFileSync(existingProject.path);
+      stopFileSync();
+      scheduleMediaTracking(existingProject.path);
       return {
         success: true,
         path: existingProject.path,
@@ -2138,13 +2177,7 @@ ipcMain.handle('create-project', async (event, projectName, language, options = 
     }
 
     const isTypeScript = language === 'typescript';
-    let robloxAdminUserId = 0;
-    try {
-      const robloxAuth = await getRobloxAuth();
-      robloxAdminUserId = robloxAuth && robloxAuth.userId ? robloxAuth.userId : 0;
-    } catch (authError) {
-      console.warn('[Forge Admin] Identifiant Roblox indisponible, utilisation du createur de la place:', authError.message);
-    }
+    const robloxAdminUserId = 0; // Offline creation uses creator-based access in Studio.
 
     if (isTypeScript) {
       // Copier le template TypeScript
@@ -2243,9 +2276,11 @@ print("[Forge] Projet '${projectName}' charge !")
       language: language || 'lua',
       createdAt: new Date().toISOString(),
       linkedStudio: placeDecision.link,
+      syncPaused: true,
     });
     saveProjectsRegistry(finalRegistry);
-    startFileSync(projectDir);
+    stopFileSync();
+    scheduleMediaTracking(projectDir);
 
     return {
       success: true,
@@ -2260,15 +2295,8 @@ print("[Forge] Projet '${projectName}' charge !")
 });
 
 ipcMain.handle('get-active-project', async () => {
-  const activePath = userDataFile('active-project.json');
-  if (!fs.existsSync(activePath)) return { project: null };
-  const project = JSON.parse(fs.readFileSync(activePath, 'utf8'));
-  if (!project || !project.path) return { project: null };
-  const association = await ensureProjectPlaceAssociation(project.path);
-  if (association.error) return { project, syncBlocked: association.error, syncBlockedCode: association.code };
-  startFileSync(project.path);
-  const registered = loadProjectsRegistry().find(item => item.path === project.path);
-  return { project: registered || project };
+  try { return { project: readActiveProject() }; }
+  catch (error) { return { project: null, error: error.message }; }
 });
 
 ipcMain.handle('list-projects', async () => {
@@ -2279,8 +2307,7 @@ ipcMain.handle('set-active-project', async (event, projectPath) => {
   const registry = loadProjectsRegistry();
   const proj = registry.find(p => p.path === projectPath);
   if (!proj) return { error: 'Projet inconnu' };
-  const association = await ensureProjectPlaceAssociation(proj.path, { allowLink: true });
-  if (association.error) return association;
+  if (!isPathAllowed(proj.path)) return { error: 'Dossier du projet introuvable ou inaccessible.' };
   const activeProjectPath = userDataFile('active-project.json');
   const linkedProject = loadProjectsRegistry().find(item => item.path === proj.path) || proj;
   fs.writeFileSync(activeProjectPath, JSON.stringify({
@@ -2288,7 +2315,9 @@ ipcMain.handle('set-active-project', async (event, projectPath) => {
     path: linkedProject.path,
     linkedStudio: linkedProject.linkedStudio,
   }));
-  startFileSync(proj.path);
+  stopFileSync();
+  scheduleMediaTracking(proj.path);
+  if (linkedProject.linkedStudio && linkedProject.syncPaused === false) startFileSync(proj.path);
   return { success: true, project: linkedProject };
 });
 
@@ -2300,6 +2329,14 @@ ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
 
     const projName = registry[idx].name;
 
+    if (projectHasRunningAgents(projectPath)) return { error: 'Arrête les agents de ce projet avant de le retirer.' };
+    // Trash first: a failed move must leave the registry and the project intact.
+    if (deleteFiles && fs.existsSync(projectPath)) {
+      if (!isPathAllowed(projectPath)) return { error: 'Dossier non autorisé.' };
+      await shell.trashItem(projectPath);
+    }
+    const contextFile = projectAgentContextPath(projectPath);
+    fs.writeFileSync(contextFile, JSON.stringify({ projectPath, placeId: null }));
     // Remove from registry
     registry.splice(idx, 1);
     saveProjectsRegistry(registry);
@@ -2317,9 +2354,6 @@ ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
     }
 
     // Delete project files from disk if requested
-    if (deleteFiles && fs.existsSync(projectPath)) {
-      fs.rmSync(projectPath, { recursive: true, force: true });
-    }
 
     return { success: true, name: projName };
   } catch (e) {
@@ -2501,6 +2535,8 @@ function parseMcpJsonResult(result) {
 async function getCurrentStudioPlaceInfo() {
   try {
     const result = await syncMcpCallTool('get_place_info', {}, 5000);
+    const toolError = mcpToolResultError(result);
+    if (toolError) throw new Error(toolError);
     const place = parseMcpJsonResult(result);
     if (!place) throw new Error('Réponse de Studio invalide');
     return { success: true, place };
@@ -2513,12 +2549,12 @@ async function getCurrentStudioPlaceInfo() {
 }
 
 async function ensureProjectPlaceAssociation(projectPath, options = {}) {
-  const studio = await getCurrentStudioPlaceInfo();
-  if (studio.error) return studio;
-
   const registry = loadProjectsRegistry();
   const project = registry.find(item => canonicalProjectPath(item.path) === canonicalProjectPath(projectPath));
   if (!project) return { error: 'Ce dossier n’est pas enregistré comme projet Forge.', code: 'project-unknown' };
+  if (!project.linkedStudio && !options.allowLink) return { error: 'Projet local : lie une place dans les réglages du projet avant une action dans Studio.', code: 'project-unlinked' };
+  const studio = await getCurrentStudioPlaceInfo();
+  if (studio.error) return studio;
   const decision = evaluateProjectPlaceLink(registry, projectPath, studio.place);
   if (decision.error) return decision;
 
@@ -3301,9 +3337,36 @@ ipcMain.handle('get-app-info', async () => ({ version: app.getVersion(), platfor
 ipcMain.handle('get-projects-location', async () => ({ path: getUserProjectsRoot() }));
 ipcMain.handle('get-active-project-info', async () => {
   try {
-    const file = userDataFile('active-project.json');
-    return { project: fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null };
+    return { project: readActiveProject() };
   } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('link-project-studio', async (event, projectPath, options = {}) => {
+  try {
+    const registry = loadProjectsRegistry();
+    const project = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+    if (!project || !isPathAllowed(projectPath)) return { error: 'Projet introuvable.', code: 'project-unknown' };
+    if (projectHasRunningAgents(projectPath)) return { error: 'Arrête les agents avant de modifier la liaison Studio.', code: 'agents-running' };
+    const studio = await getCurrentStudioPlaceInfo();
+    if (studio.error) return studio;
+    const decision = evaluateProjectPlaceLink(registry, projectPath, studio.place, undefined, options);
+    if (decision.error) return decision;
+    if (decision.reassignedFromProjectPath) {
+      if (projectHasRunningAgents(decision.reassignedFromProjectPath)) return { error: 'Arrête les agents du projet précédent avant de transférer la place.' };
+      const previous = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(decision.reassignedFromProjectPath));
+      previous.linkedStudio = null; previous.syncPaused = true;
+    }
+    stopFileSync();
+    project.linkedStudio = decision.link; project.syncPaused = true;
+    saveProjectsRegistry(registry);
+    return { success: true, project };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('project-studio-status', async (event, projectPath) => {
+  const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+  if (!project) return { error: 'Projet introuvable.', code: 'project-unknown' };
+  if (!project.linkedStudio) return { project, ready: false, code: 'project-unlinked', message: 'Projet local : aucune place associée.' };
+  const association = await ensureProjectPlaceAssociation(projectPath);
+  return association.error ? { project, ready: false, ...association } : { project, ready: true, code: 'ready', message: 'La bonne place répond dans Studio.' };
 });
 ipcMain.handle('choose-projects-location', async () => {
   const result = await dialog.showOpenDialog({ title: 'Dossier des nouveaux projets Forge', properties: ['openDirectory', 'createDirectory'] });
@@ -3886,6 +3949,7 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
       FORGE_AGENT_ACTIVITY_FILE: agentActivityFile(projectPath),
       FORGE_AGENT_REPORTER: path.join(__dirname, 'lib', 'agent-reporter-cli.js'),
       ...getRobloxMcpEnv(),
+      ...getProjectAgentEnv(projectPath),
     };
     if (userApiKeys.gemini) ptyEnv.GEMINI_API_KEY = userApiKeys.gemini;
     if (userApiKeys.elevenlabs) ptyEnv.ELEVENLABS_API_KEY = userApiKeys.elevenlabs;
@@ -4147,11 +4211,8 @@ ipcMain.handle('library-import', async (event, item) => {
 // FENETRE PRINCIPALE
 // ============================================
 function getStartPage() {
-  // L'app démarre TOUJOURS sur l'onboarding, que l'on soit connecté ou non.
-  // La suite du flux (roblox-studio → login/accounts) est gérée dans
-  // onboarding.html et roblox-studio.html selon la session.
-  console.log('[Boot] Démarré sur onboarding.html');
-  return 'onboarding.html';
+  const session = loadForgeSession();
+  return session?.access_token && session?.user?.id ? 'projects.html' : 'login.html';
 }
 
 function createWindow() {
@@ -4740,6 +4801,8 @@ async function flushPendingScriptSyncs() {
 
 function startFileSync(projectPath) {
   scheduleMediaTracking(projectPath);
+  const registered = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+  if (!registered?.linkedStudio || registered.syncPaused !== false) return;
   const srcPath = path.join(projectPath, 'src');
   if (currentSyncProjectPath === projectPath && (fileWatcher || sourceReconcileTimer)) {
     reconcileSourceScripts(srcPath, true);
@@ -4898,17 +4961,28 @@ async function deleteScriptFromStudio(filename) {
 ipcMain.handle('start-file-sync', async (event, projectPath) => {
   const association = await ensureProjectPlaceAssociation(projectPath);
   if (association.error) return association;
+  const active = readActiveProject();
+  if (!active || canonicalProjectPath(active.path) !== canonicalProjectPath(projectPath)) return { error: 'Ouvre ce projet avant de démarrer sa synchronisation.' };
+  setProjectSyncPaused(projectPath, false);
   startFileSync(projectPath);
   return { success: true, linkedStudio: association.link };
 });
 
-ipcMain.handle('stop-file-sync', async () => {
-  stopFileSync();
-  return { success: true };
+ipcMain.handle('stop-file-sync', async (event, projectPath) => {
+  try {
+    const target = projectPath || readActiveProject()?.path;
+    if (!target) return { error: 'Aucun projet actif.' };
+    setProjectSyncPaused(target, true);
+    if (currentSyncProjectPath && canonicalProjectPath(currentSyncProjectPath) === canonicalProjectPath(target)) stopFileSync();
+    return { success: true };
+  } catch (error) { return { error: error.message }; }
 });
 
 ipcMain.handle('get-file-sync-status', async (event, projectPath) => {
   if (!isPathAllowed(projectPath)) return { error: 'Chemin de projet non autorise.' };
+  const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+  if (!project?.linkedStudio) return { phase: 'local', pending: 0, paused: true };
+  if (project.syncPaused !== false) return { phase: 'paused', pending: 0, paused: true };
   if (path.resolve(projectPath) !== path.resolve(currentSyncProjectPath || '')) {
     return { phase: 'stopped', error: null, pending: 0, lastSyncedAt: null };
   }

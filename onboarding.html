@@ -199,7 +199,7 @@
     </div>
   </div>
 
-  <button class="continue-btn" id="continueBtn" data-i18n="continue_btn">Continuer →</button>
+  <button class="continue-btn" id="continueBtn" data-i18n="return_projects">Continuer →</button>
 
   <div class="step-footer mono" data-i18n="step_1_6">Étape 1 sur 6</div>
 
@@ -371,7 +371,7 @@
     if(allRequiredOk(report)){
       continueBtn.classList.add('ready');
     } else {
-      continueBtn.classList.remove('ready');
+      continueBtn.classList.add('ready');
     }
     retryBtn.disabled = false;
   }
@@ -438,7 +438,7 @@
   continueBtn.addEventListener('click', () => {
     document.body.style.opacity = '0';
     document.body.style.transition = 'opacity 0.2s ease';
-    setTimeout(() => window.location.href = 'roblox-studio.html', 200);
+    setTimeout(() => window.location.href = 'projects.html', 200);
   });
 </script>
 <script>initLang();</script>

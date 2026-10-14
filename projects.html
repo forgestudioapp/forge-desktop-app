@@ -218,7 +218,7 @@
       <div class="modal-title" data-i18n="delete_project">Supprimer le projet</div>
       <div class="modal-desc" id="deleteModalDesc"></div>
       <label class="modal-check">
-        <input type="checkbox" id="deleteFilesCheck" checked>
+        <input type="checkbox" id="deleteFilesCheck">
         <span data-i18n="delete_project_confirm">Supprimer le dossier du disque</span>
       </label>
       <div class="modal-actions">
@@ -243,6 +243,7 @@
   const studioSub = document.getElementById('studioSub');
   let activeProject = null;
   let projects = [];
+  if(new URLSearchParams(location.search).has('choose'))forgeToast(t('choose_project_hint'),'info');
   document.getElementById('resumeProjectBtn').addEventListener('click',()=>{if(activeProject)openProject(activeProject);});
   document.getElementById('projectSearch').addEventListener('input',()=>renderProjects(projects));
 
@@ -305,13 +306,8 @@
         document.getElementById('resumeProjectBtn').hidden=false;
         document.getElementById('resumeProjectBtn').textContent=t('polish_resume')+' · '+activeProject.name;
         studioBar.classList.remove('hidden');
-        if(res.syncBlocked){
-          studioTitle.textContent = 'Projet non lié à cette place';
-          studioSub.textContent = res.syncBlocked;
-        } else {
-          studioTitle.textContent = t('studio_open_on') + res.project.name;
-          studioSub.textContent = t('studio_linked');
-        }
+        studioTitle.textContent = res.project.name;
+        studioSub.textContent = res.project.linkedStudio ? t('project_linked_paused') : t('sync_local');
       } else {
         activeProject = null;
         studioBar.classList.add('hidden');
@@ -331,8 +327,8 @@
 
   function openDeleteModal(proj){
     deleteTarget = proj;
-    deleteFilesCheck.checked = true;
-    deleteModalDesc.textContent = proj.name + ' — ' + t('delete_project_confirm');
+    deleteFilesCheck.checked = false;
+    deleteModalDesc.textContent = proj.name + '\n' + proj.path;
     deleteModal.classList.add('open');
   }
 

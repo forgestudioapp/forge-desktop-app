@@ -88,7 +88,9 @@ contextBridge.exposeInMainWorld('forgeAPI', {
 
   // --- File Sync ---
   startFileSync: (projectPath) => ipcRenderer.invoke('start-file-sync', projectPath),
-  stopFileSync: () => ipcRenderer.invoke('stop-file-sync'),
+  stopFileSync: (projectPath) => ipcRenderer.invoke('stop-file-sync', projectPath),
+  linkProjectStudio: (projectPath, options) => ipcRenderer.invoke('link-project-studio', projectPath, options),
+  projectStudioStatus: (projectPath) => ipcRenderer.invoke('project-studio-status', projectPath),
   getFileSyncStatus: (projectPath) => ipcRenderer.invoke('get-file-sync-status', projectPath),
 
   // --- Projets ---
