@@ -163,6 +163,12 @@ function loadProjectsRegistry() {
 function saveProjectsRegistry(projects) {
   fs.writeFileSync(getProjectsRegistryPath(), JSON.stringify(projects, null, 2));
   for (const project of projects) writeProjectAgentContext(project);
+  const activeFile = userDataFile('active-project.json');
+  if (fs.existsSync(activeFile)) {
+    const active = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
+    const project = projects.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(active?.path));
+    if (project) fs.writeFileSync(activeFile, JSON.stringify(project));
+  }
 }
 
 function projectAgentContextPath(projectPath) {
@@ -253,7 +259,8 @@ async launch(agentType, projectPath, prompt, options = {}) {
 
     try {
       if (!options.skipForgeInstructions) {
-        prepareForgeAgentInstructions(projectPath, agentType);
+        const prepared = prepareForgeAgentInstructions(projectPath, agentType);
+        if (prepared.error) throw new Error(prepared.error);
       }
       const { cmd, args, stdin } = this._buildCommand(agentType, safePrompt, { ...options, projectPath });
       const proc = spawn(cmd, args, {
@@ -270,6 +277,8 @@ async launch(agentType, projectPath, prompt, options = {}) {
         buffer: []
       });
 
+      proc.stdout.setEncoding('utf8');
+      proc.stderr.setEncoding('utf8');
       proc.stdout.on('data', (data) => {
         const chunk = data.toString();
         this._emit(sessionId, 'stdout', chunk);
@@ -381,6 +390,8 @@ async launch(agentType, projectPath, prompt, options = {}) {
       let stdout = '';
       let stderr = '';
 
+      proc.stdout.setEncoding('utf8');
+      proc.stderr.setEncoding('utf8');
       proc.stdout.on('data', (data) => {
         const chunk = data.toString();
         stdout += chunk;
@@ -1638,34 +1649,7 @@ function resolveAgyCommand() {
 // Enregistre le serveur MCP forge_roblox dans la config de Codex via
 // 'codex mcp add' (idempotent : ne cree pas de doublon).
 function ensureCodexMcpEntry(mcpServerPath) {
-  try {
-    const { spawnSync } = require('child_process');
-    const robloxEnv = getRobloxMcpEnv();
-    // Forge owns this named entry. Replacing it ensures an entry created by an
-    // older version also receives the OAuth token path used by the AI tools.
-    spawnSync('codex', ['mcp', 'remove', 'forge_roblox'], {
-      shell: false, timeout: 10000, windowsHide: true
-    });
-    const res = spawnSync('codex', [
-      'mcp', 'add', 'forge_roblox',
-      '--env', `FORGE_ROBLOX_TOKEN_FILE=${robloxEnv.FORGE_ROBLOX_TOKEN_FILE}`,
-      '--env', `FORGE_ROBLOX_CLIENT_ID=${robloxEnv.FORGE_ROBLOX_CLIENT_ID}`,
-      '--env', `FORGE_PROJECT_CONTEXT_DIR=${userDataFile('project-context')}`,
-      '--', forgeNodeCommand, mcpServerPath
-    ], {
-      shell: false, timeout: 10000, windowsHide: true
-    });
-    if (res.status === 0) {
-      console.log('[Agents] MCP forge_roblox enregistre pour Codex.');
-      return true;
-    } else {
-      console.warn('[Agents] codex mcp add retourne', res.status, (res.stderr || '').toString().slice(0, 200));
-      return false;
-    }
-  } catch (e) {
-    console.error('[Agents] Impossible d\'enregistrer le MCP Codex:', e.message);
-    return false;
-  }
+  return require('./lib/codex-mcp-setup').ensureCodexMcp({ nodeCommand: forgeNodeCommand, serverPath: mcpServerPath, env: getAgentMcpEnv() });
 }
 
 // Commande shell complete pour lancer un agent avec le pont Roblox Studio.
@@ -1962,8 +1946,8 @@ async function isStudioConnected() {
   try {
     await mcpInitialize();
     const result = await mcpSend('tools/call', {
-      name: 'execute_luau',
-      arguments: { code: 'return "ForgePing"', datamodel_type: 'Edit' }
+      name: 'get_place_info',
+      arguments: {}
     }, 10000);
     const toolError = mcpToolResultError(result);
     if (toolError) throw new Error(toolError);
@@ -2310,6 +2294,7 @@ ipcMain.handle('set-active-project', async (event, projectPath) => {
   if (!isPathAllowed(proj.path)) return { error: 'Dossier du projet introuvable ou inaccessible.' };
   const activeProjectPath = userDataFile('active-project.json');
   const linkedProject = loadProjectsRegistry().find(item => item.path === proj.path) || proj;
+  writeProjectAgentContext(linkedProject);
   fs.writeFileSync(activeProjectPath, JSON.stringify({
     name: linkedProject.name,
     path: linkedProject.path,
@@ -3917,7 +3902,9 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
     return { error: 'Chemin de projet non autorise.' };
   }
 
-  prepareForgeAgentInstructions(projectPath, agentType);
+  try {
+  const prepared = prepareForgeAgentInstructions(projectPath, agentType);
+  if (prepared.error) throw new Error(prepared.error);
   const cmd = agentType === 'claude'
     ? 'claude'
     : agentType === 'codex'
@@ -3929,7 +3916,6 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
 
   if (!spawnPty) return { error: 'Terminal intégré indisponible. Réinstalle Forge puis réessaie.' };
 
-  try {
     // Build env vars before spawning the CLI so setup stays invisible. This
     // avoids showing the Windows banner, `set ...` lines and launch command.
     const assetsDir = path.join(projectPath, 'assets').replace(/\\/g, '/');
@@ -4227,10 +4213,12 @@ function createWindow() {
     }
   });
   require('./lib/window-input-focus').attachWindowInputFocus(win);
+  require('./lib/window-navigation').attachWindowNavigation(win, { root: __dirname, openExternal: url => shell.openExternal(url) });
   agentManager.setWindow(win);
   win.webContents.on('console-message', (event, level, message, line, sourceId) => {
     try { console.log('[renderer] L' + level + ' (ligne ' + line + ', ' + (sourceId || '?') + '): ' + message); } catch (e) {}
   });
+  try { saveProjectsRegistry(loadProjectsRegistry()); } catch (error) { console.error('[Projects] Context repair failed:', error.message); }
   win.loadFile(getStartPage());
 }
 

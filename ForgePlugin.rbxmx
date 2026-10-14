@@ -46,13 +46,13 @@ local _services = TS.import(script, script.Parent.Parent, "node_modules", "@rbxt
 local HttpService = _services.HttpService
 local RunService = _services.RunService
 local State = TS.import(script, script.Parent, "State")
-local Utils = TS.import(script, script.Parent, "Utils")
 local UI = TS.import(script, script.Parent, "UI")
 local QueryHandlers = TS.import(script, script.Parent, "handlers", "QueryHandlers")
 local PropertyHandlers = TS.import(script, script.Parent, "handlers", "PropertyHandlers")
 local InstanceHandlers = TS.import(script, script.Parent, "handlers", "InstanceHandlers")
 local ScriptHandlers = TS.import(script, script.Parent, "handlers", "ScriptHandlers")
 local MetadataHandlers = TS.import(script, script.Parent, "handlers", "MetadataHandlers")
+local ScreenshotHandlers = TS.import(script, script.Parent, "handlers", "ScreenshotHandlers")
 local TestHandlers = TS.import(script, script.Parent, "handlers", "TestHandlers")
 local TerrainHandlers = TS.import(script, script.Parent, "handlers", "TerrainHandlers")
 -- Forge status colors
@@ -111,6 +111,7 @@ local routeMap = {
 	["/api/get-tagged"] = MetadataHandlers.getTagged,
 	["/api/get-selection"] = MetadataHandlers.getSelection,
 	["/api/execute-luau"] = MetadataHandlers.executeLuau,
+	["/api/take-screenshot"] = ScreenshotHandlers.takeScreenshot,
 	["/api/start-playtest"] = TestHandlers.startPlaytest,
 	["/api/stop-playtest"] = TestHandlers.stopPlaytest,
 	["/api/get-playtest-output"] = TestHandlers.getPlaytestOutput,
@@ -446,40 +447,10 @@ local function deactivateAll()
 	end
 end
 local function checkForUpdates()
-	task.spawn(function()
-		local success, result = pcall(function()
-			return HttpService:RequestAsync({
-				Url = "https://registry.npmjs.org/robloxstudio-mcp/latest",
-				Method = "GET",
-				Headers = {
-					Accept = "application/json",
-				},
-			})
-		end)
-		if success and result.Success then
-			local ok, data = pcall(function()
-				return HttpService:JSONDecode(result.Body)
-			end)
-			local _condition = ok
-			if _condition then
-				local _result = data
-				if _result ~= nil then
-					_result = _result.version
-				end
-				_condition = _result
-			end
-			if _condition ~= "" and _condition then
-				local latestVersion = data.version
-				if Utils.compareVersions(State.CURRENT_VERSION, latestVersion) < 0 then
-					local ui = UI.getElements()
-					ui.updateBannerText.Text = `v{latestVersion} available - github.com/drgost1/robloxstudio-mcp`
-					ui.updateBanner.Visible = true
-					ui.contentFrame.Position = UDim2.new(0, 8, 0, 92)
-					ui.contentFrame.Size = UDim2.new(1, -16, 1, -100)
-				end
-			end
-		end
-	end)
+	-- Forge ships a customized plugin with its desktop app. The upstream npm
+	-- version is a different release channel and must not trigger this banner.
+	local ui = UI.getElements()
+	ui.updateBanner.Visible = false
 end
 return {
 	getConnectionStatus = getConnectionStatus,
@@ -2875,6 +2846,58 @@ return {
         </Item>
         <Item class="ModuleScript" referent="8">
           <Properties>
+            <string name="Name">ScreenshotHandlers</string>
+            <string name="Source"><![CDATA[return { takeScreenshot = function(data)
+local requestPermission = data.requestPermission == true
+local encoded = (function()
+local http = game:GetService("HttpService")
+local capture
+local ok, result = pcall(function()
+ local service = game:GetService("StudioCaptureService")
+ if not service:CanCaptureScreenshot() then
+  if not requestPermission then return {error = "capture_unavailable", message = "Capture requires an active Studio viewport and screenshot permission. Set requestPermission=true to request permission through Roblox."} end
+  if not service:RequestScreenshotPermissionAsync() then return {error = "permission_denied", message = "Roblox did not grant screenshot permission."} end
+ end
+ local camera = workspace.CurrentCamera
+ if not camera then return {error = "capture_unavailable", message = "Open an active Studio viewport before capturing."} end
+ local viewport = camera.ViewportSize
+ local scale = math.min(1, 1280 / math.max(viewport.X, viewport.Y))
+ local outputSize = Vector2.new(math.max(1, math.floor(viewport.X * scale)), math.max(1, math.floor(viewport.Y * scale)))
+ capture = service:CaptureScreenshot({CaptureSize = viewport, OutputSize = outputSize, ResampleMode = Enum.ResamplerMode.Bilinear, Format = Enum.StudioCaptureScreenshotFormat.PNG, UICaptureMode = Enum.UICaptureMode.All})
+ local deadline = os.clock() + 15
+ while capture.BufferStatus.Name ~= "Ready" do
+  if capture.BufferStatus.Name == "Error" then error(http:JSONEncode(capture:GetErrors())) end
+  if os.clock() > deadline then error("Screenshot encoding timed out") end
+  task.wait(0.05)
+ end
+ local bytes = buffer.tostring(capture:GetBuffer())
+ if #bytes > 2097152 then error("Screenshot exceeds 2 MiB; reduce viewport size") end
+ local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+ local parts = {}
+ for i = 1, #bytes, 3 do
+  local a, b, c = string.byte(bytes, i, i + 2)
+  local value = a * 65536 + (b or 0) * 256 + (c or 0)
+  local x = math.floor(value / 262144) % 64 + 1
+  local y = math.floor(value / 4096) % 64 + 1
+  local z = math.floor(value / 64) % 64 + 1
+  local w = value % 64 + 1
+  parts[#parts + 1] = string.sub(alphabet,x,x)..string.sub(alphabet,y,y)..(b and string.sub(alphabet,z,z) or "=")..(c and string.sub(alphabet,w,w) or "=")
+ end
+ return {data = table.concat(parts), width = capture.Resolution.X, height = capture.Resolution.Y}
+end)
+if capture then capture:Destroy() end
+if not ok and string.find(string.lower(tostring(result)), "not supported", 1, true) then
+ return http:JSONEncode({error = "capture_not_supported", message = "This Studio build does not support viewport capture. Update Roblox Studio or attach a screenshot manually; no image was captured."})
+end
+return http:JSONEncode(ok and result or {error = "capture_failed", message = tostring(result)})
+end)()
+return game:GetService("HttpService"):JSONDecode(encoded)
+end }
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="9">
+          <Properties>
             <string name="Name">ScriptHandlers</string>
             <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
 local TS = require(script.Parent.Parent.Parent.include.RuntimeLib)
@@ -3566,7 +3589,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="9">
+        <Item class="ModuleScript" referent="10">
           <Properties>
             <string name="Name">TerrainHandlers</string>
             <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
@@ -3786,7 +3809,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="10">
+        <Item class="ModuleScript" referent="11">
           <Properties>
             <string name="Name">TestHandlers</string>
             <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
@@ -3949,11 +3972,11 @@ return {
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">State</string>
           <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
-local CURRENT_VERSION = "2.3.3"
+local CURRENT_VERSION = "2.3.4-forge.1"
 local MAX_CONNECTIONS = 5
 local BASE_PORT = 58741
 local activeTabIndex = 0
@@ -4040,7 +4063,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">UI</string>
           <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
@@ -4719,7 +4742,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Utils</string>
           <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
@@ -5253,11 +5276,11 @@ return {
         </Properties>
       </Item>
     </Item>
-    <Item class="Folder" referent="17">
+    <Item class="Folder" referent="18">
       <Properties>
         <string name="Name">include</string>
       </Properties>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Promise</string>
           <string name="Source"><![CDATA[--[[
@@ -7331,7 +7354,7 @@ return Promise
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">RuntimeLib</string>
           <string name="Source"><![CDATA[local Promise = require(script.Parent.Promise)
@@ -7598,15 +7621,15 @@ return TS
         </Properties>
       </Item>
     </Item>
-    <Item class="Folder" referent="18">
+    <Item class="Folder" referent="19">
       <Properties>
         <string name="Name">node_modules</string>
       </Properties>
-      <Item class="Folder" referent="19">
+      <Item class="Folder" referent="20">
         <Properties>
           <string name="Name">@rbxts</string>
         </Properties>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">services</string>
           <string name="Source"><![CDATA[return setmetatable({}, {
