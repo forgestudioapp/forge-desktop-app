@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: forge-desktop-app
+      - uses: actions/checkout@v4
+        with:
+          repository: forgestudioapp/robloxstudio-mcp
+          path: robloxstudio-mcp
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: forge-desktop-app/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: forge-desktop-app
+      - run: npm test
+        working-directory: forge-desktop-app
