@@ -109,7 +109,7 @@
     "beforePack": "./scripts/verify-python-runtime.cjs"
   },
   "devDependencies": {
-    "electron": "^32.3.3",
+    "electron": "^41.10.6",
     "electron-builder": "^26.15.3",
     "electron-rebuild": "^3.2.9"
   },
