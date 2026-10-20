@@ -1,0 +1,13 @@
+# Forge
+
+Forge est une application de bureau indépendante qui aide à créer et modifier des projets Roblox avec des agents IA et des outils locaux ou connectés.
+
+Site officiel: https://forgestudioapp.github.io/forge-desktop-app/
+Mentions légales: https://forgestudioapp.github.io/forge-desktop-app/legal-notice.html
+Fonctionnalités et prix: https://forgestudioapp.github.io/forge-desktop-app/#pricing
+Confidentialité: https://forgestudioapp.github.io/forge-desktop-app/privacy.html
+Cookies: https://forgestudioapp.github.io/forge-desktop-app/cookies.html
+Conditions: https://forgestudioapp.github.io/forge-desktop-app/terms.html
+Rétractation et remboursements: https://forgestudioapp.github.io/forge-desktop-app/refunds.html
+
+Forge n'est pas affilié à Roblox ni aux fournisseurs IA cités. Les informations de prix et de compatibilité doivent être vérifiées sur le site officiel au moment de la consultation.

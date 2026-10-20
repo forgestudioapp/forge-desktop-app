@@ -6,6 +6,7 @@
 <title>Forge — Cles API Medias</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="lib/theme.css">
+<script src="lib/setup-flow.js"></script>
 <script src="lib/theme.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
@@ -162,7 +163,7 @@
   <h1 data-i18n="api_keys_title">Cles API des services medias</h1>
   <p class="sub" data-i18n="api_keys_sub">Configure les cles pour la generation d'images, de modeles 3D et de sons.</p>
   <p class="info-text"><span data-i18n-html="api_keys_info_html">
-    Les agents de code (Claude, Codex, Antigravity) utilisent tes comptes locaux.<br>
+    Les agents de code (Claude Code et Codex) utilisent tes comptes locaux.<br>
     Seuls les services medias necessitent une cle API.</span><br>
     <a href="#" onclick="window.forgeAPI?.openExternal?.('https://aistudio.google.com/app/apikey')">Gemini</a> · 
     <a href="#" onclick="window.forgeAPI?.openExternal?.('https://platform.tripo3d.ai')">Tripo3D</a> · 
@@ -243,7 +244,7 @@
 <script src="./lib/i18n.js"></script>
 <script src="./lib/ux.js"></script>
 <script>
-  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
+  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = forgeSetup.active(location.search) ? 'login.html?setup=1' : 'onboarding.html?setup=1'; }); } })();
   initLang();
   const dotsEl = document.getElementById('dots');
   for(let i=0;i<6;i++){ const d=document.createElement('i'); if(i===5)d.className='on'; dotsEl.appendChild(d); }
@@ -298,6 +299,7 @@
       if(result.valid){
         const saved = await window.forgeAPI.saveApiKey(service, value);
         if(!saved?.success) throw new Error(saved?.error || 'Enregistrement impossible');
+        input.value = ''; input.placeholder = 'Clé enregistrée — saisir une nouvelle clé pour la remplacer';
         badge.textContent = 'Configure';
         badge.className = 'api-set';
         btn.textContent = 'Enregistrer';
@@ -323,26 +325,27 @@
     try {
       const keys = await window.forgeAPI.getApiKeys();
 
+      if(keys.error) throw new Error(keys.error);
       document.querySelectorAll('.api-card').forEach(card => {
         const service = card.dataset.service;
         const badge = card.querySelector('.api-set');
         const input = card.querySelector('[data-key-input]');
 
         if(keys[service]){
-          badge.textContent = 'Configure';
-          badge.className = 'api-set';
-          input.value = keys[service];
+          badge.textContent = keys[service].readable ? 'Configuré' : 'Clé conservée mais illisible — à remplacer';
+          badge.className = keys[service].readable ? 'api-set' : 'api-set invalid';
+          input.value = ''; input.placeholder = 'Saisir une nouvelle clé pour la remplacer';
         }
       });
     } catch(err) {
-      console.error('Erreur chargement cles :', err);
+      document.querySelectorAll('.api-set').forEach(badge => { badge.textContent = err.message; badge.className = 'api-set invalid'; });
     }
   }
 
   loadKeyStatus();
 
-  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('projects.html'));
-  document.getElementById('skipBtn').addEventListener('click', () => fadeNavigate('projects.html'));
+  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate(forgeSetup.next('api-keys.html', location.search)));
+  document.getElementById('skipBtn').addEventListener('click', () => fadeNavigate(forgeSetup.next('api-keys.html', location.search)));
 </script>
 
 </body>

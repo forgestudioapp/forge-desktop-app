@@ -95,7 +95,10 @@ Step "5b/7 - Rebuild node-pty (terminal integre)"
 Push-Location $AppDir
 try {
   & npx electron-rebuild -f -w node-pty
-  if ($LASTEXITCODE -eq 0) { Ok "node-pty recompile pour Electron." }
+  if ($LASTEXITCODE -eq 0) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $AppDir 'scripts\sign-node-pty.ps1') -ProjectRoot $AppDir
+    Ok "node-pty recompile et signe pour Electron."
+  }
   else { Warn "electron-rebuild a echoue (code $LASTEXITCODE) - le terminal ouvrira une fenetre externe en secours." }
 } catch {
   Warn "electron-rebuild indisponible - le terminal ouvrira une fenetre externe en secours."

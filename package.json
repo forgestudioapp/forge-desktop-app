@@ -1,20 +1,30 @@
 {
   "name": "forge-desktop-app",
-  "version": "1.5.9",
+  "version": "1.6.1",
   "description": "Forge - Génère ton jeu Roblox avec l'IA",
   "main": "main.js",
   "scripts": {
     "test": "node --test lib/*.test.js",
+    "benchmark:credits": "node tools/credit-benchmark.cjs",
     "postinstall": "node scripts/postinstall.js",
     "start": "electron .",
     "setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup.ps1",
     "setup:core": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup.ps1 -SkipAgents",
-    "rebuild:pty": "npx electron-rebuild -f -w node-pty",
+    "setup:mac": "bash ./scripts/setup-macos.sh",
+    "rebuild:pty": "npx electron-rebuild -f -w node-pty && powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/sign-node-pty.ps1",
+    "rebuild:pty:mac": "electron-rebuild -f -w node-pty",
+    "verify:pty": "electron scripts/verify-pty-runtime.cjs",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac --arm64 --x64",
+    "dist:mac:release": "electron-builder --mac --arm64 --x64 -c.mac.notarize=true",
     "publish": "electron-builder --win --publish always",
-    "runtime:prepare": "python scripts/prepare-python-runtime.py && python scripts/prepare-node-runtime.py && node scripts/verify-python-runtime.cjs",
-    "runtime:verify": "node scripts/verify-python-runtime.cjs"
+    "runtime:prepare": "npm run runtime:prepare:win",
+    "runtime:prepare:win": "python scripts/prepare-python-runtime.py && python scripts/prepare-node-runtime.py && node scripts/verify-node-runtime.cjs && node scripts/verify-python-runtime.cjs",
+    "runtime:prepare:mac": "python3 scripts/prepare-node-runtime.py --all-macos && node scripts/verify-node-runtime.cjs --platform=darwin --arch=arm64 && node scripts/verify-node-runtime.cjs --platform=darwin --arch=x64",
+    "runtime:verify": "node scripts/verify-node-runtime.cjs && node scripts/verify-python-runtime.cjs",
+    "validate:p0:windows": "node scripts/validate-packaged-windows.cjs",
+    "release:gate": "node scripts/release-gate.cjs"
   },
   "keywords": [],
   "author": "Forge Studio",
@@ -41,7 +51,12 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "assets/logos/forge-logo.ico"
+      "icon": "assets/logos/forge-logo.ico",
+      "signExts": [".node", ".dll"],
+      "extraResources": [
+        { "from": "runtimes/python-win-x64-u2net", "to": "runtimes/python-win-x64-u2net" },
+        { "from": "runtimes/node-win-x64", "to": "runtimes/node-win-x64" }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -52,8 +67,21 @@
       "shortcutName": "Forge"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "assets/logos/forge-logo.png"
+      "target": ["dmg", "zip"],
+      "icon": "assets/logos/forge-logo.png",
+      "category": "public.app-category.developer-tools",
+      "minimumSystemVersion": "10.15.0",
+      "hardenedRuntime": true,
+      "notarize": false,
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "binaries": [
+        "Resources/runtimes/node-darwin-arm64/bin/node",
+        "Resources/runtimes/node-darwin-x64/bin/node"
+      ],
+      "extraResources": [
+        { "from": "runtimes/node-darwin-arm64", "to": "runtimes/node-darwin-arm64" },
+        { "from": "runtimes/node-darwin-x64", "to": "runtimes/node-darwin-x64" }
+      ]
     },
     "files": [
       "main.js",
@@ -77,6 +105,7 @@
       "assets/**/*",
       "xterm-assets/**/*",
       "scripts/setup.ps1",
+      "scripts/setup-macos.sh",
       "scripts/postinstall.js",
       "ForgePlugin.rbxmx"
     ],
@@ -96,22 +125,17 @@
       {
         "from": "ForgePlugin.rbxmx",
         "to": "ForgePlugin.rbxmx"
-      },
-      {
-        "from": "runtimes/python-win-x64-u2net",
-        "to": "runtimes/python-win-x64-u2net"
-      },
-      {
-        "from": "runtimes/node-win-x64",
-        "to": "runtimes/node-win-x64"
       }
     ],
-    "beforePack": "./scripts/verify-python-runtime.cjs"
+    "beforePack": "./scripts/verify-packaged-runtimes.cjs"
   },
   "devDependencies": {
     "electron": "^32.3.3",
     "electron-builder": "^26.15.3",
     "electron-rebuild": "^3.2.9"
+  },
+  "overrides": {
+    "fast-uri": "^3.1.8"
   },
   "allowScripts": {
     "electron@32.3.3": true,

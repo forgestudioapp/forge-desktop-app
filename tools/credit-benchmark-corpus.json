@@ -1,0 +1,14 @@
+[
+  {"id":"small-patch","label":"Petit correctif","acceptance":"correctif ciblé validé"},
+  {"id":"client-server-bug","label":"Bug client/serveur","acceptance":"autorité serveur correcte"},
+  {"id":"ui","label":"Interface","acceptance":"parcours et états vérifiés"},
+  {"id":"large-search","label":"Recherche gros projet","acceptance":"fichiers pertinents retrouvés"},
+  {"id":"scene-change","label":"Changement de scène","acceptance":"objets modifiés sans dommage collatéral"},
+  {"id":"model-import","label":"Import modèle","acceptance":"import validé sans doublon"},
+  {"id":"blender-export","label":"Export Blender","acceptance":"FBX et aperçu validés"},
+  {"id":"large-logs","label":"Logs volumineux","acceptance":"erreur trouvée avec pagination"},
+  {"id":"network-failure","label":"Panne réseau","acceptance":"échec récupérable et clair"},
+  {"id":"wrong-place","label":"Mauvaise place","acceptance":"écriture bloquée"},
+  {"id":"concurrent-edit","label":"Modification concurrente","acceptance":"conflit détecté sans écrasement"},
+  {"id":"resume","label":"Reprise après fermeture","acceptance":"travail repris sans exploration répétée"}
+]

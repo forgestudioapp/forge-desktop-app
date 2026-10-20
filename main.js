@@ -16,6 +16,7 @@ if (process.env.FORGE_TEST_PROFILE) {
 
 const { spawn, execFile } = require('child_process');
 const { configureBundledNode } = require('./lib/bundled-node');
+const { robloxLocations, memoryMcpExecutable, macPathCandidates, mergePath } = require('./lib/platform-support');
 const { copyFileIfChanged } = require('./lib/copy-if-changed');
 function useBundledNode() {
   return configureBundledNode({ resourcesDir: app.isPackaged ? process.resourcesPath : __dirname, userDataDir: app.getPath('userData') });
@@ -23,9 +24,14 @@ function useBundledNode() {
 const forgeNodeCommand = useBundledNode();
 const { createPtyOutputRelay } = require('./lib/pty-output-relay');
 const { createPrivateControlServer } = require('./lib/private-control-server');
+const { createProtectedJsonStore } = require('./lib/protected-json');
+const { prepareUpdateSnapshot } = require('./lib/update-snapshot');
+const { verifyRemoteSession } = require('./lib/connection-status');
 const { createAgentStateStore, agentProjectKey, sameAgentProject } = require('./lib/agent-state');
 const { createAgentActivityStore } = require('./lib/agent-activity');
+const { createAgentUsageStore, createStructuredUsageParser } = require('./lib/agent-usage');
 const { readProjectQualityMemory, writeProjectQualityMemory } = require('./lib/project-quality-memory');
+const { listSessionHandoffs, saveSessionHandoff } = require('./lib/session-handoff');
 const {
   listProjectCheckpoints,
 } = require('./lib/project-checkpoints');
@@ -47,7 +53,7 @@ const {
 const { syncForgeContext } = require('./lib/forge-context');
 const { scheduleProjectIndex } = require('./lib/project-index');
 const { importMediaReferences } = require('./lib/media-references');
-const { isActiveJob, retainJobs, advanceRemoteJob, mergePolledJobs } = require('./lib/media-jobs');
+const { isActiveJob, stopJobOutcome, retainJobs, advanceRemoteJob, mergePolledJobs } = require('./lib/media-jobs');
 const { createMediaLaunchGuard } = require('./lib/media-launch-guard');
 const { correctionResult } = require('./lib/model-refinement');
 const { trackEvent, getJobMetrics, getAggregatedMetrics } = require('./lib/media-metrics');
@@ -70,6 +76,7 @@ MAX_ATTEMPTS,
 const { isSyncableScript, buildStudioSyncCode, buildStudioDeleteCode, mcpToolResultError } = require('./lib/file-sync');
 const { collectCompiledScripts, changedCompiledScripts } = require('./lib/typescript-sync');
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
+const { EXAMPLES: STARTER_EXAMPLES, writeStarterExample } = require('./lib/project-examples');
 const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
 const {
   isModelFile,
@@ -78,6 +85,11 @@ const {
   modelArtifactKey,
   previewCandidatesForModel,
 } = require('./lib/model-asset-pairing');
+const {
+  normalizeCommunitySharing,
+  shouldAutoPublishCommunityAsset,
+  mergeCommunitySharing,
+} = require('./lib/community-sharing');
 const {
   buildRobloxAuthorizationUrl,
   parseRobloxOAuthCallback,
@@ -147,6 +159,53 @@ function prepareForgeAgentInstructions(projectPath, agentType) {
 }
 
 // ============================================
+// PREPARATION ASYNCHRONE DU CONTEXTE AGENT
+// ============================================
+const agentContextPreparationJobs = new Map();
+const preparedAgentContexts = new Set();
+
+function prepareForgeAgentInstructionsAsync(projectPath, agentType) {
+  const contextKey = `${canonicalProjectPath(projectPath)}::${agentType}`;
+  if (preparedAgentContexts.has(contextKey)) return Promise.resolve({ skipped: true, cached: true });
+  if (agentContextPreparationJobs.has(contextKey)) return agentContextPreparationJobs.get(contextKey);
+
+  const job = new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'lib', 'agent-context-worker.js'), {
+      workerData: { projectPath, agentType, prompt: loadForgeSystemPrompt() }
+    });
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      worker.terminate().catch(() => {});
+      reject(new Error('La préparation du contexte a dépassé 15 secondes. Réessaie.'));
+    }, 15000);
+    const finish = callback => value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      callback(value);
+    };
+    worker.once('message', message => {
+      if (settled) return;
+      clearTimeout(timeout);
+      settled = true;
+      if (!message?.success) { reject(new Error(message?.error || 'Préparation de l’agent impossible.')); return; }
+      if (!message.result?.skipped) scheduleProjectIndex(projectPath);
+      preparedAgentContexts.add(contextKey);
+      resolve(message.result);
+    });
+    worker.once('error', finish(reject));
+    worker.once('exit', code => {
+      if (!settled) finish(reject)(new Error(`La préparation de l’agent s’est arrêtée sans résultat (code ${code}).`));
+    });
+  });
+  agentContextPreparationJobs.set(contextKey, job);
+  job.finally(() => agentContextPreparationJobs.delete(contextKey)).catch(() => {});
+  return job;
+}
+
+// ============================================
 // REGISTRE DES PROJETS
 // ============================================
 function getProjectsRegistryPath() {
@@ -154,14 +213,11 @@ function getProjectsRegistryPath() {
 }
 
 function loadProjectsRegistry() {
-  const p = getProjectsRegistryPath();
-  if (!fs.existsSync(p)) return [];
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
-  catch (e) { return []; }
+  return require('./lib/project-registry').load(getProjectsRegistryPath());
 }
 
 function saveProjectsRegistry(projects) {
-  fs.writeFileSync(getProjectsRegistryPath(), JSON.stringify(projects, null, 2));
+  require('./lib/project-registry').save(getProjectsRegistryPath(), projects);
   for (const project of projects) writeProjectAgentContext(project);
   const activeFile = userDataFile('active-project.json');
   if (fs.existsSync(activeFile)) {
@@ -216,6 +272,10 @@ function addProjectToRegistry(name, projectPath, linkedStudio = null) {
 // ============================================
 // AGENT MANAGER — Bridge local
 // ============================================
+const SUPPORTED_AGENT_TYPES = Object.freeze(['claude', 'codex']);
+function isSupportedAgentType(agentType) { return SUPPORTED_AGENT_TYPES.includes(agentType); }
+function agentUsageStore() { return createAgentUsageStore(userDataFile('agent-usage.json')); }
+
 class AgentManager {
   constructor() {
     this.sessions = new Map();
@@ -227,6 +287,7 @@ class AgentManager {
   }
 
   async detect(agentType) {
+    if (!isSupportedAgentType(agentType)) return { installed: false, error: 'Agent non pris en charge.' };
     const cmd = this._getCommand(agentType);
     return new Promise((resolve) => {
       const child = spawn(cmd, ['--version'], { shell: true, timeout: 8000 });
@@ -234,9 +295,10 @@ class AgentManager {
       let stderr = '';
       child.stdout.on('data', d => stdout += d.toString());
       child.stderr.on('data', d => stderr += d.toString());
-      child.on('close', (code) => {
+      child.on('close', async (code) => {
         if (code === 0) {
-          resolve({ installed: true, version: stdout.trim() || stderr.trim() });
+          const auth = agentType === 'claude' ? await require('./lib/claude-auth').getClaudeAuthStatus() : undefined;
+          resolve({ installed: true, version: stdout.trim() || stderr.trim(), auth });
         } else {
           resolve({ installed: false });
         }
@@ -246,6 +308,7 @@ class AgentManager {
   }
 
 async launch(agentType, projectPath, prompt, options = {}) {
+    if (!isSupportedAgentType(agentType)) return { error: 'Agent non pris en charge. Utilise Claude Code ou Codex.' };
     if (!isPathAllowed(projectPath)) {
       return { error: 'Chemin de projet non autorise. Place ton projet dans Documents, Desktop, ou un dossier de developpement.' };
     }
@@ -262,6 +325,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
         const prepared = prepareForgeAgentInstructions(projectPath, agentType);
         if (prepared.error) throw new Error(prepared.error);
       }
+      if (agentType === 'codex' && !options.skipMcp) await ensureCodexMcpEntryAsync(getMcpServerPath());
       const { cmd, args, stdin } = this._buildCommand(agentType, safePrompt, { ...options, projectPath });
       const proc = spawn(cmd, args, {
         cwd: projectPath,
@@ -269,12 +333,21 @@ async launch(agentType, projectPath, prompt, options = {}) {
         env: { ...process.env, ...getRobloxMcpEnv(), ...getProjectAgentEnv(projectPath), FORCE_COLOR: '1', CLICOLOR_FORCE: '1' }
       });
 
+      const usageParser = createStructuredUsageParser(agentType, event => {
+        try { agentUsageStore().record(sessionId, event); } catch (_) {}
+      });
       this.sessions.set(sessionId, {
         process: proc,
         agentType,
         projectPath,
         startTime: Date.now(),
-        buffer: []
+        buffer: [],
+        usageParser,
+      });
+      agentUsageStore().begin(sessionId, {
+        provider: agentType,
+        project: canonicalProjectPath(projectPath),
+        task: safePrompt.slice(0, 160),
       });
 
       proc.stdout.setEncoding('utf8');
@@ -283,7 +356,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
         const chunk = data.toString();
         this._emit(sessionId, 'stdout', chunk);
         const sess = this.sessions.get(sessionId);
-        if (sess) sess.buffer.push({ t: 'out', d: chunk, ts: Date.now() });
+        if (sess) { sess.buffer.push({ t: 'out', d: chunk, ts: Date.now() }); sess.usageParser.push(chunk); }
       });
 
       proc.stderr.on('data', (data) => {
@@ -297,8 +370,10 @@ async launch(agentType, projectPath, prompt, options = {}) {
         this._emit(sessionId, 'exit', { code });
         const sess = this.sessions.get(sessionId);
         if (sess) {
+          sess.usageParser.flush();
           sess.exitCode = code;
           sess.endTime = Date.now();
+          agentUsageStore().finish(sessionId, code === 0 ? 'completed' : 'failed');
           // Les générations de l'atelier Visuels doivent se terminer même si
           // l'utilisateur a quitté la page qui effectuait le polling.
           setTimeout(() => finalizeCodexMediaSession(sess.projectPath, sessionId), 750);
@@ -317,6 +392,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
           sess.error = msg;
           sess.exitCode = -1;
           sess.endTime = Date.now();
+          agentUsageStore().finish(sessionId, 'failed');
         }
       });
 
@@ -373,8 +449,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
   async install(agentType) {
     const packages = {
       claude: '@anthropic-ai/claude-code',
-      codex: '@openai/codex',
-      antigravity: 'agy'
+      codex: '@openai/codex'
     };
     const pkg = packages[agentType];
     if (!pkg) return { error: 'Agent inconnu' };
@@ -431,12 +506,8 @@ async launch(agentType, projectPath, prompt, options = {}) {
   }
 
   _getCommand(agentType) {
-    if (agentType === 'antigravity') {
-      const cmd = resolveAgyCommand();
-      return /\s/.test(cmd) ? '"' + cmd + '"' : cmd;
-    }
     const map = { claude: 'claude', codex: 'codex' };
-    return map[agentType] || agentType;
+    return map[agentType] || null;
   }
 
 _buildCommand(agentType, prompt, options = {}) {
@@ -456,16 +527,14 @@ _buildCommand(agentType, prompt, options = {}) {
             '--strict-mcp-config',
             '--allowedTools', 'mcp__forge_roblox,mcp__forge_roblox__*,mcp__forge_memory,mcp__forge_memory__*',
             '--permission-mode', 'acceptEdits',
+            '--output-format', 'stream-json',
+            '--verbose',
             '-p', prompt
           ]
         };
       }
       case 'codex':
-        if (mcpServerPath && !options.skipMcp) ensureCodexMcpEntry(mcpServerPath);
         return { cmd: 'codex', ...buildCodexExec(prompt, options.images) };
-      case 'antigravity':
-        ensureAgyMcpEntry(mcpServerPath);
-        return { cmd: resolveAgyCommand(), args: ['--dangerously-skip-permissions', prompt] };
       default:
         throw new Error('Agent inconnu : ' + agentType);
     }
@@ -573,7 +642,7 @@ async function startPrivateControlIfPaired() {
         'POST /v1/agents/launch': async body => {
           const project = resolvePrivateProject(body.projectPath);
           if (!project) return { error: 'Aucun projet Forge actif ou reconnu.' };
-          if (!['codex', 'claude', 'antigravity'].includes(body.agentType)) {
+          if (!isSupportedAgentType(body.agentType)) {
             return { error: 'Agent inconnu.' };
           }
           return agentManager.launch(body.agentType, project.path, body.prompt);
@@ -595,6 +664,7 @@ async function startPrivateControlIfPaired() {
 // IPC HANDLERS — Agents
 // ============================================
 ipcMain.handle('open-agent-terminal', async (event, agentType, projectPath) => {
+  if (!isSupportedAgentType(agentType)) return { error: 'Agent non pris en charge. Utilise Claude Code ou Codex.' };
   return agentManager.openTerminal(agentType, projectPath);
 });
 
@@ -603,15 +673,15 @@ ipcMain.handle('agent-detect', async (event, agentType) => {
 });
 
 ipcMain.handle('agent-detect-all', async () => {
-  const agents = ['claude', 'codex', 'antigravity'];
   const results = {};
-  for (const a of agents) {
+  for (const a of SUPPORTED_AGENT_TYPES) {
     results[a] = await agentManager.detect(a);
   }
   return results;
 });
 
 ipcMain.handle('agent-launch', async (event, agentType, projectPath, prompt) => {
+  if (!isSupportedAgentType(agentType)) return { error: 'Agent non pris en charge. Utilise Claude Code ou Codex.' };
   return await agentManager.launch(agentType, projectPath, prompt);
 });
 
@@ -625,6 +695,11 @@ ipcMain.handle('agent-status', async (event, sessionId) => {
 
 ipcMain.handle('agent-list', async () => {
   return agentManager.listSessions();
+});
+
+ipcMain.handle('agent-usage-summary', async (event, projectPath) => {
+  const project = typeof projectPath === 'string' && projectPath ? canonicalProjectPath(projectPath) : undefined;
+  return agentUsageStore().summary({ project });
 });
 
 // ============================================
@@ -677,6 +752,7 @@ ipcMain.handle('reconnect-pty', async (event, sessionId, projectPath) => {
 });
 
 ipcMain.handle('agent-install', async (event, agentType) => {
+  if (!isSupportedAgentType(agentType)) return { error: 'Agent non pris en charge. Utilise Claude Code ou Codex.' };
   return await agentManager.install(agentType);
 });
 
@@ -687,50 +763,12 @@ function getApiKeysPath() {
   return userDataFile('api-keys.json');
 }
 
-function loadApiKeys() {
-  const p = getApiKeysPath();
-  if (!fs.existsSync(p)) return {};
-  try {
-    const file = JSON.parse(fs.readFileSync(p, 'utf8'));
-    const keys = {};
-    if (!safeStorage.isEncryptionAvailable()) return file;
-    for (const [service, encryptedB64] of Object.entries(file)) {
-      try {
-        const encryptedBuffer = Buffer.from(encryptedB64, 'base64');
-        keys[service] = safeStorage.decryptString(encryptedBuffer);
-      } catch (err) {
-        console.error(`[API Keys] Impossible de dechiffrer "${service}" :`, err.message);
-      }
-    }
-    return keys;
-  } catch (err) {
-    console.error('[API Keys] Erreur chargement :', err.message);
-    return {};
-  }
-}
-
-function saveApiKeys(keys) {
-  const p = getApiKeysPath();
-  if (!safeStorage.isEncryptionAvailable()) {
-    fs.writeFileSync(p, JSON.stringify(keys, null, 2));
-    return;
-  }
-  const encrypted = {};
-  for (const [service, key] of Object.entries(keys)) {
-    try {
-      const buffer = safeStorage.encryptString(key);
-      encrypted[service] = buffer.toString('base64');
-    } catch (err) {
-      console.error(`[API Keys] Impossible de chiffrer "${service}" :`, err.message);
-    }
-  }
-  fs.writeFileSync(p, JSON.stringify(encrypted, null, 2));
-}
+function apiKeyStore() { return require('./lib/protected-keys').createKeyStore(getApiKeysPath(), safeStorage); }
+function loadApiKeys() { return apiKeyStore().read(error => console.warn('[API keys]', error.message)); }
 
 ipcMain.handle('save-api-key', async (event, service, key) => {
-  const keys = loadApiKeys();
-  keys[service] = key;
-  saveApiKeys(keys);
+  if (!['gemini','tripo','elevenlabs','roblox'].includes(service) || typeof key !== 'string') return { error: 'Service ou clé invalide' };
+  try { apiKeyStore().replace(service, key); } catch(error) { return { error: error.message }; }
 
   // Redemarrer le serveur MCP si une cle qu'il utilise a changee,
   // pour que la nouvelle cle soit prise en compte.
@@ -747,7 +785,25 @@ ipcMain.handle('save-api-key', async (event, service, key) => {
   return { success: true };
 });
 
-ipcMain.handle('get-api-keys', async () => loadApiKeys());
+ipcMain.handle('get-api-keys', async () => { try { return apiKeyStore().status(); } catch(error) { return { error: error.message }; } });
+
+ipcMain.handle('delete-api-key', async (event, service) => {
+  if (!['gemini','tripo','elevenlabs'].includes(service)) return { error: 'Service invalide' };
+  try {
+    const removed = apiKeyStore().remove(service);
+    if (removed && service === 'tripo' && mcpServerProcess) {
+      mcpServerProcess.kill();
+      mcpServerProcess = null;
+      mcpServerReady = false;
+      mcpInitialized = false;
+      mcpPending.clear();
+      startMcpServer();
+    }
+    return { success: true, removed };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
 
 ipcMain.handle('verify-api-key', async (event, service, key) => {
   if (!key || key.trim().length < 8) return { valid: false, error: 'Cle trop courte' };
@@ -756,13 +812,7 @@ ipcMain.handle('verify-api-key', async (event, service, key) => {
   try {
     switch (service) {
       case 'tripo': {
-        // GET sur un taskId fake : 401+1002 = clé invalide, sinon = clé valide
-        const r = await fetchWithTimeout('https://api.tripo3d.ai/v2/openapi/task/fake_test_id', {
-          headers: { 'Authorization': `Bearer ${k}` }
-        }, 15000);
-        const d = await r.json();
-        if (d.code === 1002) return { valid: false, error: 'Clé Tripo invalide' };
-        return { valid: true };
+        return require('./lib/tripo-validation').verifyTripo(k, fetchWithTimeout);
       }
       case 'gemini': {
         const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${k}`, {}, 15000);
@@ -797,7 +847,8 @@ ipcMain.handle('verify-api-key', async (event, service, key) => {
 const USER_DATA_ROOT = path.join(app.getPath('userData'), 'forge-users');
 
 function getCurrentUserKey() {
-  const session = loadForgeSession();
+  let session = null;
+  try { session = loadForgeSession(); } catch (error) { console.warn('[Auth] Session protégée indisponible:', error.message); }
   if (session && session.user && (session.user.id || session.user.email)) {
     return String(session.user.id || session.user.email).replace(/[^\w@.\-]+/g, '_');
   }
@@ -821,6 +872,22 @@ function userDataFile(name) {
   return path.join(app.getPath('userData'), name);
 }
 
+function forgeSessionStore() {
+  return createProtectedJsonStore(path.join(app.getPath('userData'), 'forge-session.json'), safeStorage);
+}
+
+function robloxTokenStore() {
+  return createProtectedJsonStore(userDataFile('roblox-token.json'), safeStorage);
+}
+
+function githubTokenStore() {
+  return createProtectedJsonStore(userDataFile('github-token.json'), safeStorage);
+}
+
+function githubDeviceStore() {
+  return createProtectedJsonStore(userDataFile('github-device.json'), safeStorage);
+}
+
 // Racine des projets propre au compte courant.
 function getUserProjectsRoot() {
   const key = getCurrentUserKey();
@@ -840,7 +907,7 @@ function migrateLegacyData() {
   if (!dir) return;
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
   const legacyFiles = [
-    'api-keys.json', 'roblox-token.json', 'github-token.json',
+    'api-keys.json', 'roblox-token.json', 'github-token.json', 'github-device.json',
     'projects-registry.json', 'active-project.json'
   ];
   let migrated = false;
@@ -879,56 +946,9 @@ function readLicenseFile() {
 
 function getSupabaseConfig() {
   const url = (process.env.SUPABASE_URL || 'https://quzbsdcjtkmdeuiyyhnv.supabase.co').replace(/\/$/, '');
-  const anonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1emJzZGNqdGttZGV1aXl5aG52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMjAwNTksImV4cCI6MjEwMTU5NjA1OX0.ToM71JAeMxTQNFatqcnSPK2xLQIye8vRU1nDmoyyMbE';
+  const anonKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_QW7shrfHfWDhnS8AUC8e5A_y6zxMCIx';
   if (!url || !anonKey) return null;
   return { url, anonKey };
-}
-
-// Ping d'installation anonyme (analytics) : 1 ligne par install, last_seen mis à jour.
-// Fire-and-forget, ne bloque jamais le démarrage, silencieux hors-ligne.
-// Opt-out : FORGE_NO_ANALYTICS=1.
-function getOrCreateInstallId() {
-  try {
-    const f = userDataFile('install-id.txt');
-    if (fs.existsSync(f)) {
-      const id = String(fs.readFileSync(f, 'utf8')).trim();
-      if (/^[0-9a-f-]{36}$/i.test(id)) return id;
-    }
-    const id = require('crypto').randomUUID();
-    fs.writeFileSync(f, id);
-    return id;
-  } catch (e) { return null; }
-}
-
-async function pingInstallAnalytics() {
-  try {
-    if (process.env.FORGE_NO_ANALYTICS === '1') return;
-    const installId = getOrCreateInstallId();
-    const cfg = getSupabaseConfig();
-    if (!installId || !cfg) return;
-    const headers = {
-      apikey: cfg.anonKey,
-      Authorization: `Bearer ${cfg.anonKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=minimal'
-    };
-    const payload = {
-      install_id: installId,
-      app_version: app.getVersion(),
-      platform: `${process.platform}-${process.arch}`,
-      last_seen: new Date().toISOString()
-    };
-    const res = await fetchWithTimeout(`${cfg.url}/rest/v1/app_installs`, {
-      method: 'POST', headers, body: JSON.stringify(payload)
-    }, 8000);
-    if (res && res.status === 409) {
-      await fetchWithTimeout(`${cfg.url}/rest/v1/app_installs?install_id=eq.${installId}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ app_version: payload.app_version, platform: payload.platform, last_seen: payload.last_seen })
-      }, 8000).catch(() => {});
-    }
-  } catch (e) { /* analytics silencieux */ }
 }
 
 const { createLicenseClient, normalizeLicenseKey } = require('./lib/license-client');
@@ -968,8 +988,7 @@ ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey)
     const result = await getLicenseClient().authenticate(mode, email, password, licenseKey);
     if (result.error || result.confirmationRequired || mode === 'recover') return result;
     if (!result.session) return { error: 'Session de connexion manquante.' };
-    const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
-    fs.writeFileSync(sessionPath, JSON.stringify(result.session));
+    forgeSessionStore().write(result.session);
     if (mode === 'signup') {
       fs.writeFileSync(getLicenseFilePath(), JSON.stringify({
         key: normalizeLicenseKey(licenseKey), email: result.session.user.email,
@@ -989,13 +1008,22 @@ ipcMain.on('focus-login-input', (event) => {
 });
 
 ipcMain.handle('is-forge-connected', async () => {
-  const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
-  if (!fs.existsSync(sessionPath)) return { connected: false };
   try {
-    const session = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
-    return { connected: !!(session.access_token && session.user?.id), email: session.user?.email || null };
-  } catch (e) {
-    return { connected: false };
+    const session = forgeSessionStore().read();
+    if (!session) return { connected: false, stored: false, state: 'missing' };
+    const identified = Boolean(session.access_token && session.user?.id);
+    const expired = Boolean(session.expires_at && session.expires_at * 1000 <= Date.now());
+    const base = { stored: true, email: session.user?.email || null, expiresAt: session.expires_at || null };
+    if (!identified) return { ...base, connected: false, state: 'invalid' };
+    if (expired) return { ...base, connected: false, state: 'expired' };
+    const config = getSupabaseConfig();
+    if (!config) return { ...base, connected: false, state: 'stored' };
+    const verified = await verifyRemoteSession(fetchWithTimeout, `${config.url}/auth/v1/user`, {
+      headers: { apikey: config.anonKey, Authorization: `Bearer ${session.access_token}` }
+    }, 'Forge');
+    return { ...base, ...verified };
+  } catch (error) {
+    return { connected: false, stored: true, state: 'unreadable', error: error.message };
   }
 });
 
@@ -1023,8 +1051,7 @@ ipcMain.handle('logout-forge', async () => {
   clearGithubDevice();
 
   const agentsStatePath = userDataFile('agents-state.json');
-  const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
-  removeIfExists(sessionPath);
+  forgeSessionStore().remove();
 
   // Nettoyer l'etat des agents
   try {
@@ -1042,6 +1069,42 @@ const http = require('http');
 const { shell } = require('electron');
 const ROBLOX_CLIENT_ID = '7245830824313073651';
 const ROBLOX_REDIRECT_URI = 'http://localhost:3000/oauth/callback';
+let robloxAuthBroker = null;
+
+function startRobloxAuthBroker() {
+  if (robloxAuthBroker) return Promise.resolve(robloxAuthBroker);
+  const brokerToken = crypto.randomBytes(32).toString('base64url');
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(async (req, res) => {
+      const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+      const expected = Buffer.from(brokerToken);
+      const actual = Buffer.from(supplied);
+      const authorized = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+      if (!authorized) { res.writeHead(401).end(); return; }
+      const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
+      if (req.method !== 'POST' || requestUrl.pathname !== '/token') { res.writeHead(404).end(); return; }
+      try {
+        const auth = await getRobloxAuth(requestUrl.searchParams.get('refresh') === '1');
+        if (!auth?.accessToken) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Compte Roblox à reconnecter dans Forge.' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ access_token: auth.accessToken }));
+      } catch (error) {
+        res.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: error.message || 'Session Roblox indisponible.' }));
+      }
+    });
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      robloxAuthBroker = { server, token: brokerToken, url: `http://127.0.0.1:${address.port}` };
+      resolve(robloxAuthBroker);
+    });
+  });
+}
 
 function base64url(buffer) {
   return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -1105,8 +1168,7 @@ ipcMain.handle('connect-roblox', async () => {
         }
         const normalizedToken = normalizeRobloxTokenData(tokenData);
         const missingScopes = missingRobloxTokenScopes(normalizedToken);
-        const tokenPath = userDataFile('roblox-token.json');
-        fs.writeFileSync(tokenPath, JSON.stringify({ ...normalizedToken, obtained_at: Date.now() }));
+        robloxTokenStore().write({ ...normalizedToken, obtained_at: Date.now() });
         global.robloxAccessToken = normalizedToken.access_token;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         const permissionNotice = missingScopes.length
@@ -1131,24 +1193,28 @@ ipcMain.handle('connect-roblox', async () => {
 });
 
 ipcMain.handle('is-roblox-connected', async () => {
-  const tokenPath = userDataFile('roblox-token.json');
-  if (!fs.existsSync(tokenPath)) return { connected: false };
   try {
-    const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+    const tokenData = robloxTokenStore().read();
+    if (!tokenData) return { connected: false, stored: false, state: 'missing' };
     const missingScopes = missingRobloxTokenScopes(tokenData);
-    return {
-      connected: Boolean(tokenData.access_token),
-      permissionsReady: missingScopes.length === 0,
-      missingScopes,
-    };
-  } catch {
-    return { connected: false };
+    const expiresAt = tokenData.obtained_at && tokenData.expires_in
+      ? tokenData.obtained_at + tokenData.expires_in * 1000
+      : null;
+    const expired = Boolean(expiresAt && expiresAt <= Date.now());
+    const base = { stored: true, expiresAt, permissionsReady: missingScopes.length === 0, missingScopes };
+    if (!tokenData.access_token) return { ...base, connected: false, state: 'invalid' };
+    if (expired) return { ...base, connected: false, state: 'expired' };
+    const verified = await verifyRemoteSession(fetchWithTimeout, 'https://apis.roblox.com/oauth/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    }, 'Roblox');
+    return { ...base, ...verified };
+  } catch (error) {
+    return { connected: false, stored: true, state: 'unreadable', error: error.message };
   }
 });
 
 ipcMain.handle('verify-roblox-ai-access', async () => {
-  const tokenPath = userDataFile('roblox-token.json');
-  if (!fs.existsSync(tokenPath)) return { connected: false, aiAccessReady: false, error: 'Aucun compte Roblox connecté.' };
+  if (!robloxTokenStore().status().readable) return { connected: false, aiAccessReady: false, error: 'Aucun compte Roblox connecté ou session protégée illisible.' };
   try {
     const result = await syncMcpCallTool('forge_get_roblox_account', {}, 15000);
     const toolError = mcpToolResultError(result);
@@ -1168,10 +1234,10 @@ ipcMain.handle('verify-roblox-ai-access', async () => {
 });
 
 ipcMain.handle('disconnect-roblox', async () => {
-  const tokenPath = userDataFile('roblox-token.json');
   try {
-    if (fs.existsSync(tokenPath)) {
-      const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+    const store = robloxTokenStore();
+    const tokenData = store.read();
+    if (tokenData) {
       // Best-effort : revoque la session cote Roblox, sans bloquer la deconnexion locale.
       const tokenToRevoke = tokenData.refresh_token || tokenData.access_token;
       if (tokenToRevoke) {
@@ -1181,8 +1247,8 @@ ipcMain.handle('disconnect-roblox', async () => {
           body: new URLSearchParams({ token: tokenToRevoke, client_id: ROBLOX_CLIENT_ID })
         }, 5000).catch(() => {});
       }
-      fs.unlinkSync(tokenPath);
     }
+    store.remove();
     global.robloxAccessToken = null;
     return { success: true };
   } catch (err) {
@@ -1194,17 +1260,13 @@ ipcMain.handle('disconnect-roblox', async () => {
 // GITHUB OAUTH
 // ============================================
 const GITHUB_CLIENT_ID = 'Ov23liEBYcGFFSTwIidX';
-function getGithubTokenPath() { return userDataFile('github-token.json'); }
-function getGithubDevicePath() { return userDataFile('github-device.json'); }
 let githubPollingPromise = null;
 
 function loadGithubDevice() {
-  try { if (fs.existsSync(getGithubDevicePath())) return JSON.parse(fs.readFileSync(getGithubDevicePath(), 'utf8')); }
-  catch (e) {}
-  return null;
+  return githubDeviceStore().read();
 }
-function saveGithubDevice(data) { fs.writeFileSync(getGithubDevicePath(), JSON.stringify(data, null, 2)); }
-function clearGithubDevice() { removeIfExists(getGithubDevicePath()); }
+function saveGithubDevice(data) { githubDeviceStore().write(data); }
+function clearGithubDevice() { githubDeviceStore().remove(); }
 
 function notifyAllWindows(channel, ...args) {
   BrowserWindow.getAllWindows().forEach(win => {
@@ -1233,7 +1295,7 @@ async function runGithubPolling() {
         }, 15000);
         const tokenData = await tokenResponse.json();
         if (tokenData.access_token) {
-          fs.writeFileSync(getGithubTokenPath(), JSON.stringify(tokenData));
+          githubTokenStore().write(tokenData);
           clearGithubDevice(); notifyAllWindows('github-auth-success');
           resolve({ success: true }); githubPollingPromise = null; return;
         }
@@ -1265,15 +1327,35 @@ ipcMain.handle('github-start', async () => {
 });
 
 ipcMain.handle('github-poll', async () => await runGithubPolling());
-ipcMain.handle('is-github-connected', async () => ({ connected: fs.existsSync(getGithubTokenPath()) }));
+ipcMain.handle('is-github-connected', async () => {
+  try {
+    const token = githubTokenStore().read();
+    if (!token) return { connected: false, stored: false, state: 'missing' };
+    if (!token.access_token) return { connected: false, stored: true, state: 'invalid' };
+    const verified = await verifyRemoteSession(fetchWithTimeout, 'https://api.github.com/user', {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token.access_token}`,
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    }, 'GitHub');
+    return { stored: true, ...verified };
+  } catch (error) {
+    return { connected: false, stored: true, state: 'unreadable', error: error.message };
+  }
+});
 ipcMain.handle('get-github-device-status', async () => {
-  const deviceData = loadGithubDevice();
-  return {
-    hasDeviceFlow: !!deviceData,
-    connected: fs.existsSync(getGithubTokenPath()),
-    userCode: deviceData ? deviceData.user_code : null,
-    verificationUri: deviceData ? deviceData.verification_uri : null
-  };
+  try {
+    const deviceData = loadGithubDevice();
+    return {
+      hasDeviceFlow: !!deviceData,
+      connected: githubTokenStore().status().readable,
+      userCode: deviceData ? deviceData.user_code : null,
+      verificationUri: deviceData ? deviceData.verification_uri : null
+    };
+  } catch (error) {
+    return { hasDeviceFlow: false, connected: false, state: 'unreadable', error: error.message };
+  }
 });
 
 ipcMain.handle('clear-github-device', async () => {
@@ -1281,7 +1363,11 @@ ipcMain.handle('clear-github-device', async () => {
   return { success: true };
 });
 
-if (loadGithubDevice()) { console.log('[GitHub] Reprise du polling au demarrage...'); runGithubPolling(); }
+try {
+  if (loadGithubDevice()) { console.log('[GitHub] Reprise du polling au demarrage...'); runGithubPolling(); }
+} catch (error) {
+  console.warn('[GitHub] Flux de connexion enregistré illisible:', error.message);
+}
 
 // ============================================
 // SYSTEME, PRE-REQUIS & PLUGIN ROBOLOX
@@ -1339,8 +1425,21 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 // Recharge PATH depuis le registre (utile apres une installation winget : le
 // nouveau node/python/npm devient utilisable sans redemarrer l'app).
 function refreshPathEnv() {
-  const { execSync } = require('child_process');
+  const { execSync, execFileSync } = require('child_process');
   try {
+    if (process.platform === 'darwin') {
+      let loginPath = '';
+      try {
+        const shell = process.env.SHELL || '/bin/zsh';
+        const output = execFileSync(shell, ['-ilc', 'printf "__FORGE_PATH__%s" "$PATH"'], { encoding: 'utf8', timeout: 5000 });
+        loginPath = output.slice(output.lastIndexOf('__FORGE_PATH__') + 14).trim();
+      } catch (error) { console.warn('[System] PATH du shell macOS indisponible:', error.message); }
+      mergePath(process.env, [...macPathCandidates(HOME), ...loginPath.split(path.delimiter).filter(Boolean)], 'darwin');
+      useBundledNode();
+      console.log('[System] PATH macOS chargé pour les outils Forge');
+      return;
+    }
+    if (process.platform !== 'win32') return;
     const hives = [
       'HKCU\\Environment',
       'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
@@ -1383,29 +1482,28 @@ function runSystemInstall(meta, args) {
 }
 
 ipcMain.handle('check-system', async () => {
-  const robloxPath = process.env.LOCALAPPDATA + '\\Roblox';
-  const robloxInstalled = fs.existsSync(robloxPath);
-  const pluginsFolder = robloxPath + '\\Plugins';
+  refreshPathEnv();
+  const roblox = robloxLocations({ platform: process.platform, home: HOME, localAppData: process.env.LOCALAPPDATA });
+  const robloxInstalled = roblox.studioCandidates.some(candidate => candidate && fs.existsSync(candidate));
+  const pluginsFolder = roblox.pluginsDir;
   let pluginInstalled = false;
   if (robloxInstalled) {
     try {
       if (!fs.existsSync(pluginsFolder)) fs.mkdirSync(pluginsFolder, { recursive: true });
       const sourcePlugin = getForgePluginPath();
-      const destPlugin = pluginsFolder + '\\ForgePlugin.rbxmx';
+      const destPlugin = path.join(pluginsFolder, 'ForgePlugin.rbxmx');
       if (sourcePlugin && fs.existsSync(sourcePlugin)) { copyFileIfChanged(sourcePlugin, destPlugin); pluginInstalled = true; }
       else if (fs.existsSync(destPlugin)) pluginInstalled = true;
     } catch (err) {
-      pluginInstalled = fs.existsSync(pluginsFolder + '\\ForgePlugin.rbxmx');
+      pluginInstalled = fs.existsSync(path.join(pluginsFolder, 'ForgePlugin.rbxmx'));
     }
   }
 
   const node = await detectVersion('node', ['--version'], parseNodeVersion);
   const python = { installed: false, version: '', ok: false }; // No system Python required.
-  const winget = await detectVersion('winget', ['--version']);
-  // Detection via AgentManager : il connait le vrai binaire de chaque agent
-  // (antigravity est lance via 'agy', pas 'antigravity').
+  const winget = process.platform === 'win32' ? await detectVersion('winget', ['--version']) : { installed: false };
   const agents = {};
-  for (const a of ['codex', 'claude', 'antigravity']) {
+  for (const a of SUPPORTED_AGENT_TYPES) {
     agents[a] = await agentManager.detect(a);
   }
   const rembg = await getBackgroundRemoval().status();
@@ -1423,7 +1521,9 @@ ipcMain.handle('check-system', async () => {
   return {
     os: { platform: process.platform, arch: process.arch, release: os.release() },
     robloxInstalled,
+    robloxPath: roblox.displayPath,
     pluginInstalled,
+    pluginVersion: pluginInstalled ? app.getVersion() : '',
     nodeInstalled: node.installed,
     nodeVersion: node.version || '',
     nodeBundled: forgeNodeCommand !== 'node',
@@ -1448,6 +1548,12 @@ ipcMain.handle('install-requirement', async (event, requirement) => {
   if (!meta) return { error: 'Pré-requis inconnu: ' + requirement };
 
   try {
+    if (requirement === 'roblox' && process.platform === 'darwin') {
+      broadcastInstallProgress(meta.label, 'Ouverture du téléchargement officiel de Roblox Studio pour macOS…');
+      const { shell } = require('electron');
+      await shell.openExternal(meta.url);
+      return { success: true, manual: true };
+    }
     if (meta.kind === 'winget') {
       const winget = await detectVersion('winget', ['--version']);
       if (!winget.installed) {
@@ -1512,7 +1618,7 @@ const memoryMcp = new MemoryMcp({ getBinary: getMemoryMcpPath });
 app.on('before-quit', () => memoryMcp.close());
 
 function getMemoryMcpPath() {
-  return getBundledResourcePath('codebase-memory-mcp', 'codebase-memory-mcp.exe');
+  return getBundledResourcePath('codebase-memory-mcp', memoryMcpExecutable(process.platform));
 }
 
 function getMemoryIndexDir(projectPath) {
@@ -1576,8 +1682,10 @@ function getForgePluginPath() {
 }
 
 function getRobloxMcpEnv() {
+  if (!robloxAuthBroker) return { FORGE_ROBLOX_CLIENT_ID: ROBLOX_CLIENT_ID };
   return {
-    FORGE_ROBLOX_TOKEN_FILE: userDataFile('roblox-token.json'),
+    FORGE_ROBLOX_AUTH_URL: robloxAuthBroker.url,
+    FORGE_ROBLOX_AUTH_TOKEN: robloxAuthBroker.token,
     FORGE_ROBLOX_CLIENT_ID: ROBLOX_CLIENT_ID,
   };
 }
@@ -1610,46 +1718,43 @@ function writeAgentMcpConfig(mcpServerPath, projectPath) {
   return configPath;
 }
 
-// agy (Antigravity) n'a pas de flag --mcp-config : ses serveurs MCP vivent
-// dans ~/.gemini/config/mcp_config.json. On y enregistre (ou met a jour)
-// l'entree forge_roblox avant chaque lancement — operation idempotente qui
-// preserve les autres serveurs configures par l'utilisateur.
-function ensureAgyMcpEntry(mcpServerPath) {
-  try {
-    const configPath = path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json');
-    let config = { mcpServers: {} };
-    if (fs.existsSync(configPath)) {
-      try {
-        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      } catch (e) {
-        console.error('[Agents] mcp_config.json illisible, reecriture:', e.message);
-      }
-    }
-    if (!config.mcpServers || typeof config.mcpServers !== 'object') {
-      config.mcpServers = {};
-    }
-    config.mcpServers.forge_roblox = { command: forgeNodeCommand, args: [mcpServerPath], env: getAgentMcpEnv(), disabled: false };
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-    return true;
-  } catch (e) {
-    console.error('[Agents] Impossible de configurer agy MCP:', e.message);
-    return false;
-  }
-}
-
-// agy installe son vrai exe hors PATH npm ; le PATH herite par les terminaux
-// de Forge peut etre obsolete (install/update recent) — on resolve le chemin
-// complet pour eviter "Le systeme ne peut pas executer le programme specifie".
-function resolveAgyCommand() {
-  const agyExe = path.join(os.homedir(), 'AppData', 'Local', 'agy', 'bin', 'agy.exe');
-  return fs.existsSync(agyExe) ? agyExe : 'agy';
-}
-
-// Enregistre le serveur MCP forge_roblox dans la config de Codex via
-// 'codex mcp add' (idempotent : ne cree pas de doublon).
-function ensureCodexMcpEntry(mcpServerPath) {
-  return require('./lib/codex-mcp-setup').ensureCodexMcp({ nodeCommand: forgeNodeCommand, serverPath: mcpServerPath, env: getAgentMcpEnv() });
+let codexMcpSetupJob = null;
+let codexMcpSetupSignature = null;
+function ensureCodexMcpEntryAsync(mcpServerPath) {
+  if (!mcpServerPath) return Promise.reject(new Error('Serveur MCP Roblox introuvable.'));
+  const env = getAgentMcpEnv();
+  const signature = JSON.stringify({ nodeCommand: forgeNodeCommand, serverPath: mcpServerPath, env });
+  if (codexMcpSetupSignature === signature) return Promise.resolve(true);
+  if (codexMcpSetupJob) return codexMcpSetupJob;
+  codexMcpSetupJob = new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'lib', 'codex-mcp-worker.js'), {
+      workerData: { nodeCommand: forgeNodeCommand, serverPath: mcpServerPath, env }
+    });
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      worker.terminate().catch(() => {});
+      reject(new Error('La configuration du MCP Roblox a dépassé 20 secondes.'));
+    }, 20000);
+    const finish = callback => value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      callback(value);
+    };
+    worker.once('message', message => {
+      if (!message?.success) { finish(reject)(new Error(message?.error || 'Configuration MCP Codex impossible.')); return; }
+      codexMcpSetupSignature = signature;
+      finish(resolve)(true);
+    });
+    worker.once('error', finish(reject));
+    worker.once('exit', code => {
+      if (!settled) finish(reject)(new Error(`La configuration MCP Codex s’est arrêtée sans résultat (code ${code}).`));
+    });
+  });
+  codexMcpSetupJob.finally(() => { codexMcpSetupJob = null; }).catch(() => {});
+  return codexMcpSetupJob;
 }
 
 // Commande shell complete pour lancer un agent avec le pont Roblox Studio.
@@ -1666,14 +1771,9 @@ function buildAgentShellCommand(agentType, projectPath) {
       + ' --permission-mode acceptEdits';
   }
   if (agentType === 'codex') {
-    ensureCodexMcpEntry(mcpServerPath);
     // Codex ne doit pas tenter de remplacer son propre executable pendant
     // qu'il est deja utilise par le PTY Forge (EPERM sous Windows).
     return 'codex --config check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox';
-  }
-  if (agentType === 'antigravity') {
-    if (!ensureAgyMcpEntry(mcpServerPath)) return null;
-    return '"' + resolveAgyCommand() + '" --dangerously-skip-permissions';
   }
   return null;
 }
@@ -2116,6 +2216,8 @@ ipcMain.handle('quality-lab-playtest-stop', async (event, projectPath) => {
 ipcMain.handle('create-project', async (event, projectName, language, options = {}) => {
   try {
     if (typeof projectName !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(projectName) || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(projectName)) return { error: 'Choisis un nom de 1 à 80 lettres, chiffres ou tirets.', code: 'project-name-invalid' };
+    const starterExampleId = String(options?.starterExample || '');
+    if (starterExampleId && !STARTER_EXAMPLES[starterExampleId]) return { error: 'Exemple de démarrage inconnu.', code: 'starter-example-invalid' };
     const projectsRoot = getUserProjectsRoot();
     if (!fs.existsSync(projectsRoot)) {
       fs.mkdirSync(projectsRoot, { recursive: true });
@@ -2239,6 +2341,7 @@ print("[Forge] Projet '${projectName}' charge !")
     }
 
     const adminScaffold = writeAdminScaffold(projectDir, robloxAdminUserId);
+    const starterExample = writeStarterExample(projectDir, starterExampleId);
     console.log('[Forge Admin] Panneau personnel initialise pour:', adminScaffold.adminUserId || 'createur de la place');
 
     const activeProjectPath = userDataFile('active-project.json');
@@ -2247,6 +2350,7 @@ print("[Forge] Projet '${projectName}' charge !")
       path: projectDir,
       language: language || 'lua',
       linkedStudio: placeDecision.link,
+      starterExample: starterExample.exampleId,
     }));
 
     const finalRegistry = loadProjectsRegistry();
@@ -2261,6 +2365,7 @@ print("[Forge] Projet '${projectName}' charge !")
       createdAt: new Date().toISOString(),
       linkedStudio: placeDecision.link,
       syncPaused: true,
+      starterExample: starterExample.exampleId,
     });
     saveProjectsRegistry(finalRegistry);
     stopFileSync();
@@ -2273,6 +2378,7 @@ print("[Forge] Projet '${projectName}' charge !")
       adminUserId: adminScaffold.adminUserId,
       adminAccessMode: adminScaffold.adminUserId > 0 ? 'roblox-user' : 'place-creator',
       linkedStudio: placeDecision.link,
+      starterExample,
       reassignedFromProjectPath: placeDecision.reassignedFromProjectPath || null,
     };
   } catch (err) { return { error: err.message }; }
@@ -2284,7 +2390,8 @@ ipcMain.handle('get-active-project', async () => {
 });
 
 ipcMain.handle('list-projects', async () => {
-  return { projects: loadProjectsRegistry() };
+  const projects = loadProjectsRegistry();
+  return { projects, warning: require('./lib/project-registry').takeNotice() };
 });
 
 ipcMain.handle('set-active-project', async (event, projectPath) => {
@@ -2389,6 +2496,20 @@ ipcMain.handle('project-quality-write', async (event, projectPath, content) => {
   try {
     if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
     return { success: true, ...writeProjectQualityMemory(projectPath, content) };
+  } catch (error) { return { error: error.message }; }
+});
+
+ipcMain.handle('session-handoff-list', async (event, projectPath) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    return { success: true, ...listSessionHandoffs(projectPath) };
+  } catch (error) { return { error: error.message }; }
+});
+
+ipcMain.handle('session-handoff-save', async (event, projectPath, draft) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    return { success: true, ...saveSessionHandoff(projectPath, draft) };
   } catch (error) { return { error: error.message }; }
 });
 
@@ -2770,7 +2891,7 @@ async function generateMediaWithBlender({ projectPath, kind, n, itemId, variantI
   const { BlenderTools } = await import(require('url').pathToFileURL(modulePath).href);
   const renderer = new BlenderTools(path.join(projectPath, 'models'));
   const job = { id: mediaGenId('blender'), kind, method: 'blender', status: 'running', itemId, variantId,
-    startedAt: Date.now(), source: baseImage, files: [] };
+    startedAt: Date.now(), lastActivityAt: Date.now(), source: baseImage, files: [] };
   let manifest = loadMediaManifest(projectPath);
   manifest.jobs = manifest.jobs || [];
   manifest.jobs.push(job);
@@ -2871,6 +2992,7 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
     expectedCount: n,
     status: 'running',
     startedAt: Date.now(),
+    lastActivityAt: Date.now(),
     finishedAt: null,
     notified: false,
   });
@@ -2891,7 +3013,7 @@ function generatedFilesForCodexJob(projectPath, job) {
 function notifyCodexMediaJobOnce(projectPath, job, generated) {
   if (job.notified || notifiedMediaJobs.has(job.id)) return;
   notifiedMediaJobs.add(job.id);
-  notifyMediaDone(projectPath, job.kind, generated[generated.length - 1], job.prompt, job.status === 'failed');
+  notifyMediaDone(projectPath, job.kind, generated[generated.length - 1], job.prompt, job.status === 'failed', job.sessionId);
   job.notified = true;
 }
 
@@ -3082,7 +3204,7 @@ async function tripoWaitTask(taskId, maxMs) {
 
 function attachJob(manifest, kind, method, jobId, prompt, target, itemId, variantId) {
   manifest.jobs = manifest.jobs || [];
-  manifest.jobs.push({ id: jobId, kind, method, prompt, target, itemId, variantId, status: 'pending', startedAt: Date.now(), finishedAt: null });
+  manifest.jobs.push({ id: jobId, kind, method, prompt, target, itemId, variantId, status: 'pending', startedAt: Date.now(), lastActivityAt: Date.now(), finishedAt: null });
   manifest.jobs = retainJobs(manifest.jobs);
 }
 
@@ -3114,6 +3236,7 @@ async function pollMediaJobsNow(projectPath) {
         }
 
         const entry = findMediaEntry(manifest, job.kind, job.itemId, job.variantId);
+        const previousStatus = job.status,previousFileCount=(job.files||[]).length;
         const generated = generatedFilesForCodexJob(projectPath, job);
         job.files = generated;
 
@@ -3152,6 +3275,7 @@ async function pollMediaJobsNow(projectPath) {
         } else if (entry) {
           entry.status = 'running';
         }
+        if(previousStatus!==job.status||previousFileCount!==generated.length)job.lastActivityAt=Date.now();
         jobs.push(job);
         continue;
       }
@@ -3163,7 +3287,7 @@ async function pollMediaJobsNow(projectPath) {
       if (updated.polls !== job.polls) trackEvent(projectPath, job.id, 'poll');
       if (updated.status === 'done' && job.status !== 'done') {
         trackEvent(projectPath, job.id, 'done', { status: 'done' });
-        trackEvent(projectPath, job.id, 'consumption', { consumption: { tripo_polls: (updated.polls || 0) + 1, duration_ms: (updated.finishedAt || Date.now()) - (updated.startedAt || Date.now()) } });
+        trackEvent(projectPath, job.id, 'consumption', { consumption: { tripo_polls: (updated.polls || 0), duration_ms: (updated.finishedAt || Date.now()) - (updated.startedAt || Date.now()) } });
       }
       if (updated.status === 'failed' && job.status !== 'failed') trackEvent(projectPath, job.id, 'error', { message: updated.error || 'Tâche échouée' });
       if (updated.retryCount > (job.retryCount || 0)) trackEvent(projectPath, job.id, 'retry');
@@ -3194,6 +3318,56 @@ function pollMediaJobs(projectPath) {
   mediaPolls.set(key, pending);
   return pending;
 }
+ipcMain.handle('media-retry-tracking', async (_, projectPath) => {
+  if (!isPathAllowed(projectPath)) return { error: 'Projet inaccessible' };
+  await mediaPolls.get(canonicalExistingPath(projectPath));
+  const manifest = loadMediaManifest(projectPath);
+  let count = 0;
+  for (const job of manifest.jobs || []) {
+    if(job.method === 'tripo' && job.retryable && job.status === 'failed') {
+      Object.assign(job, {status:'retry_wait',retryCount:0,nextAttemptAt:0,finishedAt:null,lastActivityAt:Date.now(),error:null,notified:false}); count++;
+    }
+  }
+  saveMediaManifest(projectPath, manifest);scheduleMediaTracking(projectPath);
+  return {success:true,count};
+});
+ipcMain.handle('media-stop-job', async (_, projectPath, jobId) => {
+  if (!isPathAllowed(projectPath)) return { error: 'Projet inaccessible' };
+  await mediaPolls.get(canonicalExistingPath(projectPath));
+  let manifest = loadMediaManifest(projectPath);
+  let job = (manifest.jobs || []).find(item => item.id === jobId);
+  if (!job) return { error: 'Tâche média introuvable.' };
+  if (!isActiveJob(job)) return { error: 'Cette tâche est déjà terminée.' };
+  let outcome = stopJobOutcome(job);
+  if (!outcome.allowed) return { error: outcome.message, scope: outcome.scope };
+  if (job.method === 'codex' && job.sessionId) {
+    try { await agentManager.stop(job.sessionId); } catch (_) {}
+    manifest = loadMediaManifest(projectPath);
+    job = (manifest.jobs || []).find(item => item.id === jobId) || job;
+    outcome = stopJobOutcome(job) || outcome;
+  }
+  Object.assign(job, {
+    status: outcome.status,
+    stopScope: outcome.scope,
+    error: outcome.message,
+    lastActivityAt: outcome.lastActivityAt,
+    finishedAt: outcome.finishedAt,
+    nextAttemptAt: outcome.nextAttemptAt,
+  });
+  const entry = findMediaEntry(manifest, job.kind, job.itemId, job.variantId);
+  if (entry) {
+    const related = (manifest.jobs || []).filter(item => item.kind === job.kind && item.itemId === job.itemId && item.variantId === job.variantId);
+    const active = related.find(isActiveJob);
+    const files = [...new Set([...(entry.files || []), ...related.flatMap(item => item.saved ? [item.saved] : item.files || [])])];
+    entry.files = files;
+    entry.status = active ? active.status : files.length ? 'partial' : job.status;
+    entry.error = active ? null : outcome.message;
+    entry.finishedAt = active ? null : job.finishedAt;
+  }
+  saveMediaManifest(projectPath, manifest);
+  trackEvent(projectPath, job.id, 'done', { status: job.status, stopScope: job.stopScope });
+  return { success: true, scope: job.stopScope, message: outcome.message };
+});
 ipcMain.handle('media-poll', (event, projectPath) => pollMediaJobs(projectPath));
 
 // Métriques de consommation média
@@ -3240,8 +3414,9 @@ async function tripoPoll(taskId) {
   const r = await fetchWithTimeout(`https://api.tripo3d.ai/v2/openapi/task/${taskId}`, {
     headers: { 'Authorization': `Bearer ${key}` }
   }, 30000);
+  if (!r.ok) throw Object.assign(new Error(`Suivi Tripo indisponible (${r.status}).`), { status: r.status });
   const d = await r.json();
-  if (!r.ok || !d.data || typeof d.data.status !== 'string') throw new Error(`Suivi Tripo indisponible (${r.status}). La tâche existante sera revérifiée.`);
+  if (d.code !== 0 || !d.data || typeof d.data.status !== 'string') throw new Error('Réponse Tripo inattendue.');
   return d.data;
 }
 
@@ -3293,8 +3468,9 @@ async function downloadMediaToProject(url, projectPath, kind, data, jobId) {
 // Suppression d'arriere-plan : runtime privé livré hors de app.asar ; aucun Python ou pip système.
 let backgroundRemoval;
 function getBackgroundRemoval() {
+  const runtimeName = process.platform === 'win32' ? 'python-win-x64-u2net' : `python-${process.platform}-${process.arch}-u2net`;
   if (!backgroundRemoval) backgroundRemoval = require('./lib/background-removal').createBackgroundRemoval({
-    runtimeDir: path.join(app.isPackaged ? process.resourcesPath : __dirname, 'runtimes', 'python-win-x64-u2net'),
+    runtimeDir: path.join(app.isPackaged ? process.resourcesPath : __dirname, 'runtimes', runtimeName),
     cacheDir: userDataFile('rembg-cache')
   });
   return backgroundRemoval;
@@ -3318,6 +3494,18 @@ function saveAppSettings(s) {
 }
 
 ipcMain.handle('get-app-settings', async () => loadAppSettings());
+ipcMain.handle('get-community-sharing-settings', async () => (
+  normalizeCommunitySharing(loadAppSettings().communitySharing)
+));
+ipcMain.handle('save-community-sharing-settings', async (event, value) => {
+  try {
+    const settings = mergeCommunitySharing(loadAppSettings(), value);
+    fs.writeFileSync(userDataFile('forge-settings.json'), JSON.stringify(settings, null, 2));
+    return { success: true, settings: settings.communitySharing };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
 ipcMain.handle('get-app-info', async () => ({ version: app.getVersion(), platform: process.platform }));
 ipcMain.handle('get-projects-location', async () => ({ path: getUserProjectsRoot() }));
 ipcMain.handle('get-active-project-info', async () => {
@@ -3580,6 +3768,15 @@ ipcMain.handle('notifications-clear', async () => {
   return { success: true };
 });
 ipcMain.handle('notifications-mark-read', async (event, id) => ({ success: updateNotification(forgeNotificationsPath(), id, { read: true }) }));
+ipcMain.handle('notifications-validate', async (event, id, deliveredPath) => {
+  const validatedAt = Date.now();
+  const success = updateNotification(forgeNotificationsPath(), id, { resultState: 'validated', validatedAt, deliveredPath: String(deliveredPath || '') });
+  if (!success) return { error: 'Notification introuvable.' };
+  const notification = readNotifications(forgeNotificationsPath()).find(item => item.id === id);
+  if (notification?.usageSessionId) agentUsageStore().finish(notification.usageSessionId, 'accepted');
+  if (notification) broadcastNotification(notification);
+  return { success: true, validatedAt };
+});
 ipcMain.handle('notifications-delete', async (event, id) => ({ success: deleteNotification(forgeNotificationsPath(), id) }));
 
 // Notifie toutes les fenêtres (la cloche est dans workspace.html).
@@ -3604,12 +3801,16 @@ function escapeNotificationHtml(value) {
 }
 
 // Notification de fin de génération média (Codex ou Tripo3D).
-function notifyMediaDone(projectPath, kind, saved, prompt, failed) {
+function notifyMediaDone(projectPath, kind, saved, prompt, failed, usageSessionId = null) {
   try {
     const meta = MEDIA_KINDS[kind] || {};
     const fileName = saved ? path.basename(String(saved)) : '';
     const type = kind === 'img2model' ? 'model' : 'image';
-    const agent = kind === 'thumb' || kind === 'icon' ? { n: 'Codex', c: '#10A37F' } : { n: 'Tripo3D', c: '#9B6BE3' };
+    const agent = kind === 'thumb' || kind === 'icon'
+      ? { n: 'Codex', c: '#10A37F' }
+      : kind === 'model2img'
+        ? { n: 'Blender local', c: '#5B9BE3' }
+        : { n: 'Tripo3D', c: '#9B6BE3' };
     const notificationKinds = {
       thumb: { name: 'Miniature', ready: 'prête' },
       icon: { name: 'Icône de jeu', ready: 'prête' },
@@ -3629,7 +3830,9 @@ function notifyMediaDone(projectPath, kind, saved, prompt, failed) {
       aiMessage,
       assetType: type,
       filePath: saved ? path.join(projectPath, saved) : '',
-      fileName
+      fileName,
+      usageSessionId,
+      resultState: failed ? 'failed' : 'technically_complete',
     });
   } catch (e) {}
 }
@@ -3655,27 +3858,23 @@ ipcMain.handle('read-file-binary', async (event, filePath) => {
 // ============================================
 // ROBLOX ASSET UPLOAD (Open Cloud v1)
 // ============================================
-const ROBLOX_TOKEN_PATH = () => userDataFile('roblox-token.json');
-
 function getRobloxToken() {
-  if (!fs.existsSync(ROBLOX_TOKEN_PATH())) return null;
-  try { return JSON.parse(fs.readFileSync(ROBLOX_TOKEN_PATH(), 'utf8')); }
-  catch (e) { return null; }
+  return robloxTokenStore().read();
 }
 
 function saveRobloxToken(data) {
-  fs.writeFileSync(ROBLOX_TOKEN_PATH(), JSON.stringify({ ...data, obtained_at: Date.now() }));
+  robloxTokenStore().write({ ...data, obtained_at: Date.now() });
   global.robloxAccessToken = data.access_token;
 }
 
 // Returns fresh { accessToken, userId } — refreshes automatically if expired
-async function getRobloxAuth() {
+async function getRobloxAuth(forceRefresh = false) {
   let tok = getRobloxToken();
   if (!tok || !tok.access_token) return null;
 
   // Check expiry: obtained_at + expires_in (seconds), with 60s safety margin
   const expiresAt = (tok.obtained_at || 0) + ((tok.expires_in || 900) - 60) * 1000;
-  if (Date.now() > expiresAt && tok.refresh_token) {
+  if ((forceRefresh || Date.now() > expiresAt) && tok.refresh_token) {
     console.log('[Roblox] Token expiré, refresh en cours...');
     try {
       const resp = await fetchWithTimeout('https://apis.roblox.com/oauth/v1/token', {
@@ -3837,8 +4036,8 @@ ipcMain.handle('list-project-files', async (event, projectPath, folder) => {
     const targetPath = path.join(projectPath, folder);
     if (!fs.existsSync(targetPath)) return { files: [], tree: [] };
 
-    function buildTree(dirPath, relBase) {
-      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    async function buildTree(dirPath, relBase) {
+      const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
       const nodes = [];
       for (const entry of entries) {
         const relPath = relBase ? relBase + '/' + entry.name : entry.name;
@@ -3847,7 +4046,7 @@ ipcMain.handle('list-project-files', async (event, projectPath, folder) => {
             type: 'dir',
             name: entry.name,
             path: relPath,
-            children: buildTree(path.join(dirPath, entry.name), relPath)
+            children: await buildTree(path.join(dirPath, entry.name), relPath)
           });
         } else {
           nodes.push({ type: 'file', name: entry.name, path: relPath });
@@ -3862,10 +4061,10 @@ ipcMain.handle('list-project-files', async (event, projectPath, folder) => {
 
     if (folder === 'src' || folder === 'assets') {
       // Return a recursive tree
-      return { tree: buildTree(targetPath, '') };
+      return { tree: await buildTree(targetPath, '') };
     } else {
       // Flat list for sounds/ and models/
-      const files = fs.readdirSync(targetPath, { withFileTypes: true })
+      const files = (await fs.promises.readdir(targetPath, { withFileTypes: true }))
         .filter(e => e.isFile())
         .map(e => e.name)
         .sort((a, b) => a.localeCompare(b));
@@ -3897,19 +4096,42 @@ ipcMain.handle('check-studio-open', async () => {
 // ============================================
 const PTYS = new Map();
 
+ipcMain.handle('claude-login', async (event) => {
+  if (!spawnPty) return { error: 'Terminal intégré indisponible. Réinstalle Forge.' };
+  try {
+    const existing = [...PTYS.entries()].find(([, entry]) => entry.loginSender === event.sender);
+    if (existing) return { sessionId: existing[0] };
+    const sessionId = `login_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const command = process.platform === 'win32' ? 'cmd.exe' : 'claude';
+    const args = process.platform === 'win32' ? ['/d', '/q', '/c', 'claude auth login'] : ['auth', 'login'];
+    const pty = spawnPty(command, args, { name: 'xterm-color', cols: 90, rows: 20, cwd: os.homedir(), env: { ...process.env, TERM: 'xterm-256color' } });
+    const entry = { pty, agentType: 'claude', loginSender: event.sender };
+    PTYS.set(sessionId, entry);
+    const cleanup = () => { if (PTYS.has(sessionId)) { pty.kill(); PTYS.delete(sessionId); } };
+    event.sender.once('did-start-navigation', cleanup);
+    event.sender.once('destroyed', cleanup);
+    entry.outputRelay = createPtyOutputRelay(pty, sessionId, event.sender, () => {
+      PTYS.delete(sessionId);
+      event.sender.removeListener('did-start-navigation', cleanup);
+      event.sender.removeListener('destroyed', cleanup);
+    });
+    return { sessionId };
+  } catch (error) { return { error: error.message }; }
+});
+
 ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, agentId, agentName) => {
+  if (!isSupportedAgentType(agentType)) return { error: 'Agent non pris en charge. Utilise Claude Code ou Codex.' };
   if (!isPathAllowed(projectPath)) {
     return { error: 'Chemin de projet non autorise.' };
   }
 
   try {
-  const prepared = prepareForgeAgentInstructions(projectPath, agentType);
+  const prepared = await prepareForgeAgentInstructionsAsync(projectPath, agentType);
   if (prepared.error) throw new Error(prepared.error);
+  if (agentType === 'codex') await ensureCodexMcpEntryAsync(getMcpServerPath());
   const cmd = agentType === 'claude'
     ? 'claude'
-    : agentType === 'codex'
-      ? 'codex --config check_for_update_on_startup=false'
-      : 'agy';
+    : 'codex --config check_for_update_on_startup=false';
   // Avec le pont MCP quand il est disponible : l'agent herite des tools
   // Roblox Studio (create_object, insert_asset, execute_luau, ...).
   const launchCmd = buildAgentShellCommand(agentType, projectPath) || cmd;
@@ -3997,10 +4219,7 @@ ipcMain.handle('pty-kill', async (event, sessionId) => {
 const LIB_BUCKET = 'library-assets';
 
 function loadForgeSession() {
-  const sessionPath = path.join(app.getPath('userData'), 'forge-session.json');
-  if (!fs.existsSync(sessionPath)) return null;
-  try { return JSON.parse(fs.readFileSync(sessionPath, 'utf8')); }
-  catch (e) { return null; }
+  return forgeSessionStore().read();
 }
 
 // Retourne { accessToken, userId, email } ou null — rafraîchit la session
@@ -4020,7 +4239,7 @@ async function getForgeAuth() {
       }, 15000);
       if (res.ok) {
         const data = await res.json();
-        fs.writeFileSync(path.join(app.getPath('userData'), 'forge-session.json'), JSON.stringify(data));
+        forgeSessionStore().write(data);
         session = data;
         console.log('[Library] Session Supabase rafraîchie');
       } else {
@@ -4197,13 +4416,20 @@ ipcMain.handle('library-import', async (event, item) => {
 // FENETRE PRINCIPALE
 // ============================================
 function getStartPage() {
-  const session = loadForgeSession();
-  return session?.access_token && session?.user?.id ? 'projects.html' : 'login.html';
+  try {
+    const session = loadForgeSession();
+    const expired = Boolean(session?.expires_at && session.expires_at * 1000 <= Date.now());
+    return session?.access_token && session?.user?.id && !expired ? 'projects.html' : 'onboarding.html';
+  } catch (error) {
+    console.warn('[Auth] Impossible d’ouvrir la session protégée:', error.message);
+    return 'onboarding.html';
+  }
 }
 
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400, height: 900, title: 'Forge',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -4212,6 +4438,7 @@ function createWindow() {
       webSecurity: true
     }
   });
+  if (process.platform !== 'darwin') win.setMenu(null);
   require('./lib/window-input-focus').attachWindowInputFocus(win);
   require('./lib/window-navigation').attachWindowNavigation(win, { root: __dirname, openExternal: url => shell.openExternal(url) });
   agentManager.setWindow(win);
@@ -4219,7 +4446,8 @@ function createWindow() {
     try { console.log('[renderer] L' + level + ' (ligne ' + line + ', ' + (sourceId || '?') + '): ' + message); } catch (e) {}
   });
   try { saveProjectsRegistry(loadProjectsRegistry()); } catch (error) { console.error('[Projects] Context repair failed:', error.message); }
-  win.loadFile(getStartPage());
+  const startPage = getStartPage();
+  win.loadFile(startPage, startPage === 'onboarding.html' ? { query: { setup: '1' } } : {});
 }
 
 // ============================================
@@ -4267,7 +4495,7 @@ function getAgentColorForSession(sessionId) {
   if (!sessionId) return '#3B82F6';
   const pty = PTYS.get(sessionId);
   if (!pty) return '#3B82F6';
-  const colors = { claude: '#CC785C', codex: '#10A37F', antigravity: '#4285F4' };
+  const colors = { claude: '#CC785C', codex: '#10A37F' };
   return colors[pty.agentType] || '#3B82F6';
 }
 
@@ -4275,7 +4503,7 @@ function getAgentNameForSession(sessionId) {
   if (!sessionId) return 'Agent';
   const pty = PTYS.get(sessionId);
   if (!pty) return 'Agent';
-  const names = { claude: 'Claude Code', codex: 'OpenAI Codex', antigravity: 'Antigravity' };
+  const names = { claude: 'Claude Code', codex: 'OpenAI Codex' };
   return names[pty.agentType] || 'Agent';
 }
 
@@ -4301,6 +4529,8 @@ function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult
   let aiMessage = `Voilà ce que j'ai généré — un nouveau ${label} est prêt : <strong>${safeFilename}</strong>. Il a été déplacé dans <strong>${folder}</strong>.`;
   if (libResult && libResult.success) {
     aiMessage += ` Il est aussi publié dans la <strong>Library</strong> communautaire ✅`;
+  } else if (libResult && libResult.private) {
+    aiMessage += ` Il reste privé dans ton projet ; le partage communautaire est désactivé.`;
   } else if (libResult && libResult.error) {
     const reason = String(libResult.error).replace(/[<>&"]/g, '').slice(0, 60);
     aiMessage += ` <span style="color:#948B7C;">(Library : non publié — ${reason})</span>`;
@@ -4315,6 +4545,7 @@ function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult
     filePath,
     fileName: filename,
     previewPath: options.previewPath || '',
+    resultState: 'technically_complete',
   });
 
   console.log('[AssetWatcher] Nouvelle notif →', filename, '(', meta.type, ')');
@@ -4428,8 +4659,8 @@ function resolveAgent() {
   const sessions = [...PTYS.entries()];
   if (sessions.length > 0) {
     const last = sessions[sessions.length - 1][1];
-    const nameMap  = { claude: 'Claude Code', codex: 'OpenAI Codex', antigravity: 'Antigravity' };
-    const colorMap = { claude: '#CC785C', codex: '#10A37F', antigravity: '#4285F4' };
+    const nameMap  = { claude: 'Claude Code', codex: 'OpenAI Codex' };
+    const colorMap = { claude: '#CC785C', codex: '#10A37F' };
     agentName  = nameMap[last.agentType]  || 'Agent';
     agentColor = colorMap[last.agentType] || '#3B82F6';
   }
@@ -4492,16 +4723,18 @@ function handleNewAssetFile(filePath, filename) {
 
     const { agentName, agentColor } = resolveAgent();
 
-    // RÉFLEXE SYSTÉMATIQUE : publication automatique dans la Library
-    // communautaire (Supabase) en même temps que la notification locale.
-    let libResult = null;
-    try {
-      libResult = await Promise.race([
-        publishToLibrary(resolvedPath, filename, meta.type, agentName),
-        new Promise(resolve => setTimeout(() => resolve({ error: 'délai dépassé' }), 8000)),
-      ]);
-    } catch (e) {
-      libResult = { error: e.message };
+    // Le partage communautaire est un choix explicite, indépendant pour les
+    // modèles, images et sons. Un ancien réglage absent reste privé.
+    let libResult = { skipped: true, private: true };
+    if (shouldAutoPublishCommunityAsset(loadAppSettings(), meta.type)) {
+      try {
+        libResult = await Promise.race([
+          publishToLibrary(resolvedPath, filename, meta.type, agentName),
+          new Promise(resolve => setTimeout(() => resolve({ error: 'délai dépassé' }), 8000)),
+        ]);
+      } catch (e) {
+        libResult = { error: e.message };
+      }
     }
 
     notifyAssetCreated(resolvedPath, filename, agentName, agentColor, libResult, {
@@ -4985,7 +5218,45 @@ const { autoUpdater } = require('electron-updater');
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
+let updaterState = {
+  status: 'idle',
+  lastCheckedAt: null,
+  availableVersion: null,
+  progress: null,
+  error: null
+};
+
+function publicUpdaterState() { return { ...updaterState }; }
+function setUpdaterState(patch) {
+  updaterState = { ...updaterState, ...patch };
+  notifyAllWindows('updater-status', publicUpdaterState());
+}
+function safeUpdaterError(error) {
+  const code = String(error?.code || '').replace(/[^A-Z0-9_-]/gi, '').slice(0, 48);
+  return code ? `La vérification a échoué (${code}).` : 'La vérification des mises à jour a échoué.';
+}
+async function checkForAppUpdates() {
+  setUpdaterState({ status: 'checking', error: null, progress: null, lastCheckedAt: new Date().toISOString() });
+  try {
+    await autoUpdater.checkForUpdates();
+    return publicUpdaterState();
+  } catch (error) {
+    const message = safeUpdaterError(error);
+    setUpdaterState({ status: 'error', error: message });
+    console.error('[Updater] Echec verification:', error.message);
+    return publicUpdaterState();
+  }
+}
+
+ipcMain.handle('updater-status', async () => publicUpdaterState());
+ipcMain.handle('updater-check', async () => checkForAppUpdates());
+
+autoUpdater.on('checking-for-update', () => setUpdaterState({ status: 'checking', error: null, lastCheckedAt: new Date().toISOString() }));
+autoUpdater.on('update-not-available', () => setUpdaterState({ status: 'up-to-date', availableVersion: null, progress: null, error: null }));
+autoUpdater.on('download-progress', info => setUpdaterState({ status: 'downloading', progress: Math.max(0, Math.min(100, Math.round(info.percent || 0))), error: null }));
+
 autoUpdater.on('update-available', (info) => {
+  setUpdaterState({ status: 'available', availableVersion: info.version || null, progress: null, error: null });
   console.log('[Updater] MAJ disponible: v' + info.version);
   dialog.showMessageBox({
     type: 'info',
@@ -4993,11 +5264,15 @@ autoUpdater.on('update-available', (info) => {
     message: `Une nouvelle version (v${info.version}) est disponible.\nVoulez-vous la télécharger ?`,
     buttons: ['Télécharger', 'Plus tard']
   }).then(({ response }) => {
-    if (response === 0) autoUpdater.downloadUpdate();
+    if (response === 0) {
+      setUpdaterState({ status: 'downloading', progress: 0, error: null });
+      autoUpdater.downloadUpdate().catch(error => setUpdaterState({ status: 'error', error: safeUpdaterError(error) }));
+    }
   });
 });
 
-autoUpdater.on('update-downloaded', () => {
+autoUpdater.on('update-downloaded', (info) => {
+  setUpdaterState({ status: 'downloaded', availableVersion: info?.version || updaterState.availableVersion, progress: 100, error: null });
   dialog.showMessageBox({
     type: 'info',
     title: 'Mise à jour prête',
@@ -5009,33 +5284,40 @@ autoUpdater.on('update-downloaded', () => {
 });
 
 autoUpdater.on('error', (err) => {
+  setUpdaterState({ status: 'error', error: safeUpdaterError(err) });
   console.error('[Updater] Erreur:', err.message);
-  console.error('[Updater] Detail:', JSON.stringify(err));
 });
 
 // ============================================
 app.on('before-quit', () => {
   if (privateControl) privateControl.close().catch(() => {});
+  if (robloxAuthBroker?.server) robloxAuthBroker.server.close();
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  refreshPathEnv();
+  try {
+    const updateSnapshot = prepareUpdateSnapshot({ userDataDir: app.getPath('userData'), currentVersion: app.getVersion() });
+    if (updateSnapshot.changed) console.log(`[Update] Données ${updateSnapshot.previousVersion} sauvegardées avant ouverture de ${updateSnapshot.currentVersion}.`);
+  } catch (error) { console.warn('[Update] Sauvegarde pré-mise à jour impossible :', error.message); }
+  try { await startRobloxAuthBroker(); }
+  catch (error) { console.error('[Roblox] Auth broker indisponible:', error.message); }
   try {
     createAgentStateStore(userDataFile('agents-state.json')).migrateLegacy(userDataFile('active-project.json'));
   } catch (err) { console.warn('[Agents] Migration différée :', err.message); }
-  const recoverableProjects = loadProjectsRegistry();
+  let recoverableProjects = [];
+  try { recoverableProjects = loadProjectsRegistry(); }
+  catch (error) { console.warn('[Projects]', error.message); }
   for (const project of Array.isArray(recoverableProjects) ? recoverableProjects : []) {
     try { if (project?.path && isPathAllowed(project.path)) scheduleMediaTracking(project.path); }
     catch (err) { console.warn('[Media] Reprise différée :', err.message); }
   }
   createWindow();
   startPrivateControlIfPaired();
-  pingInstallAnalytics().catch(() => {});
   // Verifier les MAJ apres 5s pour laisser le temps au window de se charger
   setTimeout(() => {
     console.log('[Updater] Verification des mises a jour...');
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error('[Updater] Echec verification:', err.message);
-    });
+    checkForAppUpdates();
   }, 5000);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

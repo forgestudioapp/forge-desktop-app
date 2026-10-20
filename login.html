@@ -6,6 +6,7 @@
 <title>Forge — Connexion</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="lib/theme.css">
+<script src="lib/setup-flow.js"></script>
 <script src="lib/theme.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
@@ -145,6 +146,7 @@
       </div>
     </div>
     <button class="submit-btn" id="submitBtn" data-i18n="login_signup_btn">Créer mon compte</button>
+    <p style="margin:14px 0 0;font-size:11px;line-height:1.55;color:var(--smoke);">Les données saisies servent à créer et sécuriser ton compte et à associer ta licence. Aucun consentement marketing n’est demandé. <a id="privacyLink" href="#" style="color:var(--ember-light);text-decoration:underline;">Lire la politique de confidentialité</a>.</p>
     <div class="switch-mode">
       <span id="switchText" data-i18n="login_have_account">Déjà un compte ?</span> <a id="switchLink" data-i18n="login_signin">Se connecter</a>
     </div>
@@ -168,6 +170,10 @@
   const licenseField = document.getElementById('licenseField');
   const licenseInput = document.getElementById('licenseInput');
   const buyLink = document.getElementById('buyLink');
+  document.getElementById('privacyLink').addEventListener('click', (event) => {
+    event.preventDefault();
+    window.forgeAPI?.openExternal?.('https://forgestudioapp.github.io/forge-desktop-app/privacy.html');
+  });
 
   let mode = 'signup';
 
@@ -254,10 +260,10 @@
     try {
       if(window.forgeAPI && window.forgeAPI.isForgeConnected){
         const r = await window.forgeAPI.isForgeConnected();
-        if(r.connected){
+        if(r.connected || r.state === 'offline' || r.state === 'stored'){
           document.body.style.opacity = '0';
           document.body.style.transition = 'opacity 0.2s ease';
-          setTimeout(() => { window.location.href = 'projects.html'; }, 200);
+          setTimeout(() => { window.location.href = forgeSetup.next('login.html', location.search); }, 200);
         }
       }
     } catch(e){}
@@ -338,7 +344,7 @@
 
     document.body.style.opacity = '0';
     document.body.style.transition = 'opacity 0.2s ease';
-    setTimeout(() => { window.location.href = 'projects.html'; }, 200);
+    setTimeout(() => { window.location.href = forgeSetup.next('login.html', location.search); }, 200);
     } catch (err) {
       showError(t('login_err_network'));
     } finally {

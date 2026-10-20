@@ -1,5 +1,36 @@
 'use strict';
 (() => {
+  const WINDOWS_DOWNLOAD = 'https://github.com/forgestudioapp/forge-desktop-app/releases/latest/download/Forge-Windows-x64.exe';
+  const userAgent = navigator.userAgent || '';
+  const isWindows = /Windows/i.test(userAgent);
+  const isIPad = /Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1;
+  const isMac = !isIPad && /Macintosh|Mac OS X/i.test(userAgent);
+  const downloadDialog = document.querySelector('#download-dialog');
+  const primaryDownloads = [...document.querySelectorAll('.js-download-primary')];
+
+  primaryDownloads.forEach(link => {
+    const label = link.querySelector('[data-download-label]');
+    const icon = link.querySelector('[data-download-icon]');
+    if (isMac) {
+      if (label) label.textContent = 'Télécharger pour Mac';
+      if (icon) icon.setAttribute('href', '#i-mac');
+      link.addEventListener('click', event => { event.preventDefault(); downloadDialog.showModal(); });
+    } else if (isWindows) {
+      link.href = WINDOWS_DOWNLOAD;
+      if (label) label.textContent = 'Télécharger pour Windows';
+    } else {
+      if (label) label.textContent = 'Choisir ma version';
+      link.addEventListener('click', event => { event.preventDefault(); downloadDialog.showModal(); });
+    }
+  });
+  document.querySelectorAll('[data-open-download]').forEach(button => button.addEventListener('click', () => downloadDialog.showModal()));
+  downloadDialog.querySelector('.dialog-close').addEventListener('click', () => downloadDialog.close());
+  downloadDialog.addEventListener('click', event => {
+    if (event.target !== downloadDialog) return;
+    const rect = downloadDialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) downloadDialog.close();
+  });
+
   const menu = document.querySelector('.menu-button');
   const nav = document.querySelector('#navigation');
   function closeMenu() { nav.classList.remove('open'); menu.setAttribute('aria-expanded', 'false'); menu.setAttribute('aria-label', 'Ouvrir le menu'); }
@@ -48,10 +79,9 @@
   let returnFocus;
   document.querySelectorAll('[data-open-tutorial]').forEach(button => button.addEventListener('click', () => {
     returnFocus = button; video.pause();
-    const iframe = document.createElement('iframe'); iframe.src = 'https://www.youtube-nocookie.com/embed/65_QLxxXN1w'; iframe.title = 'Comment installer Forge'; iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'; iframe.allowFullscreen = true; iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-    document.querySelector('#tutorial-frame').replaceChildren(iframe); dialog.showModal();
+    dialog.showModal();
   }));
-  document.querySelector('.dialog-close').addEventListener('click', () => dialog.close());
+  dialog.querySelector('.dialog-close').addEventListener('click', () => dialog.close());
   dialog.addEventListener('click', e => { if (e.target === dialog) { const r = dialog.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.close(); } });
-  dialog.addEventListener('close', () => { document.querySelector('#tutorial-frame').replaceChildren(); returnFocus?.focus(); playIfAllowed(); });
+  dialog.addEventListener('close', () => { returnFocus?.focus(); playIfAllowed(); });
 })();

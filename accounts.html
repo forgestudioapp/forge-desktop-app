@@ -177,7 +177,7 @@
 <script src="./lib/i18n.js"></script>
 <script src="./lib/ux.js"></script>
 <script>
-  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
+  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected && !['offline','stored'].includes(res.state)) window.location.href = 'login.html'; }); } })();
   initLang();
   const dotsEl = document.getElementById('dots');
   for(let i=0;i<6;i++){ const d=document.createElement('i'); if(i===3)d.className='on'; dotsEl.appendChild(d); }
@@ -247,12 +247,33 @@
     document.getElementById('robloxDiscBtn').style.display = 'none';
   }
 
+  function setRobloxOffline(){
+    const btn = document.getElementById('robloxBtn');
+    const error = document.getElementById('robloxError');
+    btn.textContent = 'Session enregistrée · hors ligne';
+    btn.classList.remove('connected', 'error');
+    btn.classList.add('secondary');
+    btn.disabled = false;
+    error.textContent = 'Roblox est injoignable. La session locale est conservée ; réessaie quand le réseau revient.';
+    error.style.display = 'block';
+    document.getElementById('robloxDiscBtn').style.display = 'inline';
+  }
+
   function setGithubConnected(){
     const btn = document.getElementById('githubBtn');
     btn.textContent = 'Connecte';
     btn.classList.remove('secondary');
     btn.classList.add('connected');
     btn.disabled = true;
+    document.getElementById('githubCodeBox').style.display = 'none';
+  }
+
+  function setGithubOffline(){
+    const btn = document.getElementById('githubBtn');
+    btn.textContent = 'Session enregistrée · hors ligne';
+    btn.classList.remove('connected', 'error');
+    btn.classList.add('secondary');
+    btn.disabled = false;
     document.getElementById('githubCodeBox').style.display = 'none';
   }
 
@@ -286,7 +307,8 @@
             setRobloxError('Compte Roblox connecté, mais l’accès de l’IA n’est pas prêt : '+(access.error||'réessaie après avoir relancé Forge.'));
           }
         }
-      }
+      } else if(result.state === 'offline' || result.state === 'stored') setRobloxOffline();
+      else if(result.state === 'expired' || result.state === 'invalid' || result.state === 'unreadable') setRobloxError('Session expirée ou illisible. Reconnecte Roblox.');
     }
   }
   checkRobloxConnection();
@@ -295,6 +317,8 @@
     if(!window.forgeAPI) return;
     const connected = await window.forgeAPI.isGithubConnected();
     if(connected.connected){ setGithubConnected(); return; }
+    if(connected.state === 'offline' || connected.state === 'stored'){ setGithubOffline(); return; }
+    if(connected.state === 'expired' || connected.state === 'invalid' || connected.state === 'unreadable'){ setGithubError('reconnecter'); return; }
     const status = await window.forgeAPI.getGithubDeviceStatus();
     if(status.hasDeviceFlow){
       setGithubWaiting();
@@ -368,9 +392,7 @@
     try {
       startResult = await window.forgeAPI.githubStart();
     } catch (err) {
-      btn.textContent = 'Echec — voir console';
-      btn.disabled = false;
-      console.error('[GH-start] exception:', err);
+      setGithubError(err?.message || 'reessayer');
       return;
     }
     if(!startResult || startResult.error || !startResult.userCode){

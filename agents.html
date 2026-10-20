@@ -6,6 +6,8 @@
 <title>Forge — Agents IA</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="lib/theme.css">
+<link rel="stylesheet" href="xterm-assets/xterm.css">
+<script src="lib/setup-flow.js"></script>
 <script src="lib/theme.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
@@ -270,49 +272,6 @@
     </div>
   </div>
 
-  <!-- Google Antigravity -->
-  <div class="agent-card" id="card-antigravity" data-agent="antigravity">
-    <div class="agent-top">
-      <div class="agent-left">
-        <div class="agent-icon" style="background:#4285F422; color:#4285F4;">
-          <svg width="22" height="22" viewBox="0 0 100 100" fill="none">
-            <circle cx="50" cy="50" r="6" fill="currentColor"/>
-            <g stroke="currentColor" stroke-width="5" stroke-linecap="round">
-              <line x1="50" y1="18" x2="50" y2="34"/>
-              <line x1="50" y1="66" x2="50" y2="82"/>
-              <line x1="18" y1="50" x2="34" y2="50"/>
-              <line x1="66" y1="50" x2="82" y2="50"/>
-              <line x1="27" y1="27" x2="38" y2="38"/>
-              <line x1="62" y1="62" x2="73" y2="73"/>
-              <line x1="73" y1="27" x2="62" y2="38"/>
-              <line x1="38" y1="62" x2="27" y2="73"/>
-            </g>
-          </svg>
-        </div>
-        <div>
-          <div class="agent-name">Google Antigravity</div>
-          <div class="agent-desc" id="desc-antigravity">Detection en cours…</div>
-        </div>
-      </div>
-      <span class="status-badge load" id="badge-antigravity">Detection…</span>
-    </div>
-    <div class="agent-body" id="body-antigravity" style="display:none;">
-      <div id="install-antigravity" style="display:none;">
-        <div class="install-box">
-          <div class="install-label" data-i18n="auto_install">Forge peut installer l'agent automatiquement :</div>
-          <div class="install-cmd">
-            <code>npm install -g agy</code>
-            <button class="copy-btn" onclick="copyCmd('antigravity')" data-i18n="copy_id">Copier</button>
-          </div>
-          <div class="progress-bar" id="progress-antigravity" style="display:none;"><div class="progress-fill" id="fill-antigravity"></div></div>
-          <div class="install-log" id="log-antigravity"></div>
-        </div>
-      </div>
-      <ul class="step-list" id="steps-antigravity"></ul>
-      <div class="agent-actions" id="actions-antigravity"></div>
-    </div>
-  </div>
-
   <button class="continue-btn" id="continueBtn" disabled data-i18n="return_projects">Continuer →</button>
 
   <div class="step-footer mono" data-i18n="step_5_6">Étape 5 sur 6</div>
@@ -321,15 +280,14 @@
 <script src="./lib/i18n.js"></script>
 <script src="./lib/ux.js"></script>
 <script>
-  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = 'login.html'; }); } })();
+  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected) window.location.href = forgeSetup.active(location.search) ? 'login.html?setup=1' : 'onboarding.html?setup=1'; }); } })();
   initLang();
   const dotsEl = document.getElementById('dots');
   for(let i=0;i<6;i++){ const d=document.createElement('i'); if(i===4)d.className='on'; dotsEl.appendChild(d); }
 
   const AGENTS = {
-    claude: { name: 'Claude Code', installCmd: 'npm install -g @anthropic-ai/claude-code', loginCmd: 'claude', docUrl: 'https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview', color: '#CC785C' },
-    codex: { name: 'OpenAI Codex', installCmd: 'npm install -g @openai/codex', loginCmd: 'codex', docUrl: 'https://github.com/openai/codex', color: '#10A37F' },
-    antigravity: { name: 'Google Antigravity', installCmd: 'npm install -g agy', loginCmd: 'agy', docUrl: 'https://developers.google.com/antigravity', color: '#4285F4' }
+    claude: { name: 'Claude Code', installCmd: 'npm install -g @anthropic-ai/claude-code', loginCmd: 'claude auth login', docUrl: 'https://code.claude.com/docs/en/authentication', color: '#CC785C' },
+    codex: { name: 'OpenAI Codex', installCmd: 'npm install -g @openai/codex', loginCmd: 'codex', docUrl: 'https://github.com/openai/codex', color: '#10A37F' }
   };
 
   let readyCount = 0;
@@ -395,7 +353,7 @@
 
   async function detectAll(){
     if(!window.forgeAPI || !window.forgeAPI.detectAllAgents){
-      ['claude','codex','antigravity'].forEach(a => {
+      ['claude','codex'].forEach(a => {
         setBadge(a, 'ko', 'Indisponible');
         document.getElementById('desc-'+a).textContent = 'Impossible de detecter';
       });
@@ -408,7 +366,7 @@
       results = await window.forgeAPI.detectAllAgents();
     } catch(err) {
       console.error('detectAllAgents error:', err);
-      ['claude','codex','antigravity'].forEach(a => {
+      ['claude','codex'].forEach(a => {
         setBadge(a, 'ko', 'Erreur');
         document.getElementById('desc-'+a).textContent = 'Erreur de communication';
         document.getElementById('body-'+a).style.display = 'none';
@@ -436,6 +394,12 @@
           <button class="agent-btn primary" onclick="redetect('${agent}')">Re-detecter</button>
         `);
         readyCount++;
+        if(agent === 'claude'){
+          const state = res.auth?.state || 'unknown';
+          setBadge(agent, state === 'connected' ? 'ok' : 'ko', state === 'connected' ? 'Connecté' : state === 'disconnected' ? 'Compte non connecté' : 'Connexion à vérifier');
+          setSteps(agent, `<li class="step-item"><span class="step-num done">✓</span><span class="step-text">Claude Code est installé.</span></li><li class="step-item"><span class="step-num">2</span><span class="step-text">${state === 'connected' ? 'Claude Code indique une connexion active. La disponibilité dépend aussi de ton offre et de tes quotas.' : 'Connecte ton compte dans le navigateur officiel de Claude. Forge réutilise la connexion locale de Claude Code.'}</span></li>`);
+          setActions(agent, `<button class="agent-btn primary" onclick="openClaudeLogin()">${state === 'connected' ? 'Changer de compte' : 'Connecter mon compte'}</button><button class="agent-btn secondary" onclick="redetect('claude')">Vérifier la connexion</button>`);
+        }
       } else {
         setBadge(agent, 'ko', 'Non installe');
         showInstallUI(agent, true);
@@ -453,7 +417,7 @@
   function updateContinueBtn(){
     const btn = document.getElementById('continueBtn');
     btn.disabled = false;
-    btn.textContent = localStorage.getItem('forge_lang')==='en' ? 'Back to projects →' : 'Retour aux projets →';
+    btn.textContent = forgeSetup.active(location.search) ? (localStorage.getItem('forge_lang')==='en' ? 'Continue →' : 'Continuer →') : (localStorage.getItem('forge_lang')==='en' ? 'Back to projects →' : 'Retour aux projets →');
   }
 
   async function autoInstall(agent){
@@ -554,8 +518,18 @@
 
   detectAll();
 
-  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('projects.html'));
+  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate(forgeSetup.next('agents.html', location.search)));
 </script>
 
+<dialog id="claudeLoginDialog" style="margin:auto;width:min(850px,95vw);padding:24px;border:1px solid #536075;border-radius:16px;background:#171c24;color:#eef1f6;">
+  <h2>Connecter Claude Code</h2>
+  <p style="margin:12px 0;line-height:1.6">Termine la connexion dans le navigateur ouvert par Claude. Si Claude fournit un code à recopier, colle-le dans le terminal ci-dessous. Utilise un compte disposant de l’accès à Claude Code.</p>
+  <div id="claudeLoginTerminal" style="height:340px;background:#14110e;padding:8px"></div>
+  <p id="claudeLoginStatus" role="status" style="margin:12px 0"></p>
+  <button class="agent-btn secondary" id="closeClaudeLogin">Fermer</button>
+</dialog>
+<script src="xterm-assets/xterm.min.js"></script>
+<script src="xterm-assets/addon-fit.min.js"></script>
+<script src="lib/claude-login-ui.js"></script>
 </body>
 </html>

@@ -12,11 +12,13 @@ contextBridge.exposeInMainWorld('forgeAPI', {
 
   // --- Agents locaux ---
   detectAgent: (agentType) => ipcRenderer.invoke('agent-detect', agentType),
+  claudeLogin: () => ipcRenderer.invoke('claude-login'),
   detectAllAgents: () => ipcRenderer.invoke('agent-detect-all'),
   launchAgent: (agentType, projectPath, prompt) => ipcRenderer.invoke('agent-launch', agentType, projectPath, prompt),
   stopAgent: (sessionId) => ipcRenderer.invoke('agent-stop', sessionId),
   getAgentStatus: (sessionId) => ipcRenderer.invoke('agent-status', sessionId),
   listAgentSessions: () => ipcRenderer.invoke('agent-list'),
+  getAgentUsageSummary: (projectPath) => ipcRenderer.invoke('agent-usage-summary', projectPath),
   onAgentStream: (callback) => ipcRenderer.on('agent-stream', (event, data) => callback(data)),
   installAgent: (agentType) => ipcRenderer.invoke('agent-install', agentType),
   onAgentInstall: (callback) => ipcRenderer.on('agent-install', (event, data) => callback(data)),
@@ -33,6 +35,8 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   removeAgentActivity: (projectPath, agentId) => ipcRenderer.invoke('agent-activity-remove', projectPath, agentId),
   readProjectQuality: (projectPath) => ipcRenderer.invoke('project-quality-read', projectPath),
   writeProjectQuality: (projectPath, content) => ipcRenderer.invoke('project-quality-write', projectPath, content),
+  listSessionHandoffs: (projectPath) => ipcRenderer.invoke('session-handoff-list', projectPath),
+  saveSessionHandoff: (projectPath, draft) => ipcRenderer.invoke('session-handoff-save', projectPath, draft),
 
   // --- Systeme & Roblox ---
   ping: () => 'pong depuis le backend Electron !',
@@ -69,6 +73,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   // --- Cles API ---
   saveApiKey: (service, key) => ipcRenderer.invoke('save-api-key', service, key),
   getApiKeys: () => ipcRenderer.invoke('get-api-keys'),
+  deleteApiKey: (service) => ipcRenderer.invoke('delete-api-key', service),
   verifyApiKey: (service, key) => ipcRenderer.invoke('verify-api-key', service, key),
 
   // --- MCP ---
@@ -116,6 +121,8 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   mediaListFiles: (projectPath) => ipcRenderer.invoke('media-list-files', projectPath),
   mediaCreateItem: (projectPath, kind, name) => ipcRenderer.invoke('media-create-item', projectPath, kind, name),
   mediaGenerate: (options) => ipcRenderer.invoke('media-generate', options),
+  mediaRetryTracking: (projectPath) => ipcRenderer.invoke('media-retry-tracking', projectPath),
+  mediaStopJob: (projectPath, jobId) => ipcRenderer.invoke('media-stop-job', projectPath, jobId),
   mediaPoll: (projectPath) => ipcRenderer.invoke('media-poll', projectPath),
   mediaMetrics: (projectPath, jobId) => ipcRenderer.invoke('media-metrics', projectPath, jobId),
   mediaDownload: (projectPath, relPath) => ipcRenderer.invoke('media-download', projectPath, relPath),
@@ -146,6 +153,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   listNotifications: () => ipcRenderer.invoke('notifications-list'),
   clearNotifications: () => ipcRenderer.invoke('notifications-clear'),
   markNotificationRead: (id) => ipcRenderer.invoke('notifications-mark-read', id),
+  validateNotification: (id, deliveredPath) => ipcRenderer.invoke('notifications-validate', id, deliveredPath),
   deleteNotification: (id) => ipcRenderer.invoke('notifications-delete', id),
 
   // --- MCP Studio activity ---
@@ -156,7 +164,12 @@ contextBridge.exposeInMainWorld('forgeAPI', {
 
   // --- Reglages globaux ---
   getAppSettings: () => ipcRenderer.invoke('get-app-settings'),
+  getCommunitySharingSettings: () => ipcRenderer.invoke('get-community-sharing-settings'),
+  saveCommunitySharingSettings: (settings) => ipcRenderer.invoke('save-community-sharing-settings', settings),
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+  getUpdaterStatus: () => ipcRenderer.invoke('updater-status'),
+  checkForUpdates: () => ipcRenderer.invoke('updater-check'),
+  onUpdaterStatus: (callback) => ipcRenderer.on('updater-status', (event, data) => callback(data)),
   getProjectsLocation: () => ipcRenderer.invoke('get-projects-location'),
   getActiveProjectInfo: () => ipcRenderer.invoke('get-active-project-info'),
   chooseProjectsLocation: () => ipcRenderer.invoke('choose-projects-location'),

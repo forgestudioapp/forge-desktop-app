@@ -193,7 +193,7 @@ $t2 = Measure-Command {
         }
 
         # Check agents
-        $agents = @("codex", "claude", "antigravity")
+        $agents = @("codex", "claude")
         foreach ($a in $agents) {
             $proc = Start-Process $a -ArgumentList "--version" -NoNewWindow -RedirectStandardOutput "temp_out.txt" -RedirectStandardError "temp_err.txt" -Wait -PassThru -ErrorAction SilentlyContinue
             $out = Get-Content "temp_out.txt" -Raw

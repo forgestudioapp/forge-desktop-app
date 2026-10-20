@@ -22,3 +22,5 @@ supabase/tests/*.dry-run.sql
 # Generated private runtime and build downloads
 runtimes/
 .runtime-cache/
+__pycache__/
+*.pyc

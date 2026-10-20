@@ -1,4 +1,58 @@
-<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self';"><title>Forge — Réglages du projet</title><link rel="stylesheet" href="lib/theme.css"><link rel="stylesheet" href="lib/settings.css"><link rel="stylesheet" href="lib/project-settings.css"><script src="lib/theme.js"></script><script defer src="lib/project-settings.js"></script></head><body><main class="project-form"><a href="workspace.html" data-fr="← Espace de travail" data-en="← Workspace"></a><h1 data-fr="Réglages du projet" data-en="Project settings"></h1><p id="projectName">—</p><p id="projectStatus" class="project-status" role="status" aria-live="polite"></p>
-<section class="settings-card"><h2 data-fr="Place Roblox" data-en="Roblox place"></h2><p id="placeInfo"></p><p data-fr="Ouvre la place souhaitée dans Studio et active le plugin Forge. Une première publication est nécessaire pour obtenir son identifiant. La liaison ne démarre pas la synchronisation." data-en="Open your place in Studio and enable the Forge plugin. Publish it once to obtain its identifier. Linking does not start synchronization."></p><button id="linkPlace" data-fr="Associer la place ouverte" data-en="Link the open place"></button><button id="checkPlace" data-fr="Vérifier la connexion" data-en="Check connection"></button><a href="onboarding.html" data-fr="Installer ou réparer les outils" data-en="Install or repair tools"></a></section>
-<section class="settings-card"><h2 data-fr="Synchronisation des fichiers" data-en="File synchronization"></h2><p id="syncStatus"></p><p data-fr="La pause reste active lorsque tu changes de page ou relances Forge. Elle concerne les fichiers ; les commandes demandées directement à un agent dans Studio restent distinctes." data-en="Pause is preserved across navigation and restarts. It applies to file synchronization; direct agent commands in Studio are separate."></p><button id="syncAction" disabled data-fr="Chargement…" data-en="Loading…"></button></section>
-<section class="settings-card"><h2 data-fr="Consignes et historique" data-en="Instructions and history"></h2><p data-fr="Les points de retour sauvegardent les fichiers locaux du projet, avec exclusions. Ils ne sauvegardent pas l’ensemble de la scène Roblox ni les changements envoyés directement dans Studio." data-en="Checkpoints back up local project files, with exclusions. They do not back up the entire Roblox scene or direct Studio changes."></p><a class="action-link" href="workspace.html#memory" data-fr="Consignes du projet" data-en="Project instructions"></a><a class="action-link" href="workspace.html#history" data-fr="Historique des fichiers" data-en="File history"></a></section></main></body></html>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self';">
+  <title>Forge — Studio</title>
+  <link rel="stylesheet" href="lib/theme.css">
+  <link rel="stylesheet" href="lib/settings.css">
+  <link rel="stylesheet" href="lib/project-settings.css">
+  <script src="lib/theme.js"></script>
+  <script src="lib/error-guidance.js"></script>
+  <script defer src="lib/project-settings.js"></script>
+</head>
+<body>
+  <main class="project-form">
+    <a href="workspace.html" data-fr="← Retour à l’espace de travail" data-en="← Back to workspace"></a>
+    <p class="eyebrow">FORGE / STUDIO</p>
+    <h1 data-fr="Studio et synchronisation" data-en="Studio and synchronization"></h1>
+    <p id="projectName">—</p>
+    <div class="project-purpose">
+      <strong data-fr="À quoi sert cette page ?" data-en="What is this page for?"></strong>
+      <p data-fr="Elle relie ce projet à la bonne place Roblox et contrôle l’envoi automatique de ses fichiers vers Studio. Tu n’as normalement besoin d’y revenir que si tu changes de place ou si la connexion s’arrête." data-en="It links this project to the correct Roblox place and controls automatic file delivery to Studio. You normally only need to return here when changing places or when the connection stops."></p>
+    </div>
+    <p id="projectStatus" class="project-status" role="status" aria-live="polite"></p>
+    <p id="projectRecovery"></p>
+
+    <section class="settings-card">
+      <span class="step-label" data-fr="1 · Connexion" data-en="1 · Connection"></span>
+      <h2 data-fr="Place Roblox liée" data-en="Linked Roblox place"></h2>
+      <p id="placeInfo"></p>
+      <p data-fr="Ouvre la bonne place dans Roblox Studio, puis active le plugin Forge. La place doit avoir été publiée au moins une fois." data-en="Open the correct place in Roblox Studio, then enable the Forge plugin. The place must have been published at least once."></p>
+      <div class="project-actions">
+        <button id="linkPlace" data-fr="Associer la place ouverte" data-en="Link the open place"></button>
+        <button id="checkPlace" class="secondary-action" data-fr="Tester la connexion" data-en="Test connection"></button>
+      </div>
+      <a class="repair-link" href="onboarding.html" data-fr="Installer ou réparer Studio et le plugin" data-en="Install or repair Studio and the plugin"></a>
+    </section>
+
+    <section class="settings-card">
+      <span class="step-label" data-fr="2 · Envoi des fichiers" data-en="2 · File delivery"></span>
+      <h2 data-fr="Envoi automatique vers Studio" data-en="Automatic delivery to Studio"></h2>
+      <p id="syncStatus"></p>
+      <p data-fr="Quand il est activé, Forge envoie à Studio les fichiers que les agents créent ou modifient dans ce projet. Mets-le en pause si tu veux travailler sans modifier la place ouverte." data-en="When enabled, Forge sends files created or changed by agents in this project to Studio. Pause it when you want to work without changing the open place."></p>
+      <button id="syncAction" disabled data-fr="Chargement…" data-en="Loading…"></button>
+    </section>
+
+    <section class="settings-card compact-card">
+      <span class="step-label" data-fr="Outils facultatifs" data-en="Optional tools"></span>
+      <h2 data-fr="Mémoire, reprise et historique" data-en="Memory, handoff and history"></h2>
+      <p data-fr="Ces données appartiennent uniquement à ce projet : règles validées, état de reprise et anciennes versions de ses fichiers locaux." data-en="This data belongs only to this project: approved rules, session handoff state, and earlier versions of its local files."></p>
+      <a class="action-link" href="workspace.html#memory" data-fr="Mémoire et règles du projet" data-en="Project memory and rules"></a>
+      <a class="action-link" href="workspace.html#handoff" data-fr="Fiche de reprise" data-en="Session handoff"></a>
+      <a class="action-link" href="workspace.html#history" data-fr="Historique des fichiers" data-en="File history"></a>
+    </section>
+  </main>
+</body>
+</html>

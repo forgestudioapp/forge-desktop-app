@@ -8,7 +8,7 @@
     Run this after a fresh install or to validate the current installation.
 
 .NOTES
-    Requires: Administrator for winget installs, Roblox Studio installed
+    Does not require system Node or Python. Forge's bundled runtimes are used.
     Run from: forge-desktop-app directory
 #>
 
@@ -17,7 +17,7 @@ param(
     [switch]$SkipRoblox,
     [switch]$SkipBuild,
     [string]$TestProjectName = "ForgeValidationTest",
-    [string]$LogPath = "C:\Users\maxen\OneDrive\Documents\FORGE-TRANSFERT\validation-report.json"
+    [string]$LogPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,9 +43,16 @@ function Write-Ok($text)   { Write-Host "  [OK]   $text" -ForegroundColor $Color
 function Write-Warn($text) { Write-Host "  [WARN] $text" -ForegroundColor $Colors.Warn }
 function Write-Err($text)  { Write-Host "  [ERR]  $text" -ForegroundColor $Colors.Error }
 
+$appRoot = Split-Path $PSScriptRoot -Parent
+$packageJson = Get-Content (Join-Path $appRoot "package.json") -Raw | ConvertFrom-Json
+$ForgeVersion = [string]$packageJson.version
+if (-not $LogPath) { $LogPath = Join-Path $appRoot "dist\validation-report-$ForgeVersion.json" }
+$BundledNode = Join-Path $appRoot "runtimes\node-win-x64\node.exe"
+$BundledPython = Join-Path $appRoot "runtimes\python-win-x64-u2net\python.exe"
+
 $ValidationResults = @{
     Timestamp = $StartTime.ToString("o")
-    Version   = "1.5.2"
+    Version   = $ForgeVersion
     Tests     = @{}
     Summary   = @{
         Passed = 0
@@ -99,8 +106,6 @@ function Save-Report {
     $ValidationResults | ConvertTo-Json -Depth 5 | Set-Content -Path $LogPath -Encoding UTF8
     Write-Info "Report saved to $LogPath"
 }
-
-$appRoot = Split-Path $PSScriptRoot -Parent
 
 # Initialize isolated test profile before any tests
 Setup-TestProfile
@@ -162,38 +167,31 @@ $t1 = Measure-Command {
 Save-Report
 
 # ============================================================
-# TEST 2: System Prerequisites Check
+# TEST 2: Packaged Runtime Independence
 # ============================================================
-Write-Step "TEST 2: System Prerequisites"
+Write-Step "TEST 2: Packaged Runtime Independence"
 $t2 = Measure-Command {
     $allOk = $true
-    
-    $prereqs = @(
-        @{ Cmd = "node"; Args = "--version";   MinMajor = 18; Name = "Node.js" },
-        @{ Cmd = "python"; Args = "--version"; MinMajor = 3; MinMinor = 9; Name = "Python" },
-        @{ Cmd = "winget"; Args = "--version"; Name = "winget" }
+    $runtimes = @(
+        @{ Path = $BundledNode; Args = "--version"; Name = "Node privé Forge" },
+        @{ Path = $BundledPython; Args = "--version"; Name = "Python privé Forge" }
     )
-
-    foreach ($p in $prereqs) {
+    foreach ($runtime in $runtimes) {
         try {
-            $proc = Start-Process -FilePath $p.Cmd -ArgumentList $p.Args -NoNewWindow -RedirectStandardOutput "temp_out.txt" -RedirectStandardError "temp_err.txt" -Wait -PassThru -ErrorAction SilentlyContinue
-            $out = Get-Content "temp_out.txt" -Raw -ErrorAction SilentlyContinue
-            Remove-Item "temp_out.txt", "temp_err.txt" -ErrorAction SilentlyContinue
-            if ($proc -and $proc.ExitCode -eq 0 -and $out) {
-                if ($out -match '\d+(\.\d+)+') { $ver = $matches[0] } else { $ver = "unknown" }
-                $major = [int]($ver -replace '^v?(\d+).*', '$1')
-                $minor = [int]($ver -replace '^\d+\.(\d+).*', '$1')
-                $ok = $true
-                if ($p.MinMajor -and $major -lt $p.MinMajor) { $ok = $false }
-                if ($p.MinMinor -and $major -eq $p.MinMajor -and $minor -lt $p.MinMinor) { $ok = $false }
-                if ($ok) { Write-Ok "$($p.Name) $ver" } else { Write-Warn "$($p.Name) $ver (version may be too old)"; $allOk = $false }
+            if (-not (Test-Path -LiteralPath $runtime.Path)) { throw "fichier absent" }
+            $stdout = Join-Path $TestProfileRoot ($runtime.Name.GetHashCode().ToString() + '.out')
+            $stderr = Join-Path $TestProfileRoot ($runtime.Name.GetHashCode().ToString() + '.err')
+            $proc = Start-Process -FilePath $runtime.Path -ArgumentList $runtime.Args -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru
+            $out = ((Get-Content $stdout -Raw -ErrorAction SilentlyContinue) + (Get-Content $stderr -Raw -ErrorAction SilentlyContinue)).Trim()
+            if ($proc.ExitCode -eq 0) {
+                Write-Ok "$($runtime.Name): $out"
             } else {
-                Write-Err "$($p.Name) NOT FOUND"
+                Write-Err "$($runtime.Name) ne démarre pas"
                 $allOk = $false
             }
         }
         catch {
-            Write-Err "$($p.Name) check failed: $($_.ToString())"
+            Write-Err "$($runtime.Name): $($_.Exception.Message)"
             $allOk = $false
         }
     }
@@ -230,22 +228,7 @@ $t2 = Measure-Command {
         }
     }
     
-    # Check antigravity (agy command)
-    try {
-        $proc = Start-Process -FilePath "agy" -ArgumentList "--version" -NoNewWindow -RedirectStandardOutput "temp_out.txt" -RedirectStandardError "temp_err.txt" -Wait -PassThru -ErrorAction SilentlyContinue
-        $out = Get-Content "temp_out.txt" -Raw -ErrorAction SilentlyContinue
-        Remove-Item "temp_out.txt", "temp_err.txt" -ErrorAction SilentlyContinue
-        if ($proc -and $proc.ExitCode -eq 0) {
-            Write-Ok ("Agent antigravity: {0}" -f $out.Trim())
-        } else {
-            Write-Warn "Agent antigravity not installed (optional)"
-        }
-    }
-    catch {
-        Write-Warn "Agent antigravity check failed (optional)"
-    }
-
-    Record-Result "Prerequisites" $allOk "System prerequisites checked" $t2.TotalMilliseconds
+    Record-Result "PackagedRuntimes" $allOk "Bundled Node/Python checked; system Node/Python/winget are not required by Forge" $t2.TotalMilliseconds
 }
 Save-Report
 
@@ -274,7 +257,7 @@ $t3 = Measure-Command {
         foreach ($mod in $coreModules) {
             $modPath = Join-Path $appRoot $mod
             if (Test-Path $modPath) {
-                $nodeCheck = Start-Process -FilePath "node" -ArgumentList "-c", $modPath -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
+                $nodeCheck = Start-Process -FilePath $BundledNode -ArgumentList "--check", $modPath -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
                 if ($nodeCheck -and $nodeCheck.ExitCode -eq 0) {
                     Write-Ok "$mod syntax OK"
                 } else {
@@ -320,7 +303,7 @@ $t4 = Measure-Command {
         @{
             name = $TestProjectName
             createdAt = (Get-Date).ToString("o")
-            version = "1.5.2"
+            version = $ForgeVersion
         } | ConvertTo-Json | Set-Content (Join-Path $testProjectPath "project.json") -Encoding UTF8
         
         Write-Ok "Test project structure created at $testProjectPath"
@@ -343,17 +326,18 @@ $t5 = Measure-Command {
         $modelsDir = Join-Path $testProjectPath "models"
         
         # Check for Blender
-        $blenderPaths = @(
-            "C:\Program Files\Blender Foundation\Blender 4.2\blender.exe",
-            "C:\Program Files\Blender Foundation\Blender 4.1\blender.exe",
-            "C:\Program Files\Blender Foundation\Blender\blender.exe",
-            (Get-Command blender -ErrorAction SilentlyContinue).Source
-        )
-        $blenderExe = $blenderPaths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+        $blenderPaths = @((Get-Command blender -ErrorAction SilentlyContinue).Source)
+        $blenderInstallRoot = "C:\Program Files\Blender Foundation"
+        if (Test-Path -LiteralPath $blenderInstallRoot) {
+            $blenderPaths += Get-ChildItem -LiteralPath $blenderInstallRoot -Filter blender.exe -Recurse -File -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending |
+                Select-Object -ExpandProperty FullName
+        }
+        $blenderExe = $blenderPaths | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
         
         if (-not $blenderExe) {
             Write-Warn "Blender not found - skipping FBX export test (optional)"
-            Record-Result "FBXExportImport" $true "Blender not installed (optional)" $t5.TotalMilliseconds
+            Record-Result "FBXExportImport" $null "Blender not installed (optional)" $t5.TotalMilliseconds
             Save-Report
             return
         }
@@ -470,13 +454,24 @@ print(f'EXPORTED: {fbx_path}')
         $mcpDir = Join-Path (Split-Path $appRoot -Parent) "robloxstudio-mcp"
         if (Test-Path (Join-Path $mcpDir "dist\index.js")) {
             Write-Info "Testing MCP server startup..."
-            $mcpProc = Start-Process -FilePath "node" -ArgumentList "dist/index.js" -WorkingDirectory $mcpDir -NoNewWindow -PassThru -ErrorAction SilentlyContinue
+            $nodeExe = $BundledNode
+            $mcpStart = [System.Diagnostics.ProcessStartInfo]::new()
+            $mcpStart.FileName = $nodeExe
+            $mcpStart.WorkingDirectory = $mcpDir
+            $mcpStart.UseShellExecute = $false
+            $mcpStart.CreateNoWindow = $true
+            $mcpStart.RedirectStandardInput = $true
+            $mcpStart.RedirectStandardOutput = $true
+            $mcpStart.RedirectStandardError = $true
+            $mcpStart.Arguments = '"dist/index.js"'
+            $mcpProc = [System.Diagnostics.Process]::Start($mcpStart)
             Start-Sleep -Seconds 3
             if ($mcpProc) { $mcpProc.Refresh() }
             if ($mcpProc -and -not $mcpProc.HasExited) {
                 Write-Ok "MCP server started successfully"
                 Record-Result "MCPServerStart" $true "MCP server runs" 0
-                Stop-Process -Id $mcpProc.Id -Force -ErrorAction SilentlyContinue
+                $mcpProc.StandardInput.Close()
+                if (-not $mcpProc.WaitForExit(3000)) { $mcpProc.Kill($true) }
             } else {
                 Write-Err "MCP server failed to start"
                 Record-Result "MCPServerStart" $false "MCP server exited" 0
@@ -504,7 +499,7 @@ $t6 = Measure-Command {
         if (Test-Path $notificationStorePath) {
             Write-Ok "notification-store.js exists"
             
-            $nodeCheck = Start-Process -FilePath "node" -ArgumentList "-c", $notificationStorePath -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
+            $nodeCheck = Start-Process -FilePath $BundledNode -ArgumentList "--check", $notificationStorePath -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
             if ($nodeCheck -and $nodeCheck.ExitCode -eq 0) {
                 Write-Ok "notification-store.js syntax valid"
                 Record-Result "NotificationStoreSyntax" $true "Module loads without syntax errors" 0
@@ -590,7 +585,7 @@ if (-not $SkipBuild) {
             $buildResult = & cmd /c "npm run dist:win" 2>&1
             $exitCode = $LASTEXITCODE
             
-            $exePath = Join-Path $appRoot "dist\Forge Setup 1.5.2.exe"
+            $exePath = Join-Path $appRoot "dist\Forge Setup $ForgeVersion.exe"
             if ($exitCode -eq 0 -and (Test-Path $exePath)) {
                 $size = (Get-Item $exePath).Length
                 Write-Ok "Build successful: $exePath ($([math]::Round($size/1MB,1)) MB)"
@@ -607,7 +602,7 @@ if (-not $SkipBuild) {
     Save-Report
 } else {
     Write-Step "TEST 8: Build Verification (SKIPPED)"
-    Record-Result "Build" $false "Skipped via -SkipBuild flag" 0
+    Record-Result "Build" $null "Skipped via -SkipBuild flag" 0
     Save-Report
 }
 

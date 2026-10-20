@@ -4,7 +4,7 @@
 
 ## Kit GUI
 
-Le guide GUI installé pour Codex, Claude et Antigravity pointe vers un kit Luau versionné avec le prompt dans `.forge-context`. Le kit est un point de départ pour les projets Luau ; pour les projets TypeScript/roblox-ts, le guide demande de conserver le framework et la compilation existants. Il n'installe pas automatiquement des scripts dans le jeu.
+Le guide GUI installé pour Codex et Claude Code pointe vers un kit Luau versionné avec le prompt dans `.forge-context`. Le kit est un point de départ pour les projets Luau ; pour les projets TypeScript/roblox-ts, le guide demande de conserver le framework et la compilation existants. Il n'installe pas automatiquement des scripts dans le jeu.
 
 Le module fournit un bouton avec états normal, désactivé, chargement, succès et erreur, garde contre les doubles activations, survol/focus centré, nettoyage à la destruction et palette paramétrable. La fenêtre fournit un titre, un bouton de fermeture et un corps défilant ordonné. Ce premier kit n'est pas un gestionnaire de modales, une bibliothèque React ou un système de jeu complet.
 

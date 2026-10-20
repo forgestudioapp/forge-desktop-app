@@ -6,6 +6,7 @@
 <title>Forge — Roblox Studio</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="lib/theme.css">
+<script src="lib/setup-flow.js"></script>
 <script src="lib/theme.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
@@ -245,12 +246,7 @@
 
   function goNext(){
     document.body.style.opacity = '0'; document.body.style.transition = 'opacity 0.2s ease';
-    const go = (res) => { setTimeout(() => window.location.href = (res && res.connected) ? 'accounts.html' : 'login.html', 200); };
-    if(window.forgeAPI && window.forgeAPI.isForgeConnected){
-      window.forgeAPI.isForgeConnected().then(go).catch(() => go({ connected: false }));
-    } else {
-      go({ connected: false });
-    }
+    setTimeout(() => window.location.href = forgeSetup.next('roblox-studio.html', location.search), 200);
   }
 
   document.getElementById('retryBtn').addEventListener('click', runCheck);

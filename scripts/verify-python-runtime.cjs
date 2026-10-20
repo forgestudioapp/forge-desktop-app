@@ -15,12 +15,7 @@ function verify(context) {
   for (const [file, expected] of Object.entries(inventory)) {
     if (hash(path.join(runtime, file)) !== expected) throw new Error('Incomplete or modified runtime: ' + file);
   }
-  const nodeRuntime = path.join(root, 'runtimes/node-win-x64');
-  const nodeInventory = JSON.parse(fs.readFileSync(path.join(nodeRuntime, 'integrity.json')));
-  for (const [file, expected] of Object.entries(nodeInventory)) {
-    if (hash(path.join(nodeRuntime, file)) !== expected) throw new Error('Incomplete Node runtime: ' + file);
-  }
-  console.log('Private Python and Node runtimes verified (' + Object.keys(inventory).length + ' files).');
+  console.log('Private Python runtime verified (' + Object.keys(inventory).length + ' files).');
 }
 module.exports = verify;
 if (require.main === module) verify();

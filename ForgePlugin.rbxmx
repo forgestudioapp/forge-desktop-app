@@ -2297,6 +2297,7 @@ local function getPlaceInfo(_requestData)
 	return {
 		placeName = game.Name,
 		placeId = game.PlaceId,
+		snapshotProtocol = 1,
 		gameId = game.GameId,
 		jobId = game.JobId,
 		workspace = {
@@ -2985,7 +2986,7 @@ local function getScriptSource(requestData)
 			returnedEndLine = actualEndLine
 		end
 		local numberedLines = {}
-		local linesToNumber = if startLine ~= nil then (splitLines(sourceToReturn)) else lines
+		local linesToNumber = if startLine ~= nil or endLine ~= nil then (splitLines(sourceToReturn)) else lines
 		local lineOffset = returnedStartLine - 1
 		for i = 0, #linesToNumber - 1 do
 			local _arg0 = `{i + 1 + lineOffset}: {linesToNumber[i + 1]}`
@@ -3066,7 +3067,12 @@ local function setScriptSource(requestData)
 			error = `Instance is not a script-like object: {instance.ClassName}`,
 		}
 	end
-	local sourceToSet = normalizeEscapes(newSource)
+	if requestData.expectedPlaceId ~= nil and tostring(game.PlaceId) ~= requestData.expectedPlaceId then
+		return {
+			error = "Studio place changed. No write performed.",
+		}
+	end
+	local sourceToSet = if requestData.literalSource == true then newSource else normalizeEscapes(newSource)
 	local updateSuccess, updateResult = pcall(function()
 		-- Atomic version check inside callback
 		if expectedSource ~= nil then
@@ -3077,6 +3083,9 @@ local function setScriptSource(requestData)
 		end
 		local oldSourceLength = #readScriptSource(instance)
 		ScriptEditorService:UpdateSourceAsync(instance, function(currentSource)
+			if requestData.expectedPlaceId ~= nil and tostring(game.PlaceId) ~= requestData.expectedPlaceId then
+				error("Studio place changed. No write performed.")
+			end
 			if expectedSource ~= nil and currentSource ~= expectedSource then
 				error("Version conflict: re-read the script before writing.")
 			end
@@ -3820,6 +3829,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local ScriptEditorService = game:GetService("ScriptEditorService")
 local STOP_SIGNAL = "__MCP_STOP__"
 local testRunning = false
+local runId = game:GetService("HttpService"):GenerateGUID(false)
 local outputBuffer = {}
 local logConnection
 local testResult
@@ -3877,6 +3887,7 @@ local function startPlaytest(requestData)
 		}
 	end
 	testRunning = true
+	runId = game:GetService("HttpService"):GenerateGUID(false)
 	outputBuffer = {}
 	testResult = nil
 	testError = nil
@@ -3939,6 +3950,7 @@ local function stopPlaytest(_requestData)
 	cleanupStopListener()
 	local _object = {
 		success = true,
+		runId = runId,
 	}
 	local _left = "output"
 	local _array = {}
@@ -3952,6 +3964,7 @@ end
 local function getPlaytestOutput(_requestData)
 	local _object = {
 		isRunning = testRunning,
+		runId = runId,
 	}
 	local _left = "output"
 	local _array = {}
@@ -3976,7 +3989,7 @@ return {
         <Properties>
           <string name="Name">State</string>
           <string name="Source"><![CDATA[-- Compiled with roblox-ts v3.0.0
-local CURRENT_VERSION = "2.3.4-forge.1"
+local CURRENT_VERSION = "2.3.5-forge.1"
 local MAX_CONNECTIONS = 5
 local BASE_PORT = 58741
 local activeTabIndex = 0

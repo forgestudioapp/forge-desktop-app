@@ -137,6 +137,15 @@ Bon usage :
 - Utilise `execute_luau` pour une inspection ou une opération ponctuelle, pas pour cacher une grosse fonctionnalité difficile à maintenir.
 - Ne lance jamais du code provenant d'un fichier, d'une page ou d'un asset non fiable sans l'avoir examiné.
 
+### Économiser le contexte sans perdre les preuves
+
+- Pour une modification ciblée dans Studio, préfère `read_script_snapshot` (plage utile), puis `patch_script_snapshot` avec le snapshotId : ne recopie pas le source complet. Si le plugin est ancien ou le snapshot expiré, suis l’erreur et utilise les outils versionnés existants ; ne retire jamais la protection contre les modifications concurrentes.
+- Pour explorer Studio, commence par `get_project_structure` sur le chemin concerné, profondeur 1 ou 2, puis recherche les instances utiles. Évite l’arborescence complète. Pour plusieurs propriétés ou objets, utilise les outils `mass_*` existants et vérifie les résultats de chaque élément.
+- Pour les logs, passe `nextCursor` à `get_playtest_output`, suis `hasMore` et traite `reset`. Une page vide ne signifie pas que le test est réussi : vérifie son état et ses erreurs.
+- Réutilise les lectures dont tu sais que les fichiers n’ont pas changé. Un changement externe, une nouvelle place ou une révision différente impose une nouvelle vérification. Les règles locales et les contraintes utilisateur restent prioritaires.
+- Avec plusieurs agents, limite ton travail à ta responsabilité ; partage objectif, décisions, chemins, révisions et preuves de tests, sans recopier les historiques complets. Un agent inactif n’a pas besoin d’être interrogé périodiquement. Ne change pas les agents choisis par l’utilisateur.
+- Donne un résultat concis avec les fichiers et les vérifications utiles. Ne réduis pas les tests nécessaires, les contrôles de permissions ou la qualité pour économiser des tokens.
+
 ## 7. Boucle de réalisation
 
 Pour une tâche de code ou de gameplay :
@@ -454,6 +463,8 @@ Forge surveille ses dossiers médias et peut gérer automatiquement leur indexat
 
 ### Blender (gratuit, headless)
 
+Pour livrer un modèle déjà prêt, utilise `blender_prepare_delivery` avec le fichier .blend, la sélection exacte, le FBX cible et son aperçu PNG : Forge enchaîne la validation, l’export vérifié et le rendu du fichier exporté. Consulte le rapport indiqué en cas d’avertissement. Un statut partial ne valide pas la livraison complète ; ne recrée pas automatiquement le modèle pour une erreur d’aperçu.
+
 Blender possède son propre interpréteur Python. Exécute les scripts via les outils Blender ou `blender --background --python script.py`, sans demander une installation séparée de Python ou de bpy via pip. Le Python privé de Forge est réservé au détourage.
 
 Blender est un logiciel 3D gratuit et open source. Forge peut l'utiliser en arrière-plan (sans interface) pour créer, modifier et exporter des modèles 3D. L'outil est disponible même sans Roblox Studio ouvert.
@@ -536,9 +547,15 @@ Quand les variables `FORGE_AGENT_REPORTER` et `FORGE_AGENT_ID` existent, déclar
 - Sous bash : `node "$FORGE_AGENT_REPORTER" claim --task "Résumé court" --resource "src/chemin/fichier.ts"`
 - Répète `--resource` pour chaque fichier, dossier ou zone Studio importante, par exemple `game.Workspace.Map`.
 - Mets à jour la déclaration si le périmètre change. Ne réclame pas tout le projet par défaut.
-- À la fin ou lorsque tu abandonnes la tâche, exécute la même commande avec `release` à la place de `claim`.
+- Avant un test significatif, publie l'étape avec `node "$env:FORGE_AGENT_REPORTER" test --test "npm test"` sous PowerShell, ou la variante `$FORGE_AGENT_REPORTER` sous bash.
+- Si tu es bloqué, publie la cause avec `node "$env:FORGE_AGENT_REPORTER" block --reason "Cause précise"`. Mets ensuite ta déclaration à jour dès que le blocage est levé.
+- Avant d’annoncer une tâche terminée, publie un contrat de fin avec `complete`. Indique au minimum un `--test` avec son résultat réel, puis un `--file` livré ou un `--object` Studio modifié. Ajoute selon le travail `--studio`, `--expected`, `--regression`, `--visual` et `--limit`. Exemple PowerShell : `node "$env:FORGE_AGENT_REPORTER" complete --test "npm test : 42 réussis" --file "src/main.server.ts" --studio "sortie client/serveur sans nouvelle erreur" --visual "capture contrôlée"`. Sous bash, utilise `$FORGE_AGENT_REPORTER`.
+- Si un contrôle n’a pas pu être exécuté, ne l’invente pas : écris la limite dans `--test` ou `--limit`. Le résultat reste « à vérifier » jusqu’à validation humaine dans Forge.
+- Lorsque tu abandonnes une tâche sans livrer, exécute la commande avec `release` pour libérer les ressources sans déclarer le travail terminé.
 - Si Forge signale un conflit, coordonne le découpage ou attends que l'autre agent libère la ressource. Ne contourne pas un conflit en déclarant un nom différent pour la même ressource.
 
 ### Mémoire de qualité propre au projet
 
 Si `.forge-context/project-quality.md` existe, lis-le avant de proposer ou modifier l'apparence, le gameplay, les performances ou le comportement du projet. Il contient uniquement les décisions validées pour ce jeu. Respecte-les tant qu'elles ne contredisent pas la demande actuelle. Ne transforme pas cette mémoire en template et ne la réutilise jamais dans un autre projet. N'y ajoute rien de ta propre initiative : seul l'utilisateur la modifie depuis Forge.
+
+Si `.forge-context/session-handoff.md` existe, lis-le au début d'une nouvelle session. Il contient la dernière fiche de reprise enregistrée manuellement : objectif, décisions, fichiers, tests et problèmes ouverts. Utilise-la comme point de départ, puis vérifie l'état réel des fichiers avant d'agir. Ne la modifie et ne la résume jamais automatiquement ; l'utilisateur crée ses révisions depuis Forge et conserve leur historique.
