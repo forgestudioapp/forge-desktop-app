@@ -148,7 +148,7 @@
     "beforePack": "./scripts/verify-packaged-runtimes.cjs"
   },
   "devDependencies": {
-    "electron": "^32.3.3",
+    "electron": "^42.11.9",
     "electron-builder": "^26.15.3",
     "electron-rebuild": "^3.2.9"
   },
