@@ -1,6 +1,6 @@
 {
   "name": "forge-desktop-app",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Forge - Génère ton jeu Roblox avec l'IA",
   "main": "main.js",
   "scripts": {
@@ -52,10 +52,19 @@
     "win": {
       "target": "nsis",
       "icon": "assets/logos/forge-logo.ico",
-      "signExts": [".node", ".dll"],
+      "signExts": [
+        ".node",
+        ".dll"
+      ],
       "extraResources": [
-        { "from": "runtimes/python-win-x64-u2net", "to": "runtimes/python-win-x64-u2net" },
-        { "from": "runtimes/node-win-x64", "to": "runtimes/node-win-x64" }
+        {
+          "from": "runtimes/python-win-x64-u2net",
+          "to": "runtimes/python-win-x64-u2net"
+        },
+        {
+          "from": "runtimes/node-win-x64",
+          "to": "runtimes/node-win-x64"
+        }
       ]
     },
     "nsis": {
@@ -67,7 +76,10 @@
       "shortcutName": "Forge"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "assets/logos/forge-logo.png",
       "category": "public.app-category.developer-tools",
       "minimumSystemVersion": "10.15.0",
@@ -79,8 +91,14 @@
         "Resources/runtimes/node-darwin-x64/bin/node"
       ],
       "extraResources": [
-        { "from": "runtimes/node-darwin-arm64", "to": "runtimes/node-darwin-arm64" },
-        { "from": "runtimes/node-darwin-x64", "to": "runtimes/node-darwin-x64" }
+        {
+          "from": "runtimes/node-darwin-arm64",
+          "to": "runtimes/node-darwin-arm64"
+        },
+        {
+          "from": "runtimes/node-darwin-x64",
+          "to": "runtimes/node-darwin-x64"
+        }
       ]
     },
     "files": [

@@ -2,9 +2,9 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('forgeAPI', {
   // --- PTY (terminals interactifs in-app) ---
-  ptyCreate: (agentType, projectPath, cols, rows, agentId, agentName) => ipcRenderer.invoke('pty-create', agentType, projectPath, cols, rows, agentId, agentName),
+  ptyCreate: (agentType, projectPath, cols, rows, agentId, agentName, runtimePreferences) => ipcRenderer.invoke('pty-create', agentType, projectPath, cols, rows, agentId, agentName, runtimePreferences),
   ptyInput: (sessionId, data) => ipcRenderer.invoke('pty-input', sessionId, data),
-  ptySubmitMessage: (sessionId, text, bracketedPaste) => ipcRenderer.invoke('pty-submit-message', sessionId, text, bracketedPaste),
+  ptySubmitMessage: (sessionId, text, bracketedPaste, options) => ipcRenderer.invoke('pty-submit-message', sessionId, text, bracketedPaste, options),
   ptyResize: (sessionId, cols, rows) => ipcRenderer.invoke('pty-resize', sessionId, cols, rows),
   ptyKill: (sessionId) => ipcRenderer.invoke('pty-kill', sessionId),
   onPtyData: (callback) => ipcRenderer.on('pty-data', (event, data) => callback(data)),
@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   // --- Agents locaux ---
   detectAgent: (agentType) => ipcRenderer.invoke('agent-detect', agentType),
   claudeLogin: () => ipcRenderer.invoke('claude-login'),
+  codexLogin: () => ipcRenderer.invoke('codex-login'),
   detectAllAgents: () => ipcRenderer.invoke('agent-detect-all'),
   launchAgent: (agentType, projectPath, prompt) => ipcRenderer.invoke('agent-launch', agentType, projectPath, prompt),
   stopAgent: (sessionId) => ipcRenderer.invoke('agent-stop', sessionId),
@@ -67,8 +68,14 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   isGithubConnected: () => ipcRenderer.invoke('is-github-connected'),
   getGithubDeviceStatus: () => ipcRenderer.invoke('get-github-device-status'),
   clearGithubDevice: () => ipcRenderer.invoke('clear-github-device'),
+  disconnectGithub: () => ipcRenderer.invoke('disconnect-github'),
   onGithubAuthSuccess: (callback) => ipcRenderer.on('github-auth-success', callback),
   onGithubAuthError: (callback) => ipcRenderer.on('github-auth-error', callback),
+
+  // --- Figma MCP ---
+  figmaStatus: () => ipcRenderer.invoke('figma-status'),
+  connectFigma: (agentType) => ipcRenderer.invoke('figma-connect', agentType),
+  disconnectFigma: (agentType) => ipcRenderer.invoke('figma-disconnect', agentType),
 
   // --- Cles API ---
   saveApiKey: (service, key) => ipcRenderer.invoke('save-api-key', service, key),

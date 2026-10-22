@@ -12,19 +12,34 @@ function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function validate(rows) {
+function validate(rows, expectedConfigurations = null) {
   const errors = [];
-  for (const configuration of new Set(rows.map(row => row.configuration))) {
+  if (!Array.isArray(rows) || !rows.length) return ['Campagne vide.'];
+  const configurations = expectedConfigurations || [...new Set(rows.map(row => row.configuration).filter(Boolean))];
+  if (!configurations.length) return ['Aucune configuration définie.'];
+  const taskIds = new Set(corpus.map(task => task.id));
+  for (const row of rows) {
+    if (!configurations.includes(row.configuration)) errors.push(`Configuration inconnue : ${row.configuration || '(vide)'}`);
+    if (!taskIds.has(row.taskId)) errors.push(`Tâche inconnue : ${row.taskId || '(vide)'}`);
+  }
+  for (const configuration of configurations) {
     for (const task of corpus) {
       const matching = rows.filter(row => row.configuration === configuration && row.taskId === task.id);
       if (matching.length !== 3) errors.push(`${configuration}/${task.id}: ${matching.length} répétition(s), 3 requises`);
+      const repetitions = matching.map(row => Number(row.repetition)).sort((a, b) => a - b);
+      if (matching.length === 3 && repetitions.join(',') !== '1,2,3') errors.push(`${configuration}/${task.id}: répétitions distinctes 1, 2 et 3 requises`);
     }
   }
-  return errors;
+  return [...new Set(errors)];
 }
 
 function summarize(rows) {
   const errors = validate(rows);
+  rows.forEach(row => {
+    if (!Number.isFinite(row.inputTokens) || !Number.isFinite(row.outputTokens)) errors.push(`${row.configuration}/${row.taskId}/${row.repetition}: tokens non mesurés`);
+    if (!Number.isFinite(row.durationMs)) errors.push(`${row.configuration}/${row.taskId}/${row.repetition}: durée non mesurée`);
+    if (typeof row.accepted !== 'boolean') errors.push(`${row.configuration}/${row.taskId}/${row.repetition}: résultat non évalué`);
+  });
   if (errors.length) throw new Error(errors.join('\n'));
   return [...new Set(rows.map(row => row.configuration))].map(configuration => {
     const selected = rows.filter(row => row.configuration === configuration);
@@ -34,12 +49,12 @@ function summarize(rows) {
       configuration,
       runs: selected.length,
       accepted: selected.filter(row => row.accepted === true).length,
-      failed: selected.filter(row => row.accepted !== true).length,
+      failed: selected.filter(row => row.accepted === false).length,
       measuredRuns: measured.length,
       totalTokens: measured.length ? tokenTotals.reduce((sum, value) => sum + value, 0) : null,
       medianTokens: median(tokenTotals),
       cacheReadTokens: measured.length ? measured.reduce((sum, row) => sum + (row.cacheReadTokens || 0), 0) : null,
-      medianDurationMs: median(selected.map(row => Number(row.durationMs)).filter(Number.isFinite)),
+      medianDurationMs: median(selected.map(row => row.durationMs).filter(Number.isFinite)),
       retries: selected.reduce((sum, row) => sum + (Number(row.retries) || 0), 0),
       defects: selected.reduce((sum, row) => sum + (Number(row.defects) || 0), 0),
     };

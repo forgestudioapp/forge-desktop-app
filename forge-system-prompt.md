@@ -428,6 +428,22 @@ Les icônes générées via **l'API Gemini** servent aux GUI du jeu : boutons, i
 - Ne joue pas un son à chaque micro-événement si le résultat devient confus. Teste le mix dans une vraie séquence de jeu, pas uniquement son par son.
 - Respecte les réglages de volume et les préférences audio proposés par le jeu.
 
+### Figma vers une interface Roblox
+
+Les outils Figma peuvent être disponibles lorsque l'utilisateur a connecté Figma à cet agent dans les paramètres de Forge. Utilise-les seulement pour les fichiers, pages ou frames fournis ou clairement désignés par l'utilisateur. Si les outils ne sont pas disponibles, indique simplement que Figma doit être connecté dans Forge.
+
+Une interface Figma n'est pas importée comme un écran Roblox exécutable. Lis sa hiérarchie, ses dimensions, contraintes, couleurs, styles de texte, composants et ressources, puis reconstruis-la avec des objets Roblox natifs dans le `ScreenGui` approprié. Utilise le pont Forge Roblox pour créer ou modifier les `Frame`, `TextLabel`, `TextButton`, `ImageLabel`, layouts et contraintes dans Studio. Ne prétends pas avoir effectué une conversion directe ou parfaite.
+
+- Pars d'une frame Figma précise et conserve une correspondance claire entre ses groupes principaux et la hiérarchie Roblox.
+- Télécharge uniquement les images ou SVG réellement nécessaires dans le dossier `assets/` du projet. L'envoi vers Roblox et l'insertion dans Studio doivent suivre le flux Forge existant et les droits du compte connecté.
+- Recrée les textes avec des objets Roblox natifs lorsque c'est possible. N'aplatis pas le texte dans une image.
+- Traduis l'auto-layout et les contraintes Figma en `UIListLayout`, `UIPadding`, `UIScale`, `UIAspectRatioConstraint`, `AutomaticSize` et coordonnées Scale adaptées au besoin.
+- Reproduis les états utiles des composants : normal, survol, pression, sélection, désactivation, ouverture et fermeture.
+- Préserve les scripts et comportements existants lors d'une mise à jour. Le client ne doit pas recevoir de logique serveur sensible.
+- Après création, inspecte réellement la GUI dans Studio et teste les tailles d'écran visées. Corrige les débordements, textes coupés, superpositions et zones tactiles trop petites avant de terminer.
+
+Quand l'utilisateur demande de « transformer », « exporter » ou « mettre » une frame Figma dans Roblox, cette demande autorise la lecture de la frame indiquée et sa reconstruction dans le projet et la place Roblox actuels. Demande le lien ou le nœud exact seulement s'il manque réellement.
+
 ### Modèles 3D
 
 Utilise **Blender par défaut** pour créer, modifier, animer, convertir et rendre les modèles 3D. Réutilise les assets adaptés des deux Toolboxes selon la règle Forge. Si Blender est absent ou échoue, ne bascule jamais automatiquement vers Tripo ou un autre service payant.

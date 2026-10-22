@@ -29,7 +29,19 @@ const { prepareUpdateSnapshot } = require('./lib/update-snapshot');
 const { verifyRemoteSession } = require('./lib/connection-status');
 const { createAgentStateStore, agentProjectKey, sameAgentProject } = require('./lib/agent-state');
 const { createAgentActivityStore } = require('./lib/agent-activity');
+const { findDuplicateMission } = require('./lib/mission-guard');
+const { applyAgentRuntimeEnvironment } = require('./lib/agent-runtime-preferences');
 const { createAgentUsageStore, createStructuredUsageParser } = require('./lib/agent-usage');
+const {
+  FIGMA_MCP_URL,
+  configureCommand: figmaConfigureCommand,
+  loginCommand: figmaLoginCommand,
+  logoutCommand: figmaLogoutCommand,
+  normalizeState: normalizeFigmaState,
+  updateAgentState: updateFigmaAgentState,
+  isEnabledFor: isFigmaEnabledFor,
+  claudeServerEntry,
+} = require('./lib/figma-mcp');
 const { readProjectQualityMemory, writeProjectQualityMemory } = require('./lib/project-quality-memory');
 const { listSessionHandoffs, saveSessionHandoff } = require('./lib/session-handoff');
 const {
@@ -55,6 +67,7 @@ const { scheduleProjectIndex } = require('./lib/project-index');
 const { importMediaReferences } = require('./lib/media-references');
 const { isActiveJob, stopJobOutcome, retainJobs, advanceRemoteJob, mergePolledJobs } = require('./lib/media-jobs');
 const { createMediaLaunchGuard } = require('./lib/media-launch-guard');
+const { createMediaAgentWorkspace, removeMediaAgentWorkspace } = require('./lib/media-agent-workspace');
 const { correctionResult } = require('./lib/model-refinement');
 const { trackEvent, getJobMetrics, getAggregatedMetrics } = require('./lib/media-metrics');
 const {
@@ -297,7 +310,9 @@ class AgentManager {
       child.stderr.on('data', d => stderr += d.toString());
       child.on('close', async (code) => {
         if (code === 0) {
-          const auth = agentType === 'claude' ? await require('./lib/claude-auth').getClaudeAuthStatus() : undefined;
+          const auth = agentType === 'claude'
+            ? await require('./lib/claude-auth').getClaudeAuthStatus()
+            : await require('./lib/codex-auth').getCodexAuthStatus();
           resolve({ installed: true, version: stdout.trim() || stderr.trim(), auth });
         } else {
           resolve({ installed: false });
@@ -327,8 +342,10 @@ async launch(agentType, projectPath, prompt, options = {}) {
       }
       if (agentType === 'codex' && !options.skipMcp) await ensureCodexMcpEntryAsync(getMcpServerPath());
       const { cmd, args, stdin } = this._buildCommand(agentType, safePrompt, { ...options, projectPath });
+      const executionCwd = options.executionCwd ? canonicalExistingPath(options.executionCwd) : canonicalExistingPath(projectPath);
+      if (!executionCwd || !fs.statSync(executionCwd).isDirectory()) throw new Error('Dossier de travail de l’agent invalide.');
       const proc = spawn(cmd, args, {
-        cwd: projectPath,
+        cwd: executionCwd,
         shell: true,
         env: { ...process.env, ...getRobloxMcpEnv(), ...getProjectAgentEnv(projectPath), FORCE_COLOR: '1', CLICOLOR_FORCE: '1' }
       });
@@ -343,11 +360,13 @@ async launch(agentType, projectPath, prompt, options = {}) {
         startTime: Date.now(),
         buffer: [],
         usageParser,
+        executionCwd,
+        cleanupExecutionCwd: options.cleanupExecutionCwd === true,
       });
       agentUsageStore().begin(sessionId, {
         provider: agentType,
         project: canonicalProjectPath(projectPath),
-        task: safePrompt.slice(0, 160),
+        taskId: options.usageTaskId ? String(options.usageTaskId).slice(0, 160) : null,
       });
 
       proc.stdout.setEncoding('utf8');
@@ -377,6 +396,9 @@ async launch(agentType, projectPath, prompt, options = {}) {
           // Les générations de l'atelier Visuels doivent se terminer même si
           // l'utilisateur a quitté la page qui effectuait le polling.
           setTimeout(() => finalizeCodexMediaSession(sess.projectPath, sessionId), 750);
+          if (sess.cleanupExecutionCwd) setTimeout(() => {
+            try { removeMediaAgentWorkspace(userDataFile('media-agent-runs'), sess.executionCwd); } catch (_) {}
+          }, 1000);
         }
       });
 
@@ -674,9 +696,8 @@ ipcMain.handle('agent-detect', async (event, agentType) => {
 
 ipcMain.handle('agent-detect-all', async () => {
   const results = {};
-  for (const a of SUPPORTED_AGENT_TYPES) {
-    results[a] = await agentManager.detect(a);
-  }
+  const detected = await Promise.all(SUPPORTED_AGENT_TYPES.map(agentType => agentManager.detect(agentType)));
+  SUPPORTED_AGENT_TYPES.forEach((agentType, index) => { results[agentType] = detected[index]; });
   return results;
 });
 
@@ -884,6 +905,26 @@ function githubTokenStore() {
   return createProtectedJsonStore(userDataFile('github-token.json'), safeStorage);
 }
 
+function figmaStatePath() {
+  return userDataFile('figma-mcp.json');
+}
+
+function loadFigmaState() {
+  try {
+    return normalizeFigmaState(JSON.parse(fs.readFileSync(figmaStatePath(), 'utf8')));
+  } catch (_) {
+    return normalizeFigmaState(null);
+  }
+}
+
+function saveFigmaState(state) {
+  const normalized = normalizeFigmaState(state);
+  const target = figmaStatePath();
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, JSON.stringify(normalized, null, 2), 'utf8');
+  return normalized;
+}
+
 function githubDeviceStore() {
   return createProtectedJsonStore(userDataFile('github-device.json'), safeStorage);
 }
@@ -952,6 +993,7 @@ function getSupabaseConfig() {
 }
 
 const { createLicenseClient, normalizeLicenseKey } = require('./lib/license-client');
+const { hasUsableAccessToken, canRestoreSession, mergeRefreshedSession } = require('./lib/forge-session');
 function getLicenseClient() {
   return createLicenseClient({ ...getSupabaseConfig(), request: fetchWithTimeout });
 }
@@ -1002,6 +1044,37 @@ ipcMain.handle('supabase-auth', async (event, mode, email, password, licenseKey)
   }
 });
 
+let forgeSessionRefreshPromise = null;
+async function restoreForgeSession(session = loadForgeSession()) {
+  if (!session) return { session: null, state: 'missing' };
+  if (hasUsableAccessToken(session)) return { session, state: 'valid' };
+  if (!session.refresh_token || !canRestoreSession(session)) return { session, state: 'expired' };
+  const config = getSupabaseConfig();
+  if (!config) return { session, state: 'stored' };
+  if (forgeSessionRefreshPromise) return forgeSessionRefreshPromise;
+  forgeSessionRefreshPromise = (async () => {
+    try {
+      const response = await fetchWithTimeout(`${config.url}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: config.anonKey },
+        body: JSON.stringify({ refresh_token: session.refresh_token }),
+      }, 15000);
+      if (!response.ok) {
+        return { session, state: response.status === 400 || response.status === 401 ? 'expired' : 'offline' };
+      }
+      const refreshed = mergeRefreshedSession(session, await response.json());
+      if (!hasUsableAccessToken(refreshed, Date.now(), 0)) return { session, state: 'invalid' };
+      forgeSessionStore().write(refreshed);
+      return { session: refreshed, state: 'valid', refreshed: true };
+    } catch (error) {
+      return { session, state: 'offline', error: error.message };
+    } finally {
+      forgeSessionRefreshPromise = null;
+    }
+  })();
+  return forgeSessionRefreshPromise;
+}
+
 ipcMain.on('focus-login-input', (event) => {
   const expectedUrl = require('url').pathToFileURL(path.join(__dirname, 'login.html')).href;
   require('./lib/window-input-focus').focusLoginInput(event, BrowserWindow, expectedUrl);
@@ -1009,13 +1082,13 @@ ipcMain.on('focus-login-input', (event) => {
 
 ipcMain.handle('is-forge-connected', async () => {
   try {
-    const session = forgeSessionStore().read();
+    const restored = await restoreForgeSession(forgeSessionStore().read());
+    const session = restored.session;
     if (!session) return { connected: false, stored: false, state: 'missing' };
     const identified = Boolean(session.access_token && session.user?.id);
-    const expired = Boolean(session.expires_at && session.expires_at * 1000 <= Date.now());
     const base = { stored: true, email: session.user?.email || null, expiresAt: session.expires_at || null };
     if (!identified) return { ...base, connected: false, state: 'invalid' };
-    if (expired) return { ...base, connected: false, state: 'expired' };
+    if (restored.state !== 'valid') return { ...base, connected: false, state: restored.state, error: restored.error };
     const config = getSupabaseConfig();
     if (!config) return { ...base, connected: false, state: 'stored' };
     const verified = await verifyRemoteSession(fetchWithTimeout, `${config.url}/auth/v1/user`, {
@@ -1363,6 +1436,100 @@ ipcMain.handle('clear-github-device', async () => {
   return { success: true };
 });
 
+ipcMain.handle('disconnect-github', async () => {
+  try {
+    clearGithubDevice();
+    githubTokenStore().remove();
+    return { success: true };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+function runFigmaCli(spec, { openAuthUrl = false, timeoutMs = 180000 } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(spec.command, spec.args, { shell: true, windowsHide: true, env: process.env });
+    let output = '';
+    let openedUrl = false;
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const collect = chunk => {
+      output = (output + chunk.toString()).slice(-12000);
+      if (!openAuthUrl || openedUrl) return;
+      const match = output.match(/https:\/\/[^\s"'<>]+/i);
+      if (match) {
+        openedUrl = true;
+        shell.openExternal(match[0]).catch(() => {});
+      }
+    };
+    child.stdout?.on('data', collect);
+    child.stderr?.on('data', collect);
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch (_) {}
+      finish({ success: false, error: 'La connexion Figma a dépassé 3 minutes.' });
+    }, timeoutMs);
+    child.once('error', error => {
+      finish({ success: false, error: error.message });
+    });
+    child.once('close', code => {
+      const alreadyConfigured = /already exists|déjà configur|already configured/i.test(output);
+      finish(code === 0 || alreadyConfigured
+        ? { success: true }
+        : { success: false, error: output.trim().split(/\r?\n/).slice(-2).join(' ') || `Commande arrêtée avec le code ${code}.` });
+    });
+  });
+}
+
+async function ensureFigmaConfigured(agent) {
+  const state = loadFigmaState();
+  if (isFigmaEnabledFor(state, agent)) return { success: true, state };
+  const result = await runFigmaCli(figmaConfigureCommand(agent), { timeoutMs: 30000 });
+  if (!result.success) return result;
+  const next = saveFigmaState(updateFigmaAgentState(state, agent, { configured: true }));
+  return { success: true, state: next };
+}
+
+ipcMain.handle('figma-status', async () => {
+  const state = loadFigmaState();
+  const detected = await Promise.all(['codex', 'claude'].map(agent => agentManager.detect(agent).catch(() => ({ installed: false }))));
+  return {
+    url: FIGMA_MCP_URL,
+    connected: Object.values(state.agents).some(agent => agent.connected),
+    agents: {
+      codex: { ...state.agents.codex, installed: Boolean(detected[0]?.installed) },
+      claude: { ...state.agents.claude, installed: Boolean(detected[1]?.installed) },
+    },
+  };
+});
+
+ipcMain.handle('figma-connect', async (_event, agent) => {
+  if (!['codex', 'claude'].includes(agent)) return { error: 'Agent Figma non pris en charge.' };
+  const detected = await agentManager.detect(agent);
+  if (!detected?.installed) return { error: `${agent === 'codex' ? 'Codex' : 'Claude Code'} doit être installé avant de connecter Figma.` };
+  const configured = await ensureFigmaConfigured(agent);
+  if (!configured.success) return { error: configured.error };
+  const login = await runFigmaCli(figmaLoginCommand(agent), { openAuthUrl: true });
+  if (!login.success) return { error: login.error };
+  const state = saveFigmaState(updateFigmaAgentState(loadFigmaState(), agent, { configured: true, connected: true }));
+  return { success: true, agent: state.agents[agent] };
+});
+
+ipcMain.handle('figma-disconnect', async (_event, agent) => {
+  if (!['codex', 'claude'].includes(agent)) return { error: 'Agent Figma non pris en charge.' };
+  const state = loadFigmaState();
+  if (state.agents[agent].configured) {
+    const result = await runFigmaCli(figmaLogoutCommand(agent), { timeoutMs: 30000 });
+    if (!result.success && !/not logged|not authenticated|aucune session/i.test(result.error || '')) return { error: result.error };
+  }
+  const next = saveFigmaState(updateFigmaAgentState(state, agent, { connected: false }));
+  return { success: true, agent: next.agents[agent] };
+});
+
 try {
   if (loadGithubDevice()) { console.log('[GitHub] Reprise du polling au demarrage...'); runGithubPolling(); }
 } catch (error) {
@@ -1706,6 +1873,7 @@ function writeAgentMcpConfig(mcpServerPath, projectPath) {
   const config = {
     mcpServers: {
       forge_roblox: { command: forgeNodeCommand, args: [mcpServerPath], env: getAgentMcpEnv(projectPath) },
+      ...claudeServerEntry(loadFigmaState()),
       ...(projectPath && memoryMcpPath && fs.existsSync(memoryMcpPath) ? {
         forge_memory: { 
           command: memoryMcpPath, 
@@ -1766,8 +1934,9 @@ function buildAgentShellCommand(agentType, projectPath) {
 
   if (agentType === 'claude') {
     const configPath = writeAgentMcpConfig(mcpServerPath, projectPath);
+    const figmaTools = isFigmaEnabledFor(loadFigmaState(), 'claude') ? ',mcp__figma,mcp__figma__*' : '';
     return 'claude --mcp-config "' + configPath + '" --strict-mcp-config'
-      + ' --allowedTools "mcp__forge_roblox,mcp__forge_roblox__*,mcp__forge_memory,mcp__forge_memory__*"'
+      + ' --allowedTools "mcp__forge_roblox,mcp__forge_roblox__*,mcp__forge_memory,mcp__forge_memory__*' + figmaTools + '"'
       + ' --permission-mode acceptEdits';
   }
   if (agentType === 'codex') {
@@ -2935,6 +3104,9 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
   let manifest = loadMediaManifest(projectPath);
   let entry = findMediaEntry(manifest, kind, itemId, variantId);
   if (!entry) return { error: 'Élément de génération introuvable' };
+  let executionCwd;
+  try { executionCwd = createMediaAgentWorkspace(userDataFile('media-agent-runs'), generationId); }
+  catch (error) { return { error: `Préparation média impossible : ${error.message}` }; }
 
   entry.prompt = prompt;
   entry.status = 'starting';
@@ -2956,8 +3128,12 @@ async function generateMediaWithCodex({ projectPath, kind, info, prompt, n, item
     skipMcp: true,
     skipForgeInstructions: true,
     images: [...new Set([sourceImage, ...referenceImages].filter(Boolean))],
+    executionCwd,
+    cleanupExecutionCwd: true,
+    usageTaskId: generationId,
   });
   if (!res || res.error) {
+    try { removeMediaAgentWorkspace(userDataFile('media-agent-runs'), executionCwd); } catch (_) {}
     trackEvent(projectPath, generationId, 'error', { message: (res && res.error) || 'Échec du lancement' });
     manifest = loadMediaManifest(projectPath);
     entry = findMediaEntry(manifest, kind, itemId, variantId);
@@ -4119,7 +4295,30 @@ ipcMain.handle('claude-login', async (event) => {
   } catch (error) { return { error: error.message }; }
 });
 
-ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, agentId, agentName) => {
+ipcMain.handle('codex-login', async (event) => {
+  if (!spawnPty) return { error: 'Terminal intégré indisponible. Réinstalle Forge.' };
+  try {
+    const existing = [...PTYS.entries()].find(([, entry]) => entry.codexLoginSender === event.sender);
+    if (existing) return { sessionId: existing[0] };
+    const sessionId = `codex_login_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const command = process.platform === 'win32' ? 'cmd.exe' : 'codex';
+    const args = process.platform === 'win32' ? ['/d', '/q', '/c', 'codex login'] : ['login'];
+    const pty = spawnPty(command, args, { name: 'xterm-color', cols: 90, rows: 20, cwd: os.homedir(), env: { ...process.env, TERM: 'xterm-256color' } });
+    const entry = { pty, agentType: 'codex', codexLoginSender: event.sender };
+    PTYS.set(sessionId, entry);
+    const cleanup = () => { if (PTYS.has(sessionId)) { pty.kill(); PTYS.delete(sessionId); } };
+    event.sender.once('did-start-navigation', cleanup);
+    event.sender.once('destroyed', cleanup);
+    entry.outputRelay = createPtyOutputRelay(pty, sessionId, event.sender, () => {
+      PTYS.delete(sessionId);
+      event.sender.removeListener('did-start-navigation', cleanup);
+      event.sender.removeListener('destroyed', cleanup);
+    });
+    return { sessionId };
+  } catch (error) { return { error: error.message }; }
+});
+
+ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, agentId, agentName, runtimePreferences = {}) => {
   if (!isSupportedAgentType(agentType)) return { error: 'Agent non pris en charge. Utilise Claude Code ou Codex.' };
   if (!isPathAllowed(projectPath)) {
     return { error: 'Chemin de projet non autorise.' };
@@ -4159,6 +4358,7 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
       ...getRobloxMcpEnv(),
       ...getProjectAgentEnv(projectPath),
     };
+    const runtimePtyEnv = applyAgentRuntimeEnvironment(agentType, ptyEnv, runtimePreferences);
     if (userApiKeys.gemini) ptyEnv.GEMINI_API_KEY = userApiKeys.gemini;
     if (userApiKeys.elevenlabs) ptyEnv.ELEVENLABS_API_KEY = userApiKeys.elevenlabs;
 
@@ -4175,10 +4375,18 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
       cols: cols || 80,
       rows: rows || 24,
       cwd: projectPath,
-      env: ptyEnv
+      env: runtimePtyEnv
     });
 
-    const entry = { pty: ptyProcess, agentType, projectPath, outputRelay: null };
+    const entry = {
+      pty: ptyProcess,
+      agentType,
+      projectPath,
+      agentId: String(agentId || ''),
+      agentName: String(agentName || agentType || 'Agent'),
+      currentTask: '',
+      outputRelay: null,
+    };
     PTYS.set(sessionId, entry);
     entry.outputRelay = createPtyOutputRelay(ptyProcess, sessionId, event.sender, () => {
       if (PTYS.get(sessionId) === entry) PTYS.delete(sessionId);
@@ -4196,7 +4404,28 @@ ipcMain.handle('pty-input', async (event, sessionId, data) => {
 });
 
 const submitPtyMessage = require('./lib/pty-message').createPtyMessageSender(sessionId => PTYS.get(sessionId));
-ipcMain.handle('pty-submit-message', (event, sessionId, text, bracketedPaste) => submitPtyMessage(sessionId, text, bracketedPaste));
+ipcMain.handle('pty-submit-message', async (event, sessionId, text, bracketedPaste, options = {}) => {
+  const entry = PTYS.get(sessionId);
+  if (!entry) return submitPtyMessage(sessionId, text, bracketedPaste);
+  const task = String(options?.missionText || text || '');
+  if (options?.allowDuplicate !== true) {
+    let persisted = [];
+    try { persisted = agentActivityStore(entry.projectPath).list(); } catch (_) {}
+    const live = [...PTYS.entries()]
+      .filter(([id, other]) => id !== sessionId && other.projectPath && sameAgentProject(other.projectPath, entry.projectPath) && other.currentTask)
+      .map(([, other]) => ({ agentId: other.agentId, agentName: other.agentName, task: other.currentTask }));
+    const duplicate = findDuplicateMission({ text: task, agentId: entry.agentId, live, persisted });
+    if (duplicate) return { duplicate: true, agentName: duplicate.agentName, similarity: duplicate.similarity };
+  }
+  const previousTask = entry.currentTask;
+  entry.currentTask = task;
+  const result = await submitPtyMessage(sessionId, text, bracketedPaste);
+  if (!result?.success) entry.currentTask = previousTask;
+  else if (entry.agentId) {
+    try { agentActivityStore(entry.projectPath).update(entry.agentId, { name: entry.agentName, task, status: 'working' }); } catch (_) {}
+  }
+  return result;
+});
 
 ipcMain.handle('pty-resize', async (event, sessionId, cols, rows) => {
   const pty = PTYS.get(sessionId);
@@ -4227,30 +4456,9 @@ function loadForgeSession() {
 async function getForgeAuth() {
   const cfg = getSupabaseConfig();
   if (!cfg) return null;
-  let session = loadForgeSession();
-  if (!session) return null;
-
-  if (session.expires_at && session.expires_at * 1000 < Date.now() + 30000 && session.refresh_token) {
-    try {
-      const res = await fetchWithTimeout(`${cfg.url}/auth/v1/token?grant_type=refresh_token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': cfg.anonKey },
-        body: JSON.stringify({ refresh_token: session.refresh_token }),
-      }, 15000);
-      if (res.ok) {
-        const data = await res.json();
-        forgeSessionStore().write(data);
-        session = data;
-        console.log('[Library] Session Supabase rafraîchie');
-      } else {
-        console.error('[Library] Refresh session échoué:', res.status);
-      }
-    } catch (err) {
-      console.error('[Library] Refresh session erreur:', err.message);
-    }
-  }
-
-  if (!session.access_token || !session.user || !session.user.id) return null;
+  const restored = await restoreForgeSession(loadForgeSession());
+  const session = restored.session;
+  if (restored.state !== 'valid' || !session?.access_token || !session.user?.id) return null;
   return { accessToken: session.access_token, userId: session.user.id, email: session.user.email };
 }
 
@@ -4418,8 +4626,7 @@ ipcMain.handle('library-import', async (event, item) => {
 function getStartPage() {
   try {
     const session = loadForgeSession();
-    const expired = Boolean(session?.expires_at && session.expires_at * 1000 <= Date.now());
-    return session?.access_token && session?.user?.id && !expired ? 'projects.html' : 'onboarding.html';
+    return canRestoreSession(session) ? 'projects.html' : 'onboarding.html';
   } catch (error) {
     console.warn('[Auth] Impossible d’ouvrir la session protégée:', error.message);
     return 'onboarding.html';

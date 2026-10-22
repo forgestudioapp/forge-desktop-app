@@ -399,6 +399,11 @@
           setBadge(agent, state === 'connected' ? 'ok' : 'ko', state === 'connected' ? 'Connecté' : state === 'disconnected' ? 'Compte non connecté' : 'Connexion à vérifier');
           setSteps(agent, `<li class="step-item"><span class="step-num done">✓</span><span class="step-text">Claude Code est installé.</span></li><li class="step-item"><span class="step-num">2</span><span class="step-text">${state === 'connected' ? 'Claude Code indique une connexion active. La disponibilité dépend aussi de ton offre et de tes quotas.' : 'Connecte ton compte dans le navigateur officiel de Claude. Forge réutilise la connexion locale de Claude Code.'}</span></li>`);
           setActions(agent, `<button class="agent-btn primary" onclick="openClaudeLogin()">${state === 'connected' ? 'Changer de compte' : 'Connecter mon compte'}</button><button class="agent-btn secondary" onclick="redetect('claude')">Vérifier la connexion</button>`);
+        } else if(agent === 'codex'){
+          const state = res.auth?.state || 'unknown';
+          setBadge(agent, state === 'connected' ? 'ok' : 'ko', state === 'connected' ? 'Connecté' : state === 'disconnected' ? 'Compte non connecté' : 'Connexion à vérifier');
+          setSteps(agent, `<li class="step-item"><span class="step-num done">✓</span><span class="step-text">OpenAI Codex est installé.</span></li><li class="step-item"><span class="step-num">2</span><span class="step-text">${state === 'connected' ? 'Codex indique une connexion ChatGPT active. La disponibilité dépend aussi de ton offre et de tes quotas.' : 'Connecte ton compte dans le navigateur officiel d’OpenAI. Forge réutilise ensuite la connexion locale de Codex.'}</span></li>`);
+          setActions(agent, `<button class="agent-btn primary" onclick="openCodexLogin()">${state === 'connected' ? 'Changer de compte' : 'Connecter mon compte'}</button><button class="agent-btn secondary" onclick="redetect('codex')">Vérifier la connexion</button>`);
         }
       } else {
         setBadge(agent, 'ko', 'Non installe');
@@ -447,7 +452,9 @@
         fill.style.width = '100%';
         log.innerHTML += '<div>✓ Installation terminee</div>';
         showToast(`${AGENTS[agent].name} installe`);
-        setTimeout(() => redetect(agent), 1000);
+        await redetect(agent);
+        if(agent === 'claude') openClaudeLogin();
+        if(agent === 'codex') openCodexLogin();
       } else {
         fill.style.width = '100%';
         fill.style.background = 'var(--error)';
@@ -513,7 +520,7 @@
     setBadge(agent, 'load', 'Detection…');
     document.getElementById('desc-'+agent).textContent = 'Detection en cours…';
     await new Promise(r => setTimeout(r, 300));
-    detectAll();
+    await detectAll();
   }
 
   detectAll();
@@ -528,8 +535,16 @@
   <p id="claudeLoginStatus" role="status" style="margin:12px 0"></p>
   <button class="agent-btn secondary" id="closeClaudeLogin">Fermer</button>
 </dialog>
+<dialog id="codexLoginDialog" style="margin:auto;width:min(850px,95vw);padding:24px;border:1px solid #536075;border-radius:16px;background:#171c24;color:#eef1f6;">
+  <h2>Connecter OpenAI Codex</h2>
+  <p style="margin:12px 0;line-height:1.6">Choisis la connexion avec ChatGPT dans le terminal, puis termine l’autorisation dans le navigateur officiel d’OpenAI. Forge ne reçoit jamais ton mot de passe.</p>
+  <div id="codexLoginTerminal" style="height:340px;background:#14110e;padding:8px"></div>
+  <p id="codexLoginStatus" role="status" style="margin:12px 0"></p>
+  <button class="agent-btn secondary" id="closeCodexLogin">Fermer</button>
+</dialog>
 <script src="xterm-assets/xterm.min.js"></script>
 <script src="xterm-assets/addon-fit.min.js"></script>
 <script src="lib/claude-login-ui.js"></script>
+<script src="lib/codex-login-ui.js"></script>
 </body>
 </html>

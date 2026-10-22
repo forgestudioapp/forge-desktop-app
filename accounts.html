@@ -6,13 +6,14 @@
 <title>Forge — Comptes</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="lib/theme.css">
+<script src="lib/setup-flow.js"></script>
 <script src="lib/theme.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
   body{
     background:var(--char); color:var(--bone); font-family:'Inter',sans-serif;
-    height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    position:relative; padding-top:80px;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+    position:relative; padding:100px 24px 54px; overflow:auto;
     opacity:0; animation:pageIn 0.35s cubic-bezier(.4,0,.2,1) forwards;
   }
   body::before {
@@ -129,7 +130,7 @@
 <body>
 
   <div class="dots" id="dots"></div>
-  <div class="step-name mono" data-i18n="accounts">Comptes</div>
+  <div class="step-name mono">Connexions</div>
   <div class="top-bar">
     SYSTEM ·
     <a href="settings.html?from=accounts.html" target="_self" title="Paramètres" style="cursor:pointer;padding:4px;border-radius:5px;display:inline-flex;align-items:center;color:var(--smoke-dim);text-decoration:none;transition:color .15s ease,background .15s ease;" onmouseover="this.style.color='var(--ember-light)';this.style.background='var(--char3)'" onmouseout="this.style.color='var(--smoke-dim)';this.style.background='transparent'">
@@ -137,8 +138,8 @@
     </a>
   </div>
 
-  <h1 data-i18n="accounts_title">Connecte tes comptes</h1>
-  <p class="sub" data-i18n="accounts_sub">Lie ton compte Roblox pour publier tes creations directement depuis Forge. Tu peux aussi le faire plus tard depuis les reglages.</p>
+  <h1>Connecte tes services</h1>
+  <p class="sub">Configure Roblox, GitHub et Figma maintenant. Tu pourras retrouver exactement ces connexions dans les paramètres.</p>
 
   <div class="acc-card" id="cardRoblox">
     <div class="acc-top">
@@ -169,6 +170,19 @@
     </div>
   </div>
 
+  <div class="acc-card dim" id="cardFigma">
+    <div class="acc-top">
+      <div class="acc-icon gh">F</div>
+      <div class="acc-name">Figma <span class="acc-badge opt">OPTIONNEL</span></div>
+    </div>
+    <div class="acc-desc">Autorise Codex ou Claude Code à lire tes designs Figma, puis à les recréer en interface Roblox native.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;position:relative;z-index:1;">
+      <button class="acc-btn secondary" id="figmaCodexBtn">Codex · Connecter</button>
+      <button class="acc-btn secondary" id="figmaClaudeBtn">Claude · Connecter</button>
+    </div>
+    <div class="acc-error" id="figmaError" role="status"></div>
+  </div>
+
   <button class="continue-btn" id="continueBtn" data-i18n="return_projects">Continuer →</button>
   <button class="skip-link" id="skipBtn" data-i18n="skip">Passer pour l'instant</button>
 
@@ -177,7 +191,7 @@
 <script src="./lib/i18n.js"></script>
 <script src="./lib/ux.js"></script>
 <script>
-  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected && !['offline','stored'].includes(res.state)) window.location.href = 'login.html'; }); } })();
+  (function(){ if(window.forgeAPI && window.forgeAPI.isForgeConnected){ window.forgeAPI.isForgeConnected().then(function(res){ if(!res.connected && !['offline','stored'].includes(res.state)) window.location.href = forgeSetup.active(location.search) ? 'login.html?setup=1' : 'login.html'; }); } })();
   initLang();
   const dotsEl = document.getElementById('dots');
   for(let i=0;i<6;i++){ const d=document.createElement('i'); if(i===3)d.className='on'; dotsEl.appendChild(d); }
@@ -428,8 +442,35 @@
     btn.disabled = false;
   });
 
-  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate('projects.html'));
-  document.getElementById('skipBtn').addEventListener('click', () => fadeNavigate('projects.html'));
+  async function refreshFigmaConnection(){
+    if(!window.forgeAPI?.figmaStatus) return;
+    try{
+      const result=await window.forgeAPI.figmaStatus();
+      for(const [agent,suffix] of [['codex','Codex'],['claude','Claude']]){
+        const button=document.getElementById('figma'+suffix+'Btn');
+        const state=result?.agents?.[agent]||{};
+        button.textContent=suffix+' · '+(!state.installed?'Non installé':state.connected?'Connecté':'Connecter');
+        button.className='acc-btn '+(state.connected?'connected':'secondary');
+        button.dataset.connected=state.connected?'1':'0';
+        button.disabled=!state.installed;
+      }
+    }catch(error){const box=document.getElementById('figmaError');box.textContent=error.message;box.style.display='block';}
+  }
+  for(const [agent,suffix] of [['codex','Codex'],['claude','Claude']]){
+    document.getElementById('figma'+suffix+'Btn').addEventListener('click',async function(){
+      this.disabled=true;const box=document.getElementById('figmaError');box.style.display='none';
+      try{
+        const method=this.dataset.connected==='1'?'disconnectFigma':'connectFigma';
+        const result=await window.forgeAPI[method](agent);
+        if(result?.error)throw new Error(result.error);
+        await refreshFigmaConnection();
+      }catch(error){box.textContent=error.message||'Connexion Figma impossible.';box.style.display='block';this.disabled=false;}
+    });
+  }
+  refreshFigmaConnection();
+
+  document.getElementById('continueBtn').addEventListener('click', () => fadeNavigate(forgeSetup.next('accounts.html', location.search)));
+  document.getElementById('skipBtn').addEventListener('click', () => fadeNavigate(forgeSetup.next('accounts.html', location.search)));
 </script>
 
 </body>
