@@ -1,0 +1,9 @@
+{
+  "exampleOnly": true,
+  "verdict": "INCONCLUSIVE",
+  "scenario": "demo-solo",
+  "completed": false,
+  "finalConditionVerified": false,
+  "consoleReads": { "server": false, "client": false },
+  "reason": "Latest local version is not confirmed as synchronized."
+}

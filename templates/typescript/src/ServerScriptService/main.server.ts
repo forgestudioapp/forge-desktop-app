@@ -1,4 +1,4 @@
-import { Players } from "@rbxts/services";
+const Players = game.GetService("Players");
 
 print("[Forge] Projet TypeScript charge !");
 

@@ -1,0 +1,9 @@
+{
+  "exampleOnly": true,
+  "verdict": "PASS",
+  "scenario": "demo-solo",
+  "completed": true,
+  "finalConditionVerified": true,
+  "consoleReads": { "server": true, "client": true },
+  "reason": "ForgeDemoReady observed in the server console; both console probes ready; synchronized build confirmed."
+}

@@ -1,6 +1,6 @@
 {
   "name": "forge-desktop-app",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "Forge - Génère ton jeu Roblox avec l'IA",
   "main": "main.js",
   "scripts": {
@@ -117,9 +117,11 @@
       "agents.html",
       "api-keys.html",
       "thumbnail.html",
+      "assets-page.html",
       "settings.html",
       "forge-system-prompt.md",
       "lib/**/*",
+      "templates/**/*",
       "assets/**/*",
       "xterm-assets/**/*",
       "scripts/setup.ps1",

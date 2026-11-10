@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "demo-solo",
+  "profile": "desktop-solo",
+  "placeId": "123456",
+  "requiredConsoles": ["server", "client"],
+  "steps": [
+    { "type": "start", "mode": "play" },
+    { "type": "wait", "seconds": 3 },
+    { "type": "assert", "source": "console", "stream": "server", "contains": "ForgeDemoReady" },
+    { "type": "console", "stream": "server" },
+    { "type": "console", "stream": "client" },
+    { "type": "screenshot" },
+    { "type": "stop" }
+  ]
+}

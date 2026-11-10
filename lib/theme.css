@@ -64,8 +64,8 @@ html.light-theme {
 .forge-navigation a:hover{background:var(--char3);color:var(--bone);}
 .forge-navigation a[aria-current]{color:var(--ember-light);background:var(--ember-dim);}
 .forge-navigation .forge-brand{font-weight:800;letter-spacing:2px;color:var(--bone);margin-right:24px;}
-.forge-workspace>.top-bar{height:auto!important;min-height:60px;flex-wrap:wrap;padding:12px 20px!important;gap:10px!important;}
-.forge-workspace>.top-bar>.logo-pill,.forge-workspace>.top-bar>.media-btn,.forge-workspace>.top-bar>.project-pill{display:none;}
+.forge-workspace>.top-bar{height:56px!important;min-height:56px;flex-wrap:nowrap;padding:8px 16px!important;gap:8px!important;}
+.forge-workspace>.top-bar>.media-btn{display:none;}
 .forge-workspace .top-actions{margin-left:auto;flex-wrap:wrap;}
 .forge-shell :is(button,input,select,textarea,a):focus-visible{outline:2px solid var(--ember-light)!important;outline-offset:3px;}
 .forge-shell :is(button,select){min-height:32px;}

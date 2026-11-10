@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, safeStorage, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const internalSyncCapability = require('node:crypto').randomBytes(32).toString('hex');
 const os = require('os');
 const { Worker } = require('worker_threads');
 // Configure isolation before any storage paths or Electron sessions are opened.
@@ -24,6 +25,12 @@ function useBundledNode() {
 const forgeNodeCommand = useBundledNode();
 const { createPtyOutputRelay } = require('./lib/pty-output-relay');
 const { createPrivateControlServer } = require('./lib/private-control-server');
+const { waitForPlaytestStop } = require('./lib/quality-lab-state');
+const { createSyncCapabilityBroker } = require('./lib/sync-capability-broker');
+const { restoreWithSyncPaused } = require('./lib/checkpoint-restore-flow');
+const { selection: selectProjectModules, writeProjectTemplate } = require('./lib/project-template');
+const { waitForFirstProjectSync } = require('./lib/first-project-sync');
+const { readCatalog, recordAssetFile, updateAsset, publishAsset, discoverLocalAssets, localFile: localAssetFile, typeForFile: assetTypeForFile } = require('./lib/asset-catalog');
 const { createProtectedJsonStore } = require('./lib/protected-json');
 const { prepareUpdateSnapshot } = require('./lib/update-snapshot');
 const { verifyRemoteSession } = require('./lib/connection-status');
@@ -86,11 +93,16 @@ const {
 MAX_ATTEMPTS,
 } = require('./lib/artistic-quality-loop');
 
-const { isSyncableScript, buildStudioSyncCode, buildStudioDeleteCode, mcpToolResultError } = require('./lib/file-sync');
+const { isSyncableScript, buildStudioValidationCode, buildStudioBatchCode, buildStudioConfirmationCode, mcpToolResultError } = require('./lib/file-sync');
+const { candidateBuildId, compileErrorFile, runCandidateSync } = require('./lib/build-pipeline');
+const { projectHealth } = require('./lib/project-health');
 const { collectCompiledScripts, changedCompiledScripts } = require('./lib/typescript-sync');
 const { writeAdminScaffold } = require('./lib/admin-scaffold');
 const { EXAMPLES: STARTER_EXAMPLES, writeStarterExample } = require('./lib/project-examples');
 const { canonicalProjectPath, evaluateProjectPlaceLink } = require('./lib/project-place-link');
+const placesManifest = require('./lib/places-manifest');
+const { PlaceReservations } = require('./lib/place-reservations');
+const placeReservations = new PlaceReservations(path.join(app.getPath('userData'), 'place-reservations.json'));
 const {
   isModelFile,
   isModelPreviewFile,
@@ -231,11 +243,12 @@ function loadProjectsRegistry() {
 
 function saveProjectsRegistry(projects) {
   require('./lib/project-registry').save(getProjectsRegistryPath(), projects);
-  for (const project of projects) writeProjectAgentContext(project);
+  const uniqueProjects = loadProjectsRegistry();
+  for (const project of uniqueProjects) writeProjectAgentContext(project);
   const activeFile = userDataFile('active-project.json');
   if (fs.existsSync(activeFile)) {
     const active = JSON.parse(fs.readFileSync(activeFile, 'utf8'));
-    const project = projects.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(active?.path));
+    const project = uniqueProjects.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(active?.path));
     if (project) fs.writeFileSync(activeFile, JSON.stringify(project));
   }
 }
@@ -245,20 +258,25 @@ function projectAgentContextPath(projectPath) {
   fs.mkdirSync(directory, { recursive: true });
   return path.join(directory, require('node:crypto').createHash('sha256').update(agentProjectKey(projectPath)).digest('hex') + '.json');
 }
-function writeProjectAgentContext(project) {
-  const file = projectAgentContextPath(project.path);
-  fs.writeFileSync(file, JSON.stringify({ projectPath: project.path, placeId: project.linkedStudio?.placeId || (typeof project.linkedStudio === 'string' ? project.linkedStudio : null) }));
+function writeProjectAgentContext(project, target = null) {
+  const placeId = target?.placeId || (placesManifest.read(project.path) ? null : project.linkedStudio?.placeId || (typeof project.linkedStudio === 'string' ? project.linkedStudio : null));
+  const file = target ? projectAgentContextPath(project.path) + '.' + target.token : projectAgentContextPath(project.path);
+  fs.writeFileSync(file, JSON.stringify({ projectPath: project.path, language: project.language || 'lua', syncStateFile: syncBuildStatePath(project.path, placeId), placeId, reservationFile: target ? placeReservations.file : null, reservationToken: target?.token || null }));
   return file;
 }
-function getProjectAgentEnv(projectPath) {
+function getProjectAgentEnv(projectPath, target = null) {
   const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
-  return { FORGE_PROJECT_CONTEXT_FILE: writeProjectAgentContext(project || { path: projectPath }) };
+  return { FORGE_PROJECT_CONTEXT_FILE: writeProjectAgentContext(project || { path: projectPath }, target) };
 }
 function readActiveProject() {
   const file = userDataFile('active-project.json');
   if (!fs.existsSync(file)) return null;
   const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-  return saved?.path ? loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(saved.path)) || null : null;
+  if (!saved?.path) return null;
+  const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(saved.path));
+  if (!project) throw new Error('Le projet actif n’est plus dans le registre. Ouvre-le depuis Projets.');
+  if (!isPathAllowed(project.path)) throw new Error(`Le dossier du projet actif est introuvable ou inaccessible : ${project.path}`);
+  return project;
 }
 function setProjectSyncPaused(projectPath, paused) {
   const registry = loadProjectsRegistry();
@@ -270,7 +288,7 @@ function setProjectSyncPaused(projectPath, paused) {
 
 function addProjectToRegistry(name, projectPath, linkedStudio = null) {
   const registry = loadProjectsRegistry();
-  const existing = registry.find(p => p.path === projectPath);
+  const existing = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
   if (!existing) {
     registry.push({
       name,
@@ -327,6 +345,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
     if (!isPathAllowed(projectPath)) {
       return { error: 'Chemin de projet non autorise. Place ton projet dans Documents, Desktop, ou un dossier de developpement.' };
     }
+    if (!options.skipMcp && placesManifest.read(projectPath)) return { error: 'Pour un projet multi-place, démarre l’agent depuis l’espace de travail après avoir choisi sa place dans Places.' };
 
     const safePrompt = sanitizePrompt(prompt);
     if (!safePrompt) {
@@ -344,6 +363,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
       const { cmd, args, stdin } = this._buildCommand(agentType, safePrompt, { ...options, projectPath });
       const executionCwd = options.executionCwd ? canonicalExistingPath(options.executionCwd) : canonicalExistingPath(projectPath);
       if (!executionCwd || !fs.statSync(executionCwd).isDirectory()) throw new Error('Dossier de travail de l’agent invalide.');
+      const taskCheckpoint = await createAgentTaskCheckpoint(projectPath, agentType, safePrompt, sessionId);
       const proc = spawn(cmd, args, {
         cwd: executionCwd,
         shell: true,
@@ -360,6 +380,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
         startTime: Date.now(),
         buffer: [],
         usageParser,
+        taskCheckpoint,
         executionCwd,
         cleanupExecutionCwd: options.cleanupExecutionCwd === true,
       });
@@ -389,6 +410,7 @@ async launch(agentType, projectPath, prompt, options = {}) {
         this._emit(sessionId, 'exit', { code });
         const sess = this.sessions.get(sessionId);
         if (sess) {
+          finishAgentTaskCheckpoint(sess.projectPath, sess.taskCheckpoint, code === 0 ? 'terminée' : 'interrompue').catch(() => {});
           sess.usageParser.flush();
           sess.exitCode = code;
           sess.endTime = Date.now();
@@ -578,6 +600,7 @@ _buildCommand(agentType, prompt, options = {}) {
     if (!isPathAllowed(projectPath)) {
       return { error: 'Chemin de projet non autorise.' };
     }
+    if (placesManifest.read(projectPath)) return { error: 'Pour un projet multi-place, utilise les agents de l’espace de travail et choisis leur place dans Places.' };
     prepareForgeAgentInstructions(projectPath, agentType);
     const cmd = buildAgentShellCommand(agentType, projectPath) || this._getCommand(agentType);
     const platform = process.platform;
@@ -610,16 +633,10 @@ _buildCommand(agentType, prompt, options = {}) {
 
 const agentManager = new AgentManager();
 let privateControl = null;
+let syncCapabilityBroker = null;
 
 function readActiveProjectForPrivateControl() {
-  const activePath = userDataFile('active-project.json');
-  if (!fs.existsSync(activePath)) return null;
-  try {
-    const project = JSON.parse(fs.readFileSync(activePath, 'utf8'));
-    return project && project.path ? project : null;
-  } catch (_) {
-    return null;
-  }
+  try { return readActiveProject(); } catch (_) { return null; }
 }
 
 function resolvePrivateProject(projectPath) {
@@ -627,9 +644,9 @@ function resolvePrivateProject(projectPath) {
   if (!projectPath) {
     const active = readActiveProjectForPrivateControl();
     if (!active) return null;
-    return projects.find(project => project.path === active.path) || active;
+    return projects.find(project => canonicalProjectPath(project.path) === canonicalProjectPath(active.path)) || active;
   }
-  return projects.find(project => project.path === projectPath) || null;
+  return projects.find(project => canonicalProjectPath(project.path) === canonicalProjectPath(projectPath)) || null;
 }
 
 async function startPrivateControlIfPaired() {
@@ -651,7 +668,7 @@ async function startPrivateControlIfPaired() {
         'POST /v1/projects/activate': async body => {
           const project = resolvePrivateProject(body.projectPath);
           if (!project) return { error: 'Projet Forge inconnu.' };
-          const association = await ensureProjectPlaceAssociation(project.path, { allowLink: true });
+          const association = await ensureProjectPlaceAssociation(project.path);
           if (association.error) return association;
           fs.writeFileSync(userDataFile('active-project.json'), JSON.stringify({
             name: project.name,
@@ -994,6 +1011,7 @@ function getSupabaseConfig() {
 
 const { createLicenseClient, normalizeLicenseKey } = require('./lib/license-client');
 const { hasUsableAccessToken, canRestoreSession, mergeRefreshedSession } = require('./lib/forge-session');
+const { tokenExpiresAt, shouldRefreshToken, mergeRotatedToken } = require('./lib/oauth-token-session');
 function getLicenseClient() {
   return createLicenseClient({ ...getSupabaseConfig(), request: fetchWithTimeout });
 }
@@ -1267,19 +1285,25 @@ ipcMain.handle('connect-roblox', async () => {
 
 ipcMain.handle('is-roblox-connected', async () => {
   try {
-    const tokenData = robloxTokenStore().read();
+    let restored = await restoreRobloxToken();
+    let tokenData = restored.token;
     if (!tokenData) return { connected: false, stored: false, state: 'missing' };
     const missingScopes = missingRobloxTokenScopes(tokenData);
-    const expiresAt = tokenData.obtained_at && tokenData.expires_in
-      ? tokenData.obtained_at + tokenData.expires_in * 1000
-      : null;
-    const expired = Boolean(expiresAt && expiresAt <= Date.now());
+    const expiresAt = tokenExpiresAt(tokenData);
     const base = { stored: true, expiresAt, permissionsReady: missingScopes.length === 0, missingScopes };
     if (!tokenData.access_token) return { ...base, connected: false, state: 'invalid' };
-    if (expired) return { ...base, connected: false, state: 'expired' };
-    const verified = await verifyRemoteSession(fetchWithTimeout, 'https://apis.roblox.com/oauth/v1/userinfo', {
+    if (restored.state !== 'valid') return { ...base, connected: false, state: restored.state, error: restored.error };
+    let verified = await verifyRemoteSession(fetchWithTimeout, 'https://apis.roblox.com/oauth/v1/userinfo', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     }, 'Roblox');
+    if (verified.state === 'expired' && tokenData.refresh_token && !restored.refreshed) {
+      restored = await restoreRobloxToken(true);
+      tokenData = restored.token;
+      if (restored.state !== 'valid') return { ...base, connected: false, state: restored.state, error: restored.error };
+      verified = await verifyRemoteSession(fetchWithTimeout, 'https://apis.roblox.com/oauth/v1/userinfo', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` }
+      }, 'Roblox');
+    }
     return { ...base, ...verified };
   } catch (error) {
     return { connected: false, stored: true, state: 'unreadable', error: error.message };
@@ -1341,6 +1365,53 @@ function loadGithubDevice() {
 function saveGithubDevice(data) { githubDeviceStore().write(data); }
 function clearGithubDevice() { githubDeviceStore().remove(); }
 
+function saveGithubToken(data, previous = null) {
+  let current = previous;
+  if (!current) {
+    try { current = githubTokenStore().read(); } catch (_) { current = null; }
+  }
+  const token = mergeRotatedToken(current, data);
+  githubTokenStore().write(token);
+  return token;
+}
+
+let githubTokenRefreshPromise = null;
+async function restoreGithubToken(forceRefresh = false) {
+  let token;
+  try { token = githubTokenStore().read(); }
+  catch (error) { return { token: null, state: 'unreadable', error: error.message }; }
+  if (!token) return { token: null, state: 'missing' };
+  if (!token.access_token) return { token, state: 'invalid' };
+  if (!forceRefresh && !shouldRefreshToken(token)) return { token, state: 'valid' };
+  if (!token.refresh_token) return { token, state: 'expired' };
+  if (githubTokenRefreshPromise) return githubTokenRefreshPromise;
+  githubTokenRefreshPromise = (async () => {
+    try {
+      const response = await fetchWithTimeout('https://github.com/login/oauth/access_token', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: GITHUB_CLIENT_ID,
+          grant_type: 'refresh_token',
+          refresh_token: token.refresh_token,
+        }),
+      }, 15000);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error || !data.access_token) {
+        const invalid = response.status === 400 || response.status === 401 || data.error === 'bad_refresh_token';
+        return { token, state: invalid ? 'expired' : 'offline', error: data.error_description || data.error || `GitHub HTTP ${response.status}` };
+      }
+      const refreshed = saveGithubToken(data, token);
+      return { token: refreshed, state: 'valid', refreshed: true };
+    } catch (error) {
+      return { token, state: 'offline', error: error.message };
+    } finally {
+      githubTokenRefreshPromise = null;
+    }
+  })();
+  return githubTokenRefreshPromise;
+}
+
 function notifyAllWindows(channel, ...args) {
   BrowserWindow.getAllWindows().forEach(win => {
     if (!win.isDestroyed()) win.webContents.send(channel, ...args);
@@ -1368,7 +1439,7 @@ async function runGithubPolling() {
         }, 15000);
         const tokenData = await tokenResponse.json();
         if (tokenData.access_token) {
-          githubTokenStore().write(tokenData);
+          saveGithubToken(tokenData);
           clearGithubDevice(); notifyAllWindows('github-auth-success');
           resolve({ success: true }); githubPollingPromise = null; return;
         }
@@ -1402,17 +1473,32 @@ ipcMain.handle('github-start', async () => {
 ipcMain.handle('github-poll', async () => await runGithubPolling());
 ipcMain.handle('is-github-connected', async () => {
   try {
-    const token = githubTokenStore().read();
+    let restored = await restoreGithubToken();
+    let token = restored.token;
     if (!token) return { connected: false, stored: false, state: 'missing' };
     if (!token.access_token) return { connected: false, stored: true, state: 'invalid' };
-    const verified = await verifyRemoteSession(fetchWithTimeout, 'https://api.github.com/user', {
+    const base = { stored: true, expiresAt: tokenExpiresAt(token) };
+    if (restored.state !== 'valid') return { ...base, connected: false, state: restored.state, error: restored.error };
+    let verified = await verifyRemoteSession(fetchWithTimeout, 'https://api.github.com/user', {
       headers: {
         Accept: 'application/vnd.github+json',
         Authorization: `Bearer ${token.access_token}`,
         'X-GitHub-Api-Version': '2022-11-28'
       }
     }, 'GitHub');
-    return { stored: true, ...verified };
+    if (verified.state === 'expired' && token.refresh_token && !restored.refreshed) {
+      restored = await restoreGithubToken(true);
+      token = restored.token;
+      if (restored.state !== 'valid') return { ...base, connected: false, state: restored.state, error: restored.error };
+      verified = await verifyRemoteSession(fetchWithTimeout, 'https://api.github.com/user', {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${token.access_token}`,
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      }, 'GitHub');
+    }
+    return { ...base, ...verified };
   } catch (error) {
     return { connected: false, stored: true, state: 'unreadable', error: error.message };
   }
@@ -1657,9 +1743,8 @@ ipcMain.handle('check-system', async () => {
   if (robloxInstalled) {
     try {
       if (!fs.existsSync(pluginsFolder)) fs.mkdirSync(pluginsFolder, { recursive: true });
-      const sourcePlugin = getForgePluginPath();
       const destPlugin = path.join(pluginsFolder, 'ForgePlugin.rbxmx');
-      if (sourcePlugin && fs.existsSync(sourcePlugin)) { copyFileIfChanged(sourcePlugin, destPlugin); pluginInstalled = true; }
+      if (installForgePlugin(pluginsFolder)) pluginInstalled = true;
       else if (fs.existsSync(destPlugin)) pluginInstalled = true;
     } catch (err) {
       pluginInstalled = fs.existsSync(path.join(pluginsFolder, 'ForgePlugin.rbxmx'));
@@ -1827,6 +1912,7 @@ let syncMcpReady = false;
 let syncMcpRequestId = 0;
 let syncMcpPending = new Map();
 let syncMcpInitialized = false;
+let syncMcpInitPromise = null;
 let syncMcpStdoutBuffer = '';
 
 function getBundledResourcePath(...relativeParts) {
@@ -1846,6 +1932,15 @@ function getMcpServerPath() {
 
 function getForgePluginPath() {
   return getBundledResourcePath('ForgePlugin.rbxmx');
+}
+
+function installForgePlugin(pluginsFolder) {
+  const sourcePlugin = getForgePluginPath();
+  if (!sourcePlugin || !fs.existsSync(sourcePlugin)) return false;
+  const destination = path.join(pluginsFolder, 'ForgePlugin.rbxmx');
+  const result = copyFileIfChanged(sourcePlugin, destination);
+  if (result.changed) console.log('[Studio] Plugin Forge mis à jour ; redémarre Studio pour charger cette version.');
+  return true;
 }
 
 function getRobloxMcpEnv() {
@@ -1964,6 +2059,7 @@ function startMcpServer() {
   // encore (l'utilisateur peut connecter son compte apres le demarrage).
   const mcpEnv = { ...process.env };
   Object.assign(mcpEnv, getRobloxMcpEnv());
+  mcpEnv.FORGE_INTERNAL_SYNC_CAPABILITY = internalSyncCapability;
 
   // Injecter les cles API sauvegardees par l'utilisateur (page Cles API).
   // Le serveur MCP lit TRIPO_API_KEY / ROBLOX_API_KEY via process.env ;
@@ -2139,6 +2235,7 @@ function startSyncMcpServer() {
 
   const mcpEnv = { ...process.env };
   Object.assign(mcpEnv, getRobloxMcpEnv());
+  mcpEnv.FORGE_INTERNAL_SYNC_CAPABILITY = internalSyncCapability;
   const userApiKeys = loadApiKeys();
   if (userApiKeys.tripo) mcpEnv.TRIPO_API_KEY = userApiKeys.tripo;
   if (userApiKeys.roblox) mcpEnv.ROBLOX_API_KEY = userApiKeys.roblox;
@@ -2199,11 +2296,14 @@ async function syncMcpSend(method, params, timeoutMs = 5000, skipReadyWait = fal
 
 async function syncMcpInitialize() {
   if (syncMcpInitialized) return;
-  await syncMcpSend('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'forge-sync', version: '1.0.0' } }, 5000, true);
-  syncMcpProcess.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
-  syncMcpReady = true;
-  syncMcpInitialized = true;
-  console.log('[SyncMCP] Serveur dedie pret');
+  if (!syncMcpInitPromise) syncMcpInitPromise = (async () => {
+    await syncMcpSend('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'forge-sync', version: '1.0.0' } }, 5000, true);
+    syncMcpProcess.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+    syncMcpReady = true;
+    syncMcpInitialized = true;
+    console.log('[SyncMCP] Serveur dedie pret');
+  })().finally(() => { syncMcpInitPromise = null; });
+  await syncMcpInitPromise;
 }
 
 async function syncMcpCallTool(name, args, timeoutMs) {
@@ -2314,6 +2414,7 @@ ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
     }
     const result = await mcpCallTool('execute_luau', {
       code: code,
+      origin: 'studio-operation',
       datamodel_type: datamodelType || 'Edit'
     });
     const toolError = mcpToolResultError(result);
@@ -2325,8 +2426,11 @@ ipcMain.handle('execute-luau', async (event, code, datamodelType) => {
   }
 });
 
+const qualityLabActiveRuns = new Set();
 async function runQualityLabTool(projectPath, toolName, args, timeoutMs = 15000, verifyPlace = true) {
   if (!projectPath || !isPathAllowed(projectPath)) return { error: 'Projet invalide ou non autorisé.' };
+  const registered = loadProjectsRegistry().find(item => canonicalProjectPath(item.path) === canonicalProjectPath(projectPath));
+  if (!registered) return { error: 'Projet introuvable.' };
   if (verifyPlace) {
     const association = await ensureProjectPlaceAssociation(projectPath);
     if (association.error) return association;
@@ -2334,13 +2438,20 @@ async function runQualityLabTool(projectPath, toolName, args, timeoutMs = 15000,
   try {
     const result = await syncMcpCallTool(toolName, args || {}, timeoutMs);
     const toolError = mcpToolResultError(result);
-    if (toolError) return { error: toolError };
+    if (toolError) return { error: toolError, code: result?.isError || /connexion|timeout|MCP|Connection closed/i.test(toolError) ? 'mcp-connection' : 'studio-error' };
     const data = parseMcpJsonResult(result);
     if (!data) return { error: 'Réponse invalide du plugin Forge dans Roblox Studio.' };
-    if (data.error) return { error: data.message || String(data.error), data };
+    if (data.error) return { error: data.message || String(data.error), data, code: 'test-error' };
+    if (!verifyPlace && toolName === 'get_playtest_output' && data.testStarted === false) {
+      if (qualityLabActiveRuns.has(canonicalProjectPath(projectPath))) return { error: 'Le plugin Studio s’est rechargé pendant le playtest et a perdu les logs. Reconnecte-le puis relance le test.', code: 'mcp-connection' };
+      return { error: 'Aucun playtest n’a été exécuté dans cette session Studio.', code: 'test-not-run' };
+    }
+    if (!verifyPlace && String(data.placeId || '') !== String(registered.linkedStudio?.placeId || '')) {
+      return { error: 'La place du playtest ne correspond plus à celle de ce projet. Ouvre la place liée dans Studio.', code: 'wrong-place' };
+    }
     return { success: true, data };
   } catch (err) {
-    return { error: err.message || String(err) };
+    return { error: err.message || String(err), code: 'mcp-connection' };
   }
 }
 
@@ -2362,31 +2473,73 @@ ipcMain.handle('quality-lab-gui', async (event, projectPath, multiDevice) => {
 ipcMain.handle('quality-lab-playtest-start', async (event, projectPath, mode, players) => {
   const safeMode = ['play', 'run', 'multiplayer'].includes(mode) ? mode : 'play';
   const safePlayers = Math.max(1, Math.min(8, Number.parseInt(players, 10) || 2));
-  return runQualityLabTool(
+  const result = await runQualityLabTool(
     projectPath,
     'start_playtest',
     safeMode === 'multiplayer' ? { mode: safeMode, players: safePlayers } : { mode: safeMode },
     30000,
     true
   );
+  if (result.success) qualityLabActiveRuns.add(canonicalProjectPath(projectPath));
+  return result;
 });
 
 ipcMain.handle('quality-lab-playtest-output', async (event, projectPath) => {
-  return runQualityLabTool(projectPath, 'get_playtest_output', {}, 10000);
+  // Reading output is safe to retry after Edit → Play → Stop; starting a test is not.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await runQualityLabTool(projectPath, 'get_playtest_output', {}, 12000, false);
+    if (result.success) {
+      if (!result.data.isRunning) qualityLabActiveRuns.delete(canonicalProjectPath(projectPath));
+      return result;
+    }
+    if (result.code !== 'mcp-connection') return result;
+    if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  return { error: 'Connexion MCP perdue pendant le playtest. Forge n’a pas reçu les logs ; reconnecte le plugin Studio puis actualise les logs.', code: 'mcp-connection', testStatus: 'not-run' };
 });
 
 ipcMain.handle('quality-lab-playtest-stop', async (event, projectPath) => {
-  return runQualityLabTool(projectPath, 'stop_playtest', {}, 15000);
+  const result = await waitForPlaytestStop({
+    stop: () => runQualityLabTool(projectPath, 'stop_playtest', {}, 15000, false),
+    poll: () => runQualityLabTool(projectPath, 'get_playtest_output', {}, 5000, false),
+    maxAttempts: 8,
+    intervalMs: 500,
+  });
+  if (result.success && result.data?.isRunning === false) {
+    qualityLabActiveRuns.delete(canonicalProjectPath(projectPath));
+  }
+  return result;
 });
 
 // ============================================
 // PROJETS — Creation directe dans Documents/ForgeProjects
 // ============================================
+async function prepareNewTypeScriptProject(projectDir, onStage = () => {}) {
+  onStage('install');
+  const install = await new Promise(resolve => {
+    const proc = spawn('npm', ['install', '--prefer-offline', '--no-audit', '--no-fund', '--fetch-retries=1', '--fetch-timeout=15000'], { cwd: projectDir, shell: true, windowsHide: true, timeout: 120000 });
+    let output = '';
+    proc.stdout?.on('data', chunk => { output = (output + chunk).slice(-6000); });
+    proc.stderr?.on('data', chunk => { output = (output + chunk).slice(-6000); });
+    proc.on('close', code => resolve({ code, output }));
+    proc.on('error', error => resolve({ code: -1, output: error.message }));
+  });
+  if (install.code !== 0) return { status: 'error', stage: 'dependencies', error: `Dépendances TypeScript indisponibles : ${install.output || `npm (code ${install.code})`}`.slice(0, 1000), firstSync: 'blocked' };
+  onStage('verify');
+  const build = await compileTypeScript(projectDir);
+  if (!build.success) return { status: 'error', stage: 'compile', error: `Compilation TypeScript : ${build.error || 'échec inconnu'}`.slice(0, 1000), firstSync: 'blocked' };
+  return { status: 'compiled', stage: 'compile', error: null, firstSync: 'waiting-place', validatedAt: new Date().toISOString() };
+}
 ipcMain.handle('create-project', async (event, projectName, language, options = {}) => {
   try {
+    const notifyStage = stage => { try { event?.sender?.send('project-create-stage', stage); } catch (_) {} };
+    notifyStage('prepare');
     if (typeof projectName !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(projectName) || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(projectName)) return { error: 'Choisis un nom de 1 à 80 lettres, chiffres ou tirets.', code: 'project-name-invalid' };
     const starterExampleId = String(options?.starterExample || '');
     if (starterExampleId && !STARTER_EXAMPLES[starterExampleId]) return { error: 'Exemple de démarrage inconnu.', code: 'starter-example-invalid' };
+    const preset = String(options?.preset || 'recommended');
+    const modules = selectProjectModules(preset, options?.modules);
+    const projectLanguage = language === 'lua' || options?.language === 'lua' ? 'lua' : 'typescript';
     const projectsRoot = getUserProjectsRoot();
     if (!fs.existsSync(projectsRoot)) {
       fs.mkdirSync(projectsRoot, { recursive: true });
@@ -2417,21 +2570,29 @@ ipcMain.handle('create-project', async (event, projectName, language, options = 
       fs.writeFileSync(userDataFile('active-project.json'), JSON.stringify({
         name: existingProject.name,
         path: existingProject.path,
-        language: existingProject.language || language || 'lua',
+        language: existingProject.language || projectLanguage,
         linkedStudio: placeDecision.link,
       }));
       stopFileSync();
       scheduleMediaTracking(existingProject.path);
+      let setup = existingProject.templateSetup || null;
+      if (existingProject.language === 'typescript' && setup?.status === 'error') {
+        setup = await prepareNewTypeScriptProject(existingProject.path, notifyStage);
+        existingProject.templateSetup = setup;
+        saveProjectsRegistry(initialRegistry);
+      }
       return {
         success: true,
         path: existingProject.path,
-        language: existingProject.language || language || 'lua',
+        language: existingProject.language || projectLanguage,
         linkedStudio: placeDecision.link,
         resumed: true,
+        templateSetup: setup,
+        error: setup?.status === 'error' ? setup.error : null,
       };
     }
 
-    const isTypeScript = language === 'typescript';
+    const isTypeScript = projectLanguage === 'typescript';
     const robloxAdminUserId = 0; // Offline creation uses creator-based access in Studio.
 
     if (isTypeScript) {
@@ -2461,23 +2622,6 @@ ipcMain.handle('create-project', async (event, projectName, language, options = 
       }
       copyDirSync(templatePath, projectDir);
 
-      // Installer les dependances
-      console.log('[TypeScript] Installation des dependances...');
-      const npmResult = await new Promise((resolve) => {
-        const proc = spawn('npm', ['install'], {
-          cwd: projectDir,
-          shell: true,
-          windowsHide: true
-        });
-        let stderr = '';
-        proc.stderr.on('data', d => stderr += d.toString());
-        proc.on('close', (code) => resolve({ code, stderr }));
-        proc.on('error', (err) => resolve({ code: -1, stderr: err.message }));
-      });
-      if (npmResult.code !== 0) {
-        console.error('[TypeScript] npm install echoue:', npmResult.stderr);
-      }
-
       // Initialiser git
       await new Promise((resolve) => {
         const proc = spawn('git', ['init'], {
@@ -2506,18 +2650,25 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 print("[Forge] Projet '${projectName}' charge !")
 `;
-      fs.writeFileSync(path.join(projectDir, 'src', 'ServerScriptService', 'main.lua'), mainLua);
+      if (preset !== 'empty') fs.writeFileSync(path.join(projectDir, 'src', 'ServerScriptService', 'main.lua'), mainLua);
     }
 
-    const adminScaffold = writeAdminScaffold(projectDir, robloxAdminUserId);
+    if (isTypeScript && preset === 'empty') {
+      fs.rmSync(path.join(projectDir, 'src', 'ServerScriptService', 'main.server.ts'), { force: true });
+      fs.rmSync(path.join(projectDir, 'src', 'ReplicatedStorage', 'shared', 'module.ts'), { force: true });
+      fs.writeFileSync(path.join(projectDir, 'src', 'ReplicatedStorage', 'ForgeEmpty.ts'), 'export {};\n');
+    }
+    const template = writeProjectTemplate(projectDir, { language: projectLanguage, preset, modules, projectName });
+    const adminScaffold = modules.includes('admin') ? { adminUserId: robloxAdminUserId } : { adminUserId: 0 };
+    const setup = isTypeScript ? await prepareNewTypeScriptProject(projectDir, notifyStage) : { status: 'waiting-studio', error: null, firstSync: 'waiting-place' };
     const starterExample = writeStarterExample(projectDir, starterExampleId);
-    console.log('[Forge Admin] Panneau personnel initialise pour:', adminScaffold.adminUserId || 'createur de la place');
+    if (modules.includes('admin')) console.log('[Forge Admin] Commandes serveur initialisées pour le créateur de la place.');
 
     const activeProjectPath = userDataFile('active-project.json');
     fs.writeFileSync(activeProjectPath, JSON.stringify({
       name: projectName,
       path: projectDir,
-      language: language || 'lua',
+      language: projectLanguage,
       linkedStudio: placeDecision.link,
       starterExample: starterExample.exampleId,
     }));
@@ -2530,11 +2681,13 @@ print("[Forge] Projet '${projectName}' charge !")
     finalRegistry.push({
       name: projectName,
       path: projectDir,
-      language: language || 'lua',
+      language: projectLanguage,
       createdAt: new Date().toISOString(),
       linkedStudio: placeDecision.link,
       syncPaused: true,
       starterExample: starterExample.exampleId,
+      template,
+      templateSetup: setup,
     });
     saveProjectsRegistry(finalRegistry);
     stopFileSync();
@@ -2543,14 +2696,30 @@ print("[Forge] Projet '${projectName}' charge !")
     return {
       success: true,
       path: projectDir,
-      language: language || 'lua',
+      language: projectLanguage,
       adminUserId: adminScaffold.adminUserId,
-      adminAccessMode: adminScaffold.adminUserId > 0 ? 'roblox-user' : 'place-creator',
+      adminAccessMode: modules.includes('admin') ? (adminScaffold.adminUserId > 0 ? 'roblox-user' : 'place-creator') : null,
       linkedStudio: placeDecision.link,
       starterExample,
+      template,
+      templateSetup: setup,
+      error: setup.status === 'error' ? setup.error : null,
       reassignedFromProjectPath: placeDecision.reassignedFromProjectPath || null,
     };
   } catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('retry-project-setup', async (event, projectPath) => {
+  try {
+    const project = validateCheckpointProject(projectPath);
+    const registry = loadProjectsRegistry();
+    const item = registry.find(entry => canonicalProjectPath(entry.path) === canonicalProjectPath(project));
+    if (!item || item.language !== 'typescript' || !item.templateSetup) return { error: 'Ce projet n’a pas d’installation TypeScript à reprendre.' };
+    const setup = await prepareNewTypeScriptProject(project);
+    item.templateSetup = setup;
+    saveProjectsRegistry(registry);
+    return setup.status === 'error' ? { error: setup.error, setup } : { success: true, setup };
+  } catch (error) { return { error: error.message }; }
 });
 
 ipcMain.handle('get-active-project', async () => {
@@ -2565,11 +2734,11 @@ ipcMain.handle('list-projects', async () => {
 
 ipcMain.handle('set-active-project', async (event, projectPath) => {
   const registry = loadProjectsRegistry();
-  const proj = registry.find(p => p.path === projectPath);
+  const proj = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
   if (!proj) return { error: 'Projet inconnu' };
   if (!isPathAllowed(proj.path)) return { error: 'Dossier du projet introuvable ou inaccessible.' };
   const activeProjectPath = userDataFile('active-project.json');
-  const linkedProject = loadProjectsRegistry().find(item => item.path === proj.path) || proj;
+  const linkedProject = proj;
   writeProjectAgentContext(linkedProject);
   fs.writeFileSync(activeProjectPath, JSON.stringify({
     name: linkedProject.name,
@@ -2585,16 +2754,16 @@ ipcMain.handle('set-active-project', async (event, projectPath) => {
 ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
   try {
     const registry = loadProjectsRegistry();
-    const idx = registry.findIndex(p => p.path === projectPath);
+    const idx = registry.findIndex(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
     if (idx === -1) return { error: 'Projet inconnu' };
 
     const projName = registry[idx].name;
 
-    if (projectHasRunningAgents(projectPath)) return { error: 'Arrête les agents de ce projet avant de le retirer.' };
+    if (projectHasRunningAgents(registry[idx].path)) return { error: 'Arrête les agents de ce projet avant de le retirer.' };
     // Trash first: a failed move must leave the registry and the project intact.
-    if (deleteFiles && fs.existsSync(projectPath)) {
-      if (!isPathAllowed(projectPath)) return { error: 'Dossier non autorisé.' };
-      await shell.trashItem(projectPath);
+    if (deleteFiles && fs.existsSync(registry[idx].path)) {
+      if (!isPathAllowed(registry[idx].path)) return { error: 'Dossier non autorisé.' };
+      await shell.trashItem(registry[idx].path);
     }
     const contextFile = projectAgentContextPath(projectPath);
     fs.writeFileSync(contextFile, JSON.stringify({ projectPath, placeId: null }));
@@ -2607,7 +2776,7 @@ ipcMain.handle('delete-project', async (event, projectPath, deleteFiles) => {
     if (fs.existsSync(activeProjectPath)) {
       try {
         const active = JSON.parse(fs.readFileSync(activeProjectPath, 'utf8'));
-        if (active && active.path === projectPath) {
+        if (active && canonicalProjectPath(active.path) === canonicalProjectPath(projectPath)) {
           fs.writeFileSync(activeProjectPath, JSON.stringify({ name: null, path: null }));
           stopFileSync();
         }
@@ -2642,7 +2811,16 @@ ipcMain.handle('agent-activity-list', async (event, projectPath) => {
 ipcMain.handle('agent-activity-update', async (event, projectPath, agentId, patch) => {
   try {
     if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
-    return { success: true, agent: agentActivityStore(projectPath).update(agentId, patch || {}) };
+    const agent = agentActivityStore(projectPath).update(agentId, patch || {});
+    if (['needs-review', 'failed', 'validated'].includes(patch?.status)) {
+      const entry = [...PTYS.values()].find(item => item.agentId === String(agentId) && item.taskCheckpoint && sameAgentProject(item.projectPath, projectPath));
+      if (entry) {
+        const before = entry.taskCheckpoint;
+        entry.taskCheckpoint = null;
+        await finishAgentTaskCheckpoint(projectPath, before, patch.status);
+      }
+    }
+    return { success: true, agent };
   } catch (error) { return { error: error.message }; }
 });
 
@@ -2711,7 +2889,23 @@ function validateCheckpointProject(projectPath) {
   return fs.realpathSync(projectPath);
 }
 
-ipcMain.handle('checkpoint-create', async (event, projectPath, label, reason) => {
+function checkpointProjectContext(projectPath) {
+  const project = loadProjectsRegistry().find(item => canonicalProjectPath(item.path) === canonicalProjectPath(projectPath));
+  const saved = savedSyncBuildState(projectPath, project);
+  return { placeId: project?.linkedStudio?.placeId || project?.linkedStudio || null, lastValidBuildId: saved.lastValidBuildId || null };
+}
+
+async function createAgentTaskCheckpoint(projectPath, agent, objective, taskId) {
+  const project = validateCheckpointProject(projectPath);
+  return runCheckpointTask('create', { projectPath: project, storageRoot: projectCheckpointStorageRoot(), label: `Avant : ${String(objective).slice(0, 70)}`, reason: 'agent-before', kind: 'code', agent, objective, taskId, ...checkpointProjectContext(project) });
+}
+
+async function finishAgentTaskCheckpoint(projectPath, before, result) {
+  if (!before) return null;
+  return runCheckpointTask('create', { projectPath, storageRoot: projectCheckpointStorageRoot(), label: `Après : ${String(before.objective).slice(0, 70)}`, reason: 'agent-after', kind: 'code', agent: before.agent, objective: `${before.objective} — ${result}`, taskId: before.taskId, beforeCheckpointId: before.id, beforeEntries: before.entries, ...checkpointProjectContext(projectPath) });
+}
+
+ipcMain.handle('checkpoint-create', async (event, projectPath, label, reason, kind = 'archive') => {
   try {
     const project = validateCheckpointProject(projectPath);
     if (projectHasRunningAgents(project)) return { error: 'Arrête les agents avant de créer un point de retour cohérent.' };
@@ -2720,6 +2914,8 @@ ipcMain.handle('checkpoint-create', async (event, projectPath, label, reason) =>
       storageRoot: projectCheckpointStorageRoot(),
       label,
       reason: reason === 'before-agents' ? 'before-agents' : 'manual',
+      kind,
+      ...checkpointProjectContext(project),
     });
     return { success: true, checkpoint };
   } catch (error) {
@@ -2736,11 +2932,17 @@ ipcMain.handle('checkpoint-list', async (event, projectPath) => {
   }
 });
 
-ipcMain.handle('checkpoint-restore', async (event, projectPath, checkpointId) => {
+ipcMain.handle('checkpoint-plan-restore', async (event, projectPath, checkpointId) => {
+  try { const project = validateCheckpointProject(projectPath); return { plan: await runCheckpointTask('plan', { projectPath: project, storageRoot: projectCheckpointStorageRoot(), checkpointId }) }; }
+  catch (error) { return { error: error.message }; }
+});
+
+ipcMain.handle('checkpoint-restore', async (event, projectPath, checkpointId, deletePaths = []) => {
   try {
     const project = validateCheckpointProject(projectPath);
     if (projectHasRunningAgents(project)) return { error: 'Arrête tous les agents de ce projet avant la restauration.' };
-    const result = await runCheckpointTask('restore', { projectPath: project, storageRoot: projectCheckpointStorageRoot(), checkpointId });
+    const wasSyncing = currentSyncProjectPath && canonicalProjectPath(currentSyncProjectPath) === canonicalProjectPath(project);
+    const result = await restoreWithSyncPaused({ isSyncing: !!wasSyncing, stopSync: stopFileSync, startSync: () => startFileSync(project), restore: () => runCheckpointTask('restore', { projectPath: project, storageRoot: projectCheckpointStorageRoot(), checkpointId, deletePaths }) });
     scheduleProjectIndex(project);
     return { success: true, ...result };
   } catch (error) {
@@ -3691,12 +3893,14 @@ ipcMain.handle('get-active-project-info', async () => {
 });
 ipcMain.handle('link-project-studio', async (event, projectPath, options = {}) => {
   try {
+    if (!options.expectedPlaceId || !/^[1-9]\d*$/.test(String(options.expectedPlaceId))) return { error: 'Confirme la place détectée avant de la lier.', code: 'place-confirmation-required' };
     const registry = loadProjectsRegistry();
     const project = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
     if (!project || !isPathAllowed(projectPath)) return { error: 'Projet introuvable.', code: 'project-unknown' };
     if (projectHasRunningAgents(projectPath)) return { error: 'Arrête les agents avant de modifier la liaison Studio.', code: 'agents-running' };
     const studio = await getCurrentStudioPlaceInfo();
     if (studio.error) return studio;
+    if (options.expectedPlaceId && String(studio.place.placeId) !== String(options.expectedPlaceId)) return { error: `La place ouverte a changé. PlaceId attendu ${options.expectedPlaceId}, PlaceId ouvert ${studio.place.placeId}. Confirme la nouvelle place avant de la lier.`, code: 'place-changed' };
     const decision = evaluateProjectPlaceLink(registry, projectPath, studio.place, undefined, options);
     if (decision.error) return decision;
     if (decision.reassignedFromProjectPath) {
@@ -3710,13 +3914,95 @@ ipcMain.handle('link-project-studio', async (event, projectPath, options = {}) =
     return { success: true, project };
   } catch (error) { return { error: error.message }; }
 });
-ipcMain.handle('project-studio-status', async (event, projectPath) => {
+ipcMain.handle('get-studio-place-info', async () => getCurrentStudioPlaceInfo());
+ipcMain.handle('places-list', async (_event, projectPath) => {
+  try {
+    if (!isPathAllowed(projectPath)) throw new Error('Projet introuvable.');
+    const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+    if (!project) throw new Error('Projet introuvable.');
+    const manifest = placesManifest.read(projectPath);
+    const studio = await getCurrentStudioPlaceInfo();
+    const syncByPlace = {};
+    for (const place of manifest?.places || []) {
+      let saved = null;
+      try { saved = JSON.parse(fs.readFileSync(syncBuildStatePath(projectPath, place.placeId), 'utf8')); } catch (_) {}
+      syncByPlace[place.placeId] = {
+        phase: String(project.linkedStudio?.placeId || project.linkedStudio) === place.placeId && project.syncPaused === false
+          ? getFileSyncSnapshot(projectPath).phase : saved?.lastValidBuildId ? 'synchronisée précédemment' : 'en attente',
+        lastSyncedAt: saved?.lastSyncedAt || null,
+        lastValidBuildId: saved?.lastValidBuildId || null,
+      };
+    }
+    return { manifest, currentPlaceId: studio.place?.placeId ? String(studio.place.placeId) : null,
+      studioError: studio.error || null, selectedPlaceId: String(project.linkedStudio?.placeId || project.linkedStudio || ''),
+      reservations: placeReservations.list(), sync: getFileSyncSnapshot(projectPath), syncByPlace };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('places-add', async (_event, projectPath, role, expectedPlaceId) => {
+  try {
+    if (!expectedPlaceId || !/^[1-9]\d*$/.test(String(expectedPlaceId))) throw new Error('Confirme la place détectée avant de la lier.');
+    if (!isPathAllowed(projectPath)) throw new Error('Projet introuvable.');
+    const studio = await getCurrentStudioPlaceInfo();
+    if (studio.error) throw new Error(studio.error);
+    if (String(studio.place.placeId) !== String(expectedPlaceId)) throw new Error('La place ouverte a changé. Confirme la nouvelle place avant de la lier.');
+    const registry = loadProjectsRegistry();
+    const project = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+    if (!project) throw new Error('Projet introuvable.');
+    if (project.language === 'typescript') throw new Error('La synchronisation multi-place TypeScript n’est pas encore disponible. Utilise un projet Luau.');
+    if (!placesManifest.read(projectPath) && project.linkedStudio?.placeId && String(project.linkedStudio.placeId) !== String(studio.place.placeId)) {
+      placesManifest.add(projectPath, project.linkedStudio);
+    }
+    const conflict = registry.find(p => p !== project && (p.linkedStudio?.placeId === String(studio.place.placeId) || placesManifest.read(p.path)?.places.some(x => x.placeId === String(studio.place.placeId))));
+    if (conflict) throw new Error(`Cette place appartient déjà au projet ${conflict.name}.`);
+    const manifest = placesManifest.add(projectPath, studio.place, role);
+    if (!project.linkedStudio) { project.linkedStudio = { placeId: String(studio.place.placeId), gameId: manifest.universeId, placeName: studio.place.placeName }; project.syncPaused = true; saveProjectsRegistry(registry); }
+    return { success: true, manifest };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('places-remove', async (_event, projectPath, placeId) => {
+  try {
+    if (!isPathAllowed(projectPath)) throw new Error('Projet introuvable.');
+    if (placeReservations.owner(placeId)) throw new Error('Arrête l’agent qui réserve cette place.');
+    const registry = loadProjectsRegistry();
+    const project = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+    if (!project) throw new Error('Projet introuvable.');
+    const manifest = placesManifest.remove(projectPath, placeId);
+    if (String(project.linkedStudio?.placeId || project.linkedStudio) === String(placeId)) {
+      stopFileSync(); project.linkedStudio = null; project.syncPaused = true; saveProjectsRegistry(registry);
+    }
+    return { success: true, manifest };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('places-open', async (_event, projectPath, placeId) => {
+  try {
+    if (!isPathAllowed(projectPath)) throw new Error('Projet introuvable.');
+    const manifest = placesManifest.read(projectPath);
+    const place = manifest?.places.find(p => p.placeId === String(placeId));
+    if (!place) throw new Error('Place absente du manifeste.');
+    const registry = loadProjectsRegistry();
+    const project = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+    if (!project) throw new Error('Projet introuvable.');
+    await shell.openExternal(`roblox-studio:1+launchmode:edit+task:EditPlace+placeId:${place.placeId}+universeId:${manifest.universeId}`);
+    stopFileSync(); project.linkedStudio = { placeId: place.placeId, gameId: manifest.universeId, placeName: place.name }; project.syncPaused = true;
+    saveProjectsRegistry(registry);
+    return { success: true };
+  } catch (error) { return { error: error.message }; }
+});
+const studioStatusCache = new Map();
+async function getProjectStudioStatus(projectPath, force = false) {
   const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
   if (!project) return { error: 'Projet introuvable.', code: 'project-unknown' };
   if (!project.linkedStudio) return { project, ready: false, code: 'project-unlinked', message: 'Projet local : aucune place associée.' };
+  const key = canonicalProjectPath(projectPath);
+  const expectedPlaceId = String(project.linkedStudio?.placeId || project.linkedStudio);
+  const cached = studioStatusCache.get(key);
+  if (!force && cached && cached.placeId === expectedPlaceId && cached.expiresAt > Date.now()) return cached.value;
   const association = await ensureProjectPlaceAssociation(projectPath);
-  return association.error ? { project, ready: false, ...association } : { project, ready: true, code: 'ready', message: 'La bonne place répond dans Studio.' };
-});
+  const value = association.error ? { project, ready: false, ...association } : { project, ready: true, code: 'ready', message: 'La bonne place répond dans Studio.' };
+  studioStatusCache.set(key, { value, placeId: expectedPlaceId, expiresAt: Date.now() + 3000 });
+  return value;
+}
+ipcMain.handle('project-studio-status', async (event, projectPath) => getProjectStudioStatus(projectPath));
 ipcMain.handle('choose-projects-location', async () => {
   const result = await dialog.showOpenDialog({ title: 'Dossier des nouveaux projets Forge', properties: ['openDirectory', 'createDirectory'] });
   if (result.canceled || !result.filePaths[0]) return { canceled: true };
@@ -3932,6 +4218,65 @@ ipcMain.handle('media-preview', async (event, projectPath, relPath) => {
   } catch (err) { return { error: err.message }; }
 });
 
+ipcMain.handle('asset-catalog-list', async (event, projectPath) => {
+  try { const project = validateCheckpointProject(projectPath); discoverLocalAssets(project); return { assets: readCatalog(project).assets }; }
+  catch (error) { return { error: error.message, assets: [] }; }
+});
+ipcMain.handle('asset-catalog-record', async (event, projectPath, data) => {
+  try { return { asset: recordAssetFile(validateCheckpointProject(projectPath), data || {}) }; }
+  catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('asset-catalog-action', async (event, projectPath, id, action, options) => {
+  try { return { asset: updateAsset(validateCheckpointProject(projectPath), id, action, options) }; }
+  catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('asset-catalog-attach', async (event, projectPath, id) => {
+  try {
+    const project = validateCheckpointProject(projectPath);
+    const asset = readCatalog(project).assets.find(item => item.id === id);
+    if (!asset || asset.status !== 'in-progress') return { error: 'Aucune révision en attente.' };
+    const chosen = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow(), { properties: ['openFile'], defaultPath: project });
+    if (chosen.canceled || !chosen.filePaths?.[0]) return { canceled: true };
+    return { asset: recordAssetFile(project, { assetId: id, filePath: chosen.filePaths[0], type: asset.type, prompt: asset.revisions.at(-1).prompt, agent: asset.agent, provider: asset.provider }) };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('asset-catalog-export', async (event, projectPath, id) => {
+  try {
+    const project = validateCheckpointProject(projectPath);
+    const asset = readCatalog(project).assets.find(item => item.id === id);
+    if (!asset) return { error: 'Asset introuvable.' };
+    const source = localAssetFile(project, asset.localFile).absolute;
+    const chosen = await dialog.showSaveDialog(BrowserWindow.getFocusedWindow(), { defaultPath: path.basename(source) });
+    if (chosen.canceled || !chosen.filePath) return { canceled: true };
+    fs.copyFileSync(source, chosen.filePath);
+    return { saved: chosen.filePath };
+  } catch (error) { return { error: error.message }; }
+});
+async function insertPublishedAssetIntoStudio(projectPath, asset) {
+  const association = await ensureProjectPlaceAssociation(projectPath);
+  if (association.error) throw new Error(association.error);
+  const placeId = String(association.link.placeId);
+  if (!/^\d+$/.test(placeId) || !/^\d+$/.test(asset.robloxAssetId)) throw new Error('Identifiant Roblox invalide.');
+  const name = JSON.stringify(asset.name.slice(0, 80));
+  const lua = asset.type === 'image'
+    ? `local p=Instance.new("Part"); p.Name=${name}; p.Anchored=true; p.Size=Vector3.new(4,4,1); p.Parent=workspace; local d=Instance.new("Decal"); d.Texture="rbxassetid://${asset.robloxAssetId}"; d.Face=Enum.NormalId.Front; d.Parent=p; print("FORGE_ASSET_INSERTED:"..game.PlaceId..":"..p.Name)`
+    : `local m=game:GetService("InsertService"):LoadAsset(${asset.robloxAssetId}); m.Name=${name}; m.Parent=workspace; print("FORGE_ASSET_INSERTED:"..game.PlaceId..":"..m.Name)`;
+  const code = `if tostring(game.PlaceId)~=${JSON.stringify(placeId)} then error("Mauvaise place ouverte") end; ${lua}`;
+  const result = await syncMcpCallTool('execute_luau', { code, origin: 'studio-operation', datamodel_type: 'Edit' }, 30000);
+  const error = mcpToolResultError(result);
+  if (error) throw new Error(error);
+  const output = (result.content || []).map(item => item.text || '').join('\n');
+  if (!output.includes(`FORGE_ASSET_INSERTED:${placeId}:`)) throw new Error('Insertion non confirmée par Studio.');
+  return { confirmed: true, placeId, at: new Date().toISOString() };
+}
+ipcMain.handle('asset-catalog-publish', async (event, projectPath, id, insertIntoStudio = false) => {
+  try {
+    const project = validateCheckpointProject(projectPath);
+    const asset = await publishAsset(project, id, uploadImageToRoblox, insertIntoStudio ? item => insertPublishedAssetIntoStudio(project, item) : null);
+    return { asset };
+  } catch (error) { return { error: error.message }; }
+});
+
 ipcMain.handle('push-notification', async (event, data) => {
   return { success: true, notification: emitForgeNotification(data) };
 });
@@ -3987,6 +4332,10 @@ function notifyMediaDone(projectPath, kind, saved, prompt, failed, usageSessionI
       : kind === 'model2img'
         ? { n: 'Blender local', c: '#5B9BE3' }
         : { n: 'Tripo3D', c: '#9B6BE3' };
+    if (saved && !failed) {
+      const filePath = resolveMediaSource(projectPath, saved);
+      if (filePath && assetTypeForFile(filePath)) recordAssetFile(projectPath, { filePath, agent: agent.n, prompt, provider: agent.n });
+    }
     const notificationKinds = {
       thumb: { name: 'Miniature', ready: 'prête' },
       icon: { name: 'Icône de jeu', ready: 'prête' },
@@ -4043,15 +4392,15 @@ function saveRobloxToken(data) {
   global.robloxAccessToken = data.access_token;
 }
 
-// Returns fresh { accessToken, userId } — refreshes automatically if expired
-async function getRobloxAuth(forceRefresh = false) {
+let robloxTokenRefreshPromise = null;
+async function restoreRobloxToken(forceRefresh = false) {
   let tok = getRobloxToken();
-  if (!tok || !tok.access_token) return null;
-
-  // Check expiry: obtained_at + expires_in (seconds), with 60s safety margin
-  const expiresAt = (tok.obtained_at || 0) + ((tok.expires_in || 900) - 60) * 1000;
-  if ((forceRefresh || Date.now() > expiresAt) && tok.refresh_token) {
-    console.log('[Roblox] Token expiré, refresh en cours...');
+  if (!tok) return { token: null, state: 'missing' };
+  if (!tok.access_token) return { token: tok, state: 'invalid' };
+  if (!forceRefresh && !shouldRefreshToken(tok)) return { token: tok, state: 'valid' };
+  if (!tok.refresh_token) return { token: tok, state: 'expired' };
+  if (robloxTokenRefreshPromise) return robloxTokenRefreshPromise;
+  robloxTokenRefreshPromise = (async () => {
     try {
       const resp = await fetchWithTimeout('https://apis.roblox.com/oauth/v1/token', {
         method: 'POST',
@@ -4063,23 +4412,26 @@ async function getRobloxAuth(forceRefresh = false) {
         })
       }, 15000);
       if (resp.ok) {
-        const fresh = await resp.json();
-        // Preserve refresh_token if not returned (some providers omit it on refresh)
-        if (!fresh.refresh_token) fresh.refresh_token = tok.refresh_token;
-        if (!fresh.scope) fresh.scope = tok.scope || tok.requested_scope;
-        if (!fresh.requested_scope) fresh.requested_scope = tok.requested_scope;
+        const fresh = normalizeRobloxTokenData(mergeRotatedToken(tok, await resp.json()));
         saveRobloxToken(fresh);
-        tok = fresh;
-        console.log('[Roblox] Token rafraîchi avec succès.');
-      } else {
-        const err = await resp.text();
-        console.error('[Roblox] Refresh échoué:', resp.status, err);
-        // Token is dead — keep the old one, upload will fail with a clear message
+        return { token: fresh, state: 'valid', refreshed: true };
       }
+      const invalid = resp.status === 400 || resp.status === 401;
+      return { token: tok, state: invalid ? 'expired' : 'offline', error: `Roblox HTTP ${resp.status}` };
     } catch (e) {
-      console.error('[Roblox] Refresh réseau:', e.message);
+      return { token: tok, state: 'offline', error: e.message };
+    } finally {
+      robloxTokenRefreshPromise = null;
     }
-  }
+  })();
+  return robloxTokenRefreshPromise;
+}
+
+// Returns fresh { accessToken, userId } — refreshes automatically if expired
+async function getRobloxAuth(forceRefresh = false) {
+  const restored = await restoreRobloxToken(forceRefresh);
+  const tok = restored.token;
+  if (restored.state !== 'valid' || !tok?.access_token) return null;
 
   try {
     const payload = JSON.parse(Buffer.from(tok.access_token.split('.')[1], 'base64').toString('utf8'));
@@ -4172,6 +4524,18 @@ async function pollRobloxOperation(operationId, accessToken, maxTries = 15) {
 }
 
 ipcMain.handle('upload-to-roblox', async (event, filePath) => {
+  const registered = loadProjectsRegistry().find(project => {
+    const root = canonicalExistingPath(project.path), source = canonicalExistingPath(filePath);
+    return root && source && isPathInside(root, source);
+  });
+  if (registered && assetTypeForFile(filePath)) {
+    try {
+      const asset = recordAssetFile(registered.path, { filePath, status: 'draft' });
+      if (asset.status === 'published' && asset.robloxAssetId) return { assetId: asset.robloxAssetId, rbxAssetId: `rbxassetid://${asset.robloxAssetId}` };
+      const published = await publishAsset(registered.path, asset.id, uploadImageToRoblox);
+      return { assetId: published.robloxAssetId, rbxAssetId: `rbxassetid://${published.robloxAssetId}` };
+    } catch (error) { return { error: error.message }; }
+  }
   const displayName = path.basename(filePath, path.extname(filePath));
   const result = await uploadImageToRoblox(filePath, displayName);
   if (result.error) return result;
@@ -4181,20 +4545,26 @@ ipcMain.handle('upload-to-roblox', async (event, filePath) => {
 ipcMain.handle('accept-asset', async (event, filePath, assetType) => {
   try {
     if (!fs.existsSync(filePath)) return { error: 'Fichier introuvable' };
-    const activeProjectPath = userDataFile('active-project.json');
+    const activeProject = readActiveProject();
     let destDir = path.dirname(filePath); // default: keep in place
-    if (fs.existsSync(activeProjectPath)) {
-      const proj = JSON.parse(fs.readFileSync(activeProjectPath, 'utf8'));
-      if (proj && proj.path) {
-        const folderMap = { image: 'assets', audio: 'sounds', model3d: 'models' };
-        const sub = folderMap[assetType] || 'assets';
-        destDir = path.join(proj.path, sub);
-        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-      }
+    if (activeProject) {
+      const folderMap = { image: 'assets', audio: 'sounds', model3d: 'models' };
+      const sub = folderMap[assetType] || 'assets';
+      destDir = path.join(activeProject.path, sub);
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
     }
     const dest = path.join(destDir, path.basename(filePath));
     if (path.resolve(filePath) !== path.resolve(dest)) {
       fs.copyFileSync(filePath, dest);
+    }
+    const registered = loadProjectsRegistry().find(project => {
+      const root = canonicalExistingPath(project.path), source = canonicalExistingPath(dest);
+      return root && source && isPathInside(root, source);
+    });
+    if (registered && assetTypeForFile(dest)) {
+      const existing = readCatalog(registered.path).assets.find(item => path.resolve(registered.path, item.localFile) === path.resolve(filePath));
+      const asset = recordAssetFile(registered.path, { assetId: existing?.id, filePath: dest, status: 'draft' });
+      updateAsset(registered.path, asset.id, 'accept');
     }
     return { success: true, dest };
   } catch (err) { return { error: err.message }; }
@@ -4324,7 +4694,15 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
     return { error: 'Chemin de projet non autorise.' };
   }
 
+  let reservation = null;
+  let reservationPlaceId = null;
   try {
+  const manifest = placesManifest.read(projectPath);
+  if (manifest) {
+    reservationPlaceId = String(runtimePreferences.placeId || '');
+    if (!manifest.places.some(place => place.placeId === reservationPlaceId)) throw new Error('Choisis une place liée pour cet agent avant de le démarrer.');
+    reservation = placeReservations.acquire(reservationPlaceId, agentId, agentName || agentType);
+  }
   const prepared = await prepareForgeAgentInstructionsAsync(projectPath, agentType);
   if (prepared.error) throw new Error(prepared.error);
   if (agentType === 'codex') await ensureCodexMcpEntryAsync(getMcpServerPath());
@@ -4335,7 +4713,7 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
   // Roblox Studio (create_object, insert_asset, execute_luau, ...).
   const launchCmd = buildAgentShellCommand(agentType, projectPath) || cmd;
 
-  if (!spawnPty) return { error: 'Terminal intégré indisponible. Réinstalle Forge puis réessaie.' };
+  if (!spawnPty) throw new Error('Terminal intégré indisponible. Réinstalle Forge puis réessaie.');
 
     // Build env vars before spawning the CLI so setup stays invisible. This
     // avoids showing the Windows banner, `set ...` lines and launch command.
@@ -4356,7 +4734,7 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
       FORGE_AGENT_ACTIVITY_FILE: agentActivityFile(projectPath),
       FORGE_AGENT_REPORTER: path.join(__dirname, 'lib', 'agent-reporter-cli.js'),
       ...getRobloxMcpEnv(),
-      ...getProjectAgentEnv(projectPath),
+      ...getProjectAgentEnv(projectPath, reservation ? { placeId: reservationPlaceId, token: reservation.token } : null),
     };
     const runtimePtyEnv = applyAgentRuntimeEnvironment(agentType, ptyEnv, runtimePreferences);
     if (userApiKeys.gemini) ptyEnv.GEMINI_API_KEY = userApiKeys.gemini;
@@ -4384,16 +4762,21 @@ ipcMain.handle('pty-create', async (event, agentType, projectPath, cols, rows, a
       projectPath,
       agentId: String(agentId || ''),
       agentName: String(agentName || agentType || 'Agent'),
+      reservationPlaceId,
+      reservationToken: reservation?.token || null,
       currentTask: '',
       outputRelay: null,
     };
     PTYS.set(sessionId, entry);
     entry.outputRelay = createPtyOutputRelay(ptyProcess, sessionId, event.sender, () => {
+      if (entry.reservationToken) placeReservations.release(entry.reservationPlaceId, entry.reservationToken);
+      if (entry.taskCheckpoint) { const before = entry.taskCheckpoint; entry.taskCheckpoint = null; finishAgentTaskCheckpoint(entry.projectPath, before, 'session terminée').catch(() => {}); }
       if (PTYS.get(sessionId) === entry) PTYS.delete(sessionId);
     });
 
     return { success: true, sessionId };
   } catch (err) {
+    if (reservation) placeReservations.release(reservationPlaceId, reservation.token);
     return { error: err.message };
   }
 });
@@ -4417,10 +4800,18 @@ ipcMain.handle('pty-submit-message', async (event, sessionId, text, bracketedPas
     const duplicate = findDuplicateMission({ text: task, agentId: entry.agentId, live, persisted });
     if (duplicate) return { duplicate: true, agentName: duplicate.agentName, similarity: duplicate.similarity };
   }
+  try {
+    if (entry.taskCheckpoint) await finishAgentTaskCheckpoint(entry.projectPath, entry.taskCheckpoint, 'terminée avant la tâche suivante');
+    entry.taskCheckpoint = await createAgentTaskCheckpoint(entry.projectPath, entry.agentName, task, `${sessionId}-${Date.now()}`);
+  } catch (error) { return { error: `Point de retour impossible : ${error.message}` }; }
   const previousTask = entry.currentTask;
   entry.currentTask = task;
   const result = await submitPtyMessage(sessionId, text, bracketedPaste);
-  if (!result?.success) entry.currentTask = previousTask;
+  if (!result?.success) {
+    entry.currentTask = previousTask;
+    await finishAgentTaskCheckpoint(entry.projectPath, entry.taskCheckpoint, 'non démarrée');
+    entry.taskCheckpoint = null;
+  }
   else if (entry.agentId) {
     try { agentActivityStore(entry.projectPath).update(entry.agentId, { name: entry.agentName, task, status: 'working' }); } catch (_) {}
   }
@@ -4436,6 +4827,7 @@ ipcMain.handle('pty-kill', async (event, sessionId) => {
   const pty = PTYS.get(sessionId);
   if (pty) {
     pty.pty.kill();
+    if (pty.reservationToken) placeReservations.release(pty.reservationPlaceId, pty.reservationToken);
     PTYS.delete(sessionId);
   }
 });
@@ -4589,12 +4981,7 @@ ipcMain.handle('library-upload', async (event, filePath, assetType) => {
 ipcMain.handle('library-import', async (event, item) => {
   try {
     if (!item || !item.public_url || !item.file_name) return { error: 'Item invalide' };
-    const activeProjectPath = userDataFile('active-project.json');
-    let projPath = null;
-    if (fs.existsSync(activeProjectPath)) {
-      const proj = JSON.parse(fs.readFileSync(activeProjectPath, 'utf8'));
-      if (proj && proj.path && fs.existsSync(proj.path)) projPath = proj.path;
-    }
+    const projPath = readActiveProject()?.path;
     if (!projPath) return { error: 'Aucun projet actif' };
 
     const ext = (item.file_name.split('.').pop() || '').toLowerCase();
@@ -4626,7 +5013,13 @@ ipcMain.handle('library-import', async (event, item) => {
 function getStartPage() {
   try {
     const session = loadForgeSession();
-    return canRestoreSession(session) ? 'projects.html' : 'onboarding.html';
+    if (!canRestoreSession(session)) return 'onboarding.html';
+    const activeFile = userDataFile('active-project.json');
+    if (fs.existsSync(activeFile)) {
+      try { if (JSON.parse(fs.readFileSync(activeFile, 'utf8'))?.path) return 'workspace.html'; }
+      catch (_) { return 'workspace.html'; }
+    }
+    return 'projects.html';
   } catch (error) {
     console.warn('[Auth] Impossible d’ouvrir la session protégée:', error.message);
     return 'onboarding.html';
@@ -4663,17 +5056,61 @@ function createWindow() {
 let fileWatcher = null;
 let assetWatchers = []; // watchers for assets/, sounds/, models/, root
 let currentSyncProjectPath = null;
+let currentSyncLanguage = 'lua';
 let sourceReconcileTimer = null;
 let fileSyncRetryTimer = null;
 let fileSyncFlushInProgress = false;
+let fileSyncFlushTimer = null;
 const fileSyncDebounceTimers = new Map();
 const pendingScriptSyncs = new Map();
 const knownScriptSignatures = new Map();
 const knownCompiledSignatures = new Map();
+let knownBuildConfigSignature = null;
+let candidateBuild = null;
+let lastValidBuild = null;
+let lastValidScripts = {};
+let forceFullResync = false;
+let lastCompiledCandidateBuildId = null;
 let typescriptBuildTimer = null;
 let typescriptBuildInProgress = false;
 let typescriptBuildRequested = false;
 let fileSyncStatus = { phase: 'stopped', error: null, pending: 0, lastSyncedAt: null };
+
+function syncBuildStatePath(projectPath, placeId = null) {
+  const directory = userDataFile('sync-builds');
+  fs.mkdirSync(directory, { recursive: true });
+  const targetId = placeId || loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath))?.linkedStudio?.placeId || '';
+  return path.join(directory, require('node:crypto').createHash('sha256').update(agentProjectKey(projectPath) + ':' + targetId).digest('hex') + '.json');
+}
+
+function localCandidateBuildId(projectPath, language) {
+  const manifest = placesManifest.read(projectPath);
+  if (manifest) {
+    const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+    const placeId = project?.linkedStudio?.placeId;
+    if (!placeId) return null;
+    return candidateBuildId([...placesManifest.compose(projectPath, manifest, placeId)], language);
+  }
+  const root = path.join(projectPath, 'src');
+  const files = collectSourceScripts(root).map(filename => [filename.replace(/\\/g, '/'), fs.readFileSync(path.join(root, filename), 'utf8')]);
+  if (language === 'typescript') for (const name of ['tsconfig.json', 'package.json']) {
+    const target = path.join(projectPath, name);
+    files.push([name, fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '<missing>']);
+  }
+  return candidateBuildId(files, language);
+}
+
+function saveConfirmedBuild(projectPath, buildId, placeId, scripts, compiledScripts) {
+  const state = { placeId: String(placeId), lastValidBuildId: buildId, lastSyncedAt: new Date().toISOString(), scripts, compiledScripts };
+  const target = syncBuildStatePath(projectPath);
+  fs.writeFileSync(target + '.tmp', JSON.stringify(state));
+  fs.renameSync(target + '.tmp', target);
+  lastValidBuild = buildId;
+  lastValidScripts = scripts;
+  knownCompiledSignatures.clear();
+  for (const [name, hash] of Object.entries(compiledScripts)) knownCompiledSignatures.set(name, hash);
+  return state.lastSyncedAt;
+}
 const MCP_HTTP_PORT = 58741;
 
 // Extensions → asset type + target folder
@@ -4718,6 +5155,13 @@ function notifyAssetCreated(filePath, filename, agentName, agentColor, libResult
   const ext = filename.split('.').pop().toLowerCase();
   const meta = ASSET_EXT_MAP[ext];
   if (!meta) return;
+  try {
+    const project = loadProjectsRegistry().find(item => {
+      const root = canonicalExistingPath(item.path), source = canonicalExistingPath(filePath);
+      return root && source && isPathInside(root, source);
+    });
+    if (project && assetTypeForFile(filePath)) recordAssetFile(project.path, { filePath, agent: agentName, provider: 'Agent' });
+  } catch (error) { if (typeof console !== 'undefined' && typeof console.error === 'function') console.error('[AssetCatalog]', error.message); }
 
   const typeLabels = {
     image: 'image',
@@ -5028,6 +5472,11 @@ function watchProjectRoot(projectPath) {
 }
 
 function collectSourceScripts(srcPath) {
+  const manifest = placesManifest.read(path.dirname(srcPath));
+  if (manifest) {
+    const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(path.dirname(srcPath)));
+    return [...placesManifest.compose(path.dirname(srcPath), manifest, project?.linkedStudio?.placeId).keys()];
+  }
   const files = [];
   const visit = (dir) => {
     let entries = [];
@@ -5046,6 +5495,7 @@ function collectSourceScripts(srcPath) {
 }
 
 function scheduleSourceFileSync(srcPath, filename, delayMs = 250) {
+  if (placesManifest.read(path.dirname(srcPath))) { reconcileSourceScripts(srcPath); return; }
   if (!filename || !isSyncableScript(filename)) return;
   const key = path.resolve(srcPath, filename).toLowerCase();
   if (fileSyncDebounceTimers.has(key)) clearTimeout(fileSyncDebounceTimers.get(key));
@@ -5071,32 +5521,41 @@ async function runTypeScriptBuild(projectPath) {
     return;
   }
   typescriptBuildInProgress = true;
+  const sourceBuildId = localCandidateBuildId(projectPath, 'typescript');
+  candidateBuild = sourceBuildId;
   fileSyncStatus = { ...fileSyncStatus, phase: 'compiling', error: null };
   try {
     const result = await compileTypeScript(projectPath);
     if (projectPath !== currentSyncProjectPath) return;
+    candidateBuild = localCandidateBuildId(projectPath, 'typescript');
+    if (sourceBuildId !== candidateBuild) {
+      typescriptBuildRequested = true;
+      return;
+    }
     if (!result.success) {
-      fileSyncStatus = { ...fileSyncStatus, phase: 'compile-error', error: result.error };
+      lastCompiledCandidateBuildId = null;
+      fileSyncStatus = { ...fileSyncStatus, phase: result.timedOut ? 'error' : 'compile-error', error: result.error, errorFile: compileErrorFile(result.error) };
       console.error('[FileSync] Echec compilation TypeScript:', result.error);
       return;
     }
     const compiled = collectCompiledScripts(projectPath);
-    for (const [filename, entry] of changedCompiledScripts(knownCompiledSignatures, compiled)) {
-      enqueueScriptSync(filename, entry.source);
+    lastCompiledCandidateBuildId = sourceBuildId;
+    for (const [name, job] of pendingScriptSyncs) if (job.origin === 'typescript') pendingScriptSyncs.delete(name);
+    for (const [filename, entry] of changedCompiledScripts(forceFullResync ? new Map() : knownCompiledSignatures, compiled)) {
+      enqueueScriptSync(filename, entry.source, 'typescript');
     }
     for (const filename of knownCompiledSignatures.keys()) {
-      if (!compiled.has(filename)) enqueueScriptDelete(filename);
+      if (!compiled.has(filename)) enqueueScriptDelete(filename, 'typescript');
     }
-    knownCompiledSignatures.clear();
-    for (const [filename, entry] of compiled) knownCompiledSignatures.set(filename, entry.hash);
     fileSyncStatus = {
       ...fileSyncStatus,
       phase: pendingScriptSyncs.size ? 'syncing' : 'synced',
       error: null,
       pending: pendingScriptSyncs.size,
     };
+    if (pendingScriptSyncs.size || candidateBuild !== lastValidBuild) schedulePendingScriptFlush();
   } catch (error) {
-    fileSyncStatus = { ...fileSyncStatus, phase: 'compile-error', error: error.message };
+    fileSyncStatus = { ...fileSyncStatus, phase: 'compile-error', error: error.message, errorFile: compileErrorFile(error.message) };
     console.error('[FileSync] Echec lecture du resultat compile:', error.message);
   } finally {
     typescriptBuildInProgress = false;
@@ -5112,14 +5571,18 @@ async function processSourceFile(srcPath, filename) {
   const filePath = path.join(srcPath, filename);
   if (!fs.existsSync(filePath)) return;
   const ext = path.extname(filename).toLowerCase();
+  const projectPath = path.dirname(srcPath);
+  const typeScriptProject = currentSyncLanguage === 'typescript';
+  candidateBuild = localCandidateBuildId(projectPath, currentSyncLanguage);
 
   if (ext === '.ts' || ext === '.tsx') {
-    const projectPath = path.dirname(srcPath);
-    if (fs.existsSync(path.join(projectPath, 'tsconfig.json'))) {
+    if (typeScriptProject) {
       scheduleTypeScriptBuild(projectPath);
       return;
     }
   }
+
+  if (typeScriptProject) scheduleTypeScriptBuild(projectPath);
 
   try {
     enqueueScriptSync(filename, fs.readFileSync(filePath, 'utf8'));
@@ -5130,8 +5593,33 @@ async function processSourceFile(srcPath, filename) {
 
 function reconcileSourceScripts(srcPath, force = false) {
   if (path.dirname(srcPath) !== currentSyncProjectPath) return;
+  const manifest = placesManifest.read(currentSyncProjectPath);
+  if (manifest) {
+    const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(currentSyncProjectPath));
+    const scripts = placesManifest.compose(currentSyncProjectPath, manifest, project.linkedStudio.placeId);
+    let changed = force;
+    for (const [name, source] of scripts) {
+      const signature = require('node:crypto').createHash('sha256').update(source).digest('hex');
+      if (force || knownScriptSignatures.get(name) !== signature) { knownScriptSignatures.set(name, signature); enqueueScriptSync(name, source); changed = true; }
+    }
+    for (const name of [...knownScriptSignatures.keys()]) if (!scripts.has(name)) { knownScriptSignatures.delete(name); enqueueScriptDelete(name); changed = true; }
+    if (changed) candidateBuild = localCandidateBuildId(currentSyncProjectPath, project.language || 'lua');
+    return;
+  }
   const present = new Set();
   let indexChanged = force;
+  if (currentSyncLanguage === 'typescript') {
+    const projectPath = path.dirname(srcPath);
+    const configSignature = ['tsconfig.json', 'package.json'].map(name => {
+      try { const stat = fs.statSync(path.join(projectPath, name)); return `${stat.size}:${stat.mtimeMs}`; }
+      catch (_) { return 'missing'; }
+    }).join('|');
+    if (knownBuildConfigSignature !== configSignature) {
+      knownBuildConfigSignature = configSignature;
+      indexChanged = true;
+      scheduleTypeScriptBuild(projectPath);
+    }
+  }
   for (const filename of collectSourceScripts(srcPath)) {
     const key = filename.replace(/\\/g, '/');
     present.add(key);
@@ -5149,39 +5637,48 @@ function reconcileSourceScripts(srcPath, force = false) {
     if (!present.has(key)) {
       knownScriptSignatures.delete(key);
       indexChanged = true;
-      if (/\.(?:ts|tsx)$/i.test(key) && fs.existsSync(path.join(path.dirname(srcPath), 'tsconfig.json'))) {
+      if (/\.(?:ts|tsx)$/i.test(key) && currentSyncLanguage === 'typescript') {
         const compiled = key.replace(/\.(?:ts|tsx)$/i, '.luau');
         if (knownCompiledSignatures.has(compiled)) {
           const oldOutput = path.join(path.dirname(srcPath), 'out', ...compiled.split('/'));
           try { fs.rmSync(oldOutput, { force: true }); } catch (error) { console.warn('[FileSync] Sortie obsolete non supprimee:', error.message); }
-          knownCompiledSignatures.delete(compiled);
-          enqueueScriptDelete(compiled);
         }
         scheduleTypeScriptBuild(path.dirname(srcPath));
       } else if (/\.luau?$/i.test(key)) {
         enqueueScriptDelete(key);
+        if (currentSyncLanguage === 'typescript') scheduleTypeScriptBuild(path.dirname(srcPath));
       }
     }
   }
-  if (indexChanged) scheduleProjectIndex(path.dirname(srcPath));
+  if (indexChanged) {
+    const projectPath = path.dirname(srcPath);
+    const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+    candidateBuild = localCandidateBuildId(projectPath, project?.language || 'lua');
+    scheduleProjectIndex(projectPath);
+  }
 }
 
-function enqueueScriptSync(filename, source) {
+function enqueueScriptSync(filename, source, origin = 'luau') {
   const key = filename.replace(/\\/g, '/');
-  pendingScriptSyncs.set(key, { filename: key, source, projectPath: currentSyncProjectPath });
+  pendingScriptSyncs.set(key, { filename: key, source, origin, projectPath: currentSyncProjectPath });
   fileSyncStatus = { ...fileSyncStatus, phase: 'syncing', pending: pendingScriptSyncs.size };
-  flushPendingScriptSyncs();
+  schedulePendingScriptFlush();
 }
 
-function enqueueScriptDelete(filename) {
+function enqueueScriptDelete(filename, origin = 'luau') {
   const key = filename.replace(/\\/g, '/');
-  pendingScriptSyncs.set(key, { filename: key, deleted: true, projectPath: currentSyncProjectPath });
+  pendingScriptSyncs.set(key, { filename: key, deleted: true, origin, projectPath: currentSyncProjectPath });
   fileSyncStatus = { ...fileSyncStatus, phase: 'syncing', pending: pendingScriptSyncs.size };
-  flushPendingScriptSyncs();
+  schedulePendingScriptFlush();
+}
+
+function schedulePendingScriptFlush() {
+  if (fileSyncFlushTimer) clearTimeout(fileSyncFlushTimer);
+  fileSyncFlushTimer = setTimeout(() => { fileSyncFlushTimer = null; flushPendingScriptSyncs(); }, 450);
 }
 
 function scheduleFileSyncRetry() {
-  if (fileSyncRetryTimer || pendingScriptSyncs.size === 0 || !currentSyncProjectPath) return;
+  if (fileSyncRetryTimer || fileSyncStatus.phase === 'error' || (pendingScriptSyncs.size === 0 && candidateBuild === lastValidBuild) || !currentSyncProjectPath) return;
   fileSyncRetryTimer = setTimeout(() => {
     fileSyncRetryTimer = null;
     flushPendingScriptSyncs();
@@ -5190,40 +5687,108 @@ function scheduleFileSyncRetry() {
 }
 
 async function flushPendingScriptSyncs() {
-  if (fileSyncFlushInProgress || pendingScriptSyncs.size === 0) return;
+  if (fileSyncFlushInProgress || (pendingScriptSyncs.size === 0 && candidateBuild === lastValidBuild)) return;
+  if (typescriptBuildTimer || typescriptBuildInProgress || ['compile-error', 'error'].includes(fileSyncStatus.phase)) return;
   fileSyncFlushInProgress = true;
   try {
-    const association = await ensureProjectPlaceAssociation(currentSyncProjectPath);
-    if (association.error) {
-      console.warn('[FileSync] Synchronisation bloquee:', association.error);
-      fileSyncStatus = { ...fileSyncStatus, phase: 'waiting-studio', error: association.error, pending: pendingScriptSyncs.size };
+    const projectPath = currentSyncProjectPath;
+    if (!projectPath) return;
+    candidateBuild = localCandidateBuildId(projectPath, currentSyncLanguage);
+    if (currentSyncLanguage === 'typescript' && lastCompiledCandidateBuildId !== candidateBuild) {
+      scheduleTypeScriptBuild(projectPath);
       return;
     }
-    while (pendingScriptSyncs.size > 0) {
-      const [key, job] = pendingScriptSyncs.entries().next().value;
-      if (!job || job.projectPath !== currentSyncProjectPath) {
-        pendingScriptSyncs.delete(key);
-        continue;
+    const buildId = candidateBuild;
+    const transactionId = require('node:crypto').randomBytes(10).toString('hex');
+    const sourcesToValidate = new Map();
+    const scriptHashes = {};
+    const compiledHashes = {};
+    const srcPath = path.join(projectPath, 'src');
+    if (currentSyncLanguage === 'typescript') {
+      for (const [name, entry] of collectCompiledScripts(projectPath)) {
+        sourcesToValidate.set(name, entry.source);
+        scriptHashes[name] = entry.hash;
+        compiledHashes[name] = entry.hash;
       }
-      const result = job.deleted
-        ? await deleteScriptFromStudio(job.filename)
-        : await syncScriptToStudio(job.filename, job.source);
-      if (!result.success) {
-        fileSyncStatus = { ...fileSyncStatus, phase: 'waiting-studio', error: result.error, pending: pendingScriptSyncs.size };
-        break;
-      }
-      if (pendingScriptSyncs.get(key) === job) pendingScriptSyncs.delete(key);
-      fileSyncStatus = {
-        ...fileSyncStatus,
-        phase: pendingScriptSyncs.size ? 'syncing' : 'synced',
-        error: null,
-        pending: pendingScriptSyncs.size,
-        lastSyncedAt: new Date().toISOString(),
-      };
     }
+    const manifest = placesManifest.read(projectPath);
+    const composed = manifest ? placesManifest.compose(projectPath, manifest, loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath))?.linkedStudio?.placeId) : null;
+    for (const filename of (composed ? composed.keys() : collectSourceScripts(srcPath))) {
+      if (!/\.luau?$/i.test(filename)) continue;
+      const name = filename.replace(/\\/g, '/');
+      const source = composed ? composed.get(filename) : fs.readFileSync(path.join(srcPath, filename), 'utf8');
+      sourcesToValidate.set(name, source);
+      scriptHashes[name] = require('node:crypto').createHash('sha256').update(source).digest('hex');
+    }
+    for (const [name, source] of sourcesToValidate) {
+      if (forceFullResync || lastValidScripts[name] !== scriptHashes[name]) {
+        const previous = pendingScriptSyncs.get(name);
+        if (!previous || previous.deleted || previous.source !== source) {
+          pendingScriptSyncs.set(name, { filename: name, source, origin: compiledHashes[name] ? 'typescript' : 'luau', projectPath });
+        }
+      } else pendingScriptSyncs.delete(name);
+    }
+    for (const name of Object.keys(lastValidScripts)) {
+      if (!sourcesToValidate.has(name)) pendingScriptSyncs.set(name, { filename: name, deleted: true, origin: currentSyncLanguage, projectPath });
+    }
+    for (const name of pendingScriptSyncs.keys()) {
+      if (!sourcesToValidate.has(name) && !Object.hasOwn(lastValidScripts, name)) pendingScriptSyncs.delete(name);
+    }
+    const jobs = [...pendingScriptSyncs.entries()];
+    const validationJobs = [...sourcesToValidate].map(([filename, source]) => ({ filename, source, origin: compiledHashes[filename] ? 'typescript' : 'luau' }));
+    if (buildId !== candidateBuild || jobs.some(([key, job]) => pendingScriptSyncs.get(key) !== job)) return;
+    fileSyncStatus = { ...fileSyncStatus, phase: 'compiling', error: null, errorFile: null };
+    const result = await runCandidateSync({
+      jobs: jobs.map(([, job]) => job), validationJobs, buildId, transactionId,
+      validate: async (filename, source, job) => {
+        if (job.origin === 'typescript') return {}; // rbxtsc already validated the TypeScript source.
+        const response = await syncMcpCallTool('execute_luau', { code: buildStudioValidationCode(filename, source), origin: 'temporary-test', datamodel_type: 'Edit' }, 8000);
+        const error = mcpToolResultError(response);
+        if (!error) return {};
+        const data = parseMcpJsonResult(response);
+        return { error, kind: response?.isError || data?.errorKind === 'transport' || /Forge syntax check unavailable|MCP|connexion|timeout|transport/i.test(error) ? 'transport' : 'code' };
+      },
+      checkPlace: async () => {
+        const studio = await getCurrentStudioPlaceInfo();
+        if (studio.error) return { error: studio.error };
+        if (studio.place.sourceProtectionProtocol !== 1) return { error: 'Le plugin Forge chargé dans Studio est ancien. Redémarre Studio pour activer la protection des scripts, puis clique sur Réessayer.' };
+        const association = await ensureProjectPlaceAssociation(projectPath);
+        return association.error ? { error: association.error } : { placeId: association.link.placeId };
+      },
+      apply: async (batch, placeId, id, txId) => {
+        if (projectPath !== currentSyncProjectPath || buildId !== candidateBuild || jobs.some(([key, job]) => pendingScriptSyncs.get(key) !== job)) return { error: 'Fichiers modifiés pendant la préparation du lot' };
+        fileSyncStatus = { ...fileSyncStatus, phase: 'syncing', error: null };
+        const response = await syncMcpCallTool('execute_luau', { code: buildStudioBatchCode(batch, placeId, id, txId), origin: 'local-sync', syncCapability: internalSyncCapability, datamodel_type: 'Edit' }, 30000);
+        return { error: mcpToolResultError(response) };
+      },
+      confirm: async (id, placeId, txId) => {
+        const response = await syncMcpCallTool('execute_luau', { code: buildStudioConfirmationCode(placeId), origin: 'temporary-test', datamodel_type: 'Edit' }, 8000);
+        if (mcpToolResultError(response)) return false;
+        return parseMcpJsonResult(response)?.returnValue === id + ':' + txId;
+      },
+    });
+    if (projectPath !== currentSyncProjectPath) return;
+    if (result.phase === 'synced') {
+      const association = await ensureProjectPlaceAssociation(projectPath);
+      if (association.error) throw new Error(association.error);
+      const confirmedAt = saveConfirmedBuild(projectPath, buildId, association.link.placeId, scriptHashes, compiledHashes);
+      forceFullResync = false;
+      for (const [key, job] of jobs) if (pendingScriptSyncs.get(key) === job) pendingScriptSyncs.delete(key);
+      fileSyncStatus = { ...fileSyncStatus, phase: pendingScriptSyncs.size ? 'syncing' : 'synced', error: null, errorFile: null, lastSyncedAt: confirmedAt };
+      if (candidateBuild !== buildId) schedulePendingScriptFlush();
+    } else {
+      const outdatedPlugin = /plugin Forge chargé/i.test(result.error || '');
+      const infrastructureFailure = outdatedPlugin || /internal Forge capability|local-sync capability|sync verifier|sync broker/i.test(result.error || '');
+      fileSyncStatus = { ...fileSyncStatus, ...result, phase: infrastructureFailure ? 'error' : result.phase,
+        error: outdatedPlugin ? result.error : infrastructureFailure ? 'Le pont Studio n’a pas pu vérifier la capacité de synchronisation de Forge. Redémarre Forge, puis clique sur Réessayer. Détail : ' + result.error : result.error,
+        errorFile: result.file || null };
+      if (infrastructureFailure && fileSyncRetryTimer) { clearTimeout(fileSyncRetryTimer); fileSyncRetryTimer = null; }
+    }
+  } catch (error) {
+    fileSyncStatus = { ...fileSyncStatus, phase: 'error', error: error.message, pending: pendingScriptSyncs.size };
   } finally {
     fileSyncFlushInProgress = false;
-    if (pendingScriptSyncs.size > 0) scheduleFileSyncRetry();
+    if ((pendingScriptSyncs.size > 0 || candidateBuild !== lastValidBuild) && !['compile-error', 'error'].includes(fileSyncStatus.phase)) scheduleFileSyncRetry();
   }
 }
 
@@ -5246,7 +5811,24 @@ function startFileSync(projectPath) {
 
   console.log('[FileSync] Surveillance activee pour:', srcPath);
   currentSyncProjectPath = projectPath;
-  fileSyncStatus = { phase: 'scanning', error: null, pending: 0, lastSyncedAt: null };
+  currentSyncLanguage = registered.language === 'typescript' ? 'typescript' : 'lua';
+  forceFullResync = true;
+  lastCompiledCandidateBuildId = null;
+  candidateBuild = localCandidateBuildId(projectPath, registered.language || 'lua');
+  lastValidBuild = null;
+  lastValidScripts = {};
+  let previousSyncAt = null;
+  try {
+    const state = JSON.parse(fs.readFileSync(syncBuildStatePath(projectPath), 'utf8'));
+    const linkedId = registered.linkedStudio?.placeId || registered.linkedStudio;
+    if (String(state.placeId) === String(linkedId)) {
+      lastValidBuild = state.lastValidBuildId || null;
+      previousSyncAt = state.lastSyncedAt || null;
+      lastValidScripts = state.scripts || {};
+      for (const [name, hash] of Object.entries(state.compiledScripts || {})) knownCompiledSignatures.set(name, hash);
+    }
+  } catch (error) { if (error.code !== 'ENOENT') console.warn('[FileSync] Etat de version illisible:', error.message); }
+  fileSyncStatus = { phase: 'scanning', error: null, pending: 0, lastSyncedAt: previousSyncAt };
 
 
   try {
@@ -5266,8 +5848,13 @@ function startFileSync(projectPath) {
   // Un scan régulier rattrape les événements fs.watch manqués, les créations
   // atomiques et les changements effectués pendant que Studio était fermé.
   reconcileSourceScripts(srcPath, true);
-  if (fs.existsSync(path.join(projectPath, 'tsconfig.json'))) scheduleTypeScriptBuild(projectPath, 100);
-  else if (pendingScriptSyncs.size === 0) fileSyncStatus = { ...fileSyncStatus, phase: 'synced' };
+  if (currentSyncLanguage === 'typescript') {
+    scheduleTypeScriptBuild(projectPath, 100);
+  } else {
+    const currentNames = new Set(collectSourceScripts(srcPath).map(name => name.replace(/\\/g, '/')));
+    for (const name of Object.keys(lastValidScripts)) if (!currentNames.has(name)) enqueueScriptDelete(name);
+    if (pendingScriptSyncs.size === 0) fileSyncStatus = { ...fileSyncStatus, phase: 'synced' };
+  }
   sourceReconcileTimer = setInterval(() => reconcileSourceScripts(srcPath), 1500);
   if (sourceReconcileTimer.unref) sourceReconcileTimer.unref();
 
@@ -5279,6 +5866,8 @@ function startFileSync(projectPath) {
 }
 
 function stopFileSync() {
+  if (fileSyncFlushTimer) clearTimeout(fileSyncFlushTimer);
+  fileSyncFlushTimer = null;
   if (typescriptBuildTimer) clearTimeout(typescriptBuildTimer);
   typescriptBuildTimer = null;
   typescriptBuildRequested = false;
@@ -5297,7 +5886,14 @@ function stopFileSync() {
   pendingScriptSyncs.clear();
   knownScriptSignatures.clear();
   knownCompiledSignatures.clear();
+  knownBuildConfigSignature = null;
+  candidateBuild = null;
+  lastValidBuild = null;
+  lastValidScripts = {};
+  forceFullResync = false;
+  lastCompiledCandidateBuildId = null;
   currentSyncProjectPath = null;
+  currentSyncLanguage = 'lua';
   fileSyncStatus = { phase: 'stopped', error: null, pending: 0, lastSyncedAt: null };
   console.log('[FileSync] Surveillance arretee');
 }
@@ -5317,20 +5913,26 @@ function compileTypeScript(projectPath) {
     });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const finish = result => { if (settled) return; settled = true; clearTimeout(timer); resolve(result); };
+    const timer = setTimeout(() => {
+      proc.kill();
+      finish({ success: false, timedOut: true, error: 'La compilation TypeScript a dépassé 60 secondes. Vérifie les dépendances du projet, puis clique sur Réessayer.' });
+    }, 60000);
     proc.stdout.on('data', d => stdout += d.toString());
     proc.stderr.on('data', d => stderr += d.toString());
     proc.on('close', (code) => {
       if (code === 0) {
         console.log('[TypeScript] Compilation reussie pour:', projectPath);
-        resolve({ success: true });
+        finish({ success: true });
       } else {
         console.error('[TypeScript] Echec compilation (code ' + code + '):', stderr || stdout);
-        resolve({ success: false, error: stderr || stdout || 'Compilation echouee' });
+        finish({ success: false, error: stderr || stdout || 'Compilation echouee' });
       }
     });
     proc.on('error', (err) => {
       console.error('[TypeScript] Erreur lancement rbxtsc:', err.message);
-      resolve({ success: false, error: err.message });
+      finish({ success: false, error: err.message });
     });
   });
 }
@@ -5352,48 +5954,23 @@ function httpRequest(hostname, port, path, body) {
   });
 }
 
-async function syncScriptToStudio(filename, source) {
-  let plan;
-  try { plan = buildStudioSyncCode(filename, source); }
-  catch (err) { return { error: err.message }; }
-
-  try {
-    const result = await syncMcpCallTool('execute_luau', {
-      code: plan.code,
-      datamodel_type: 'Edit'
-    }, 8000);
-    const toolError = mcpToolResultError(result);
-    if (toolError) throw new Error(toolError);
-    console.log('[FileSync] ✓ Synchronise:', plan.relativePath);
-    return { success: true, result };
-  } catch (err) {
-    console.warn('[FileSync] Studio indisponible, modification gardee en attente:', plan.relativePath, '-', err.message);
-    return { error: err.message };
-  }
-}
-
-async function deleteScriptFromStudio(filename) {
-  let plan;
-  try { plan = buildStudioDeleteCode(filename); }
-  catch (error) { return { error: error.message }; }
-  try {
-    const result = await syncMcpCallTool('execute_luau', { code: plan.code, datamodel_type: 'Edit' }, 8000);
-    const toolError = mcpToolResultError(result);
-    if (toolError) throw new Error(toolError);
-    return { success: true };
-  } catch (error) {
-    return { error: error.message };
-  }
-}
-
 ipcMain.handle('start-file-sync', async (event, projectPath) => {
   const association = await ensureProjectPlaceAssociation(projectPath);
   if (association.error) return association;
   const active = readActiveProject();
   if (!active || canonicalProjectPath(active.path) !== canonicalProjectPath(projectPath)) return { error: 'Ouvre ce projet avant de démarrer sa synchronisation.' };
+  if (active.templateSetup?.stage === 'dependencies' && active.templateSetup.status === 'error') return { error: active.templateSetup.error, code: 'template-dependencies' };
   setProjectSyncPaused(projectPath, false);
   startFileSync(projectPath);
-  return { success: true, linkedStudio: association.link };
+  if (!active.templateSetup) return { success: true, linkedStudio: association.link };
+  const firstSync = await waitForFirstProjectSync(() => getFileSyncSnapshot(projectPath));
+  const registry = loadProjectsRegistry();
+  const project = registry.find(item => canonicalProjectPath(item.path) === canonicalProjectPath(projectPath));
+  if (project) {
+    project.templateSetup = { ...project.templateSetup, firstSync, status: firstSync.status === 'confirmed' ? 'ready' : firstSync.status === 'error' ? 'error' : project.templateSetup.status, error: firstSync.status === 'error' ? firstSync.error : null };
+    saveProjectsRegistry(registry);
+  }
+  return firstSync.status === 'error' ? { error: firstSync.error, file: firstSync.file, firstSync, linkedStudio: association.link } : { success: true, linkedStudio: association.link, firstSync };
 });
 
 ipcMain.handle('stop-file-sync', async (event, projectPath) => {
@@ -5406,15 +5983,62 @@ ipcMain.handle('stop-file-sync', async (event, projectPath) => {
   } catch (error) { return { error: error.message }; }
 });
 
-ipcMain.handle('get-file-sync-status', async (event, projectPath) => {
+function savedSyncBuildState(projectPath, project) {
+  try {
+    const state = JSON.parse(fs.readFileSync(syncBuildStatePath(projectPath), 'utf8'));
+    const placeId = project?.linkedStudio?.placeId || project?.linkedStudio;
+    if (String(state.placeId) === String(placeId)) return state;
+  } catch (_) {}
+  return {};
+}
+
+function getFileSyncSnapshot(projectPath) {
   if (!isPathAllowed(projectPath)) return { error: 'Chemin de projet non autorise.' };
   const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
-  if (!project?.linkedStudio) return { phase: 'local', pending: 0, paused: true };
-  if (project.syncPaused !== false) return { phase: 'paused', pending: 0, paused: true };
+  const saved = savedSyncBuildState(projectPath, project);
+  const retained = { lastSyncedAt: saved.lastSyncedAt || null, lastValidBuildId: saved.lastValidBuildId || null };
+  if (!project?.linkedStudio) return { ...retained, phase: 'local', pending: 0, pendingFiles: [], paused: true };
+  if (project.syncPaused !== false) return { ...retained, phase: 'paused', pending: 0, pendingFiles: [], paused: true };
   if (path.resolve(projectPath) !== path.resolve(currentSyncProjectPath || '')) {
-    return { phase: 'stopped', error: null, pending: 0, lastSyncedAt: null };
+    return { ...retained, phase: 'stopped', error: null, pending: 0, pendingFiles: [] };
   }
-  return { ...fileSyncStatus, pending: pendingScriptSyncs.size };
+  const pendingFiles = new Set(pendingScriptSyncs.keys());
+  if (fileSyncStatus.phase === 'compile-error' && project.language === 'typescript') {
+    for (const name of collectSourceScripts(path.join(projectPath, 'src')).filter(name => /\.tsx?$/i.test(name))) {
+      if (!pendingFiles.has(name.replace(/\.tsx?$/i, '.luau'))) pendingFiles.add(name);
+    }
+  }
+  return { ...fileSyncStatus, pending: pendingFiles.size, pendingFiles: [...pendingFiles], candidateBuildId: candidateBuild, lastValidBuildId: lastValidBuild };
+}
+ipcMain.handle('get-file-sync-status', async (event, projectPath) => getFileSyncSnapshot(projectPath));
+
+ipcMain.handle('get-project-health', async (event, projectPath, force = false) => {
+  if (!isPathAllowed(projectPath)) return { error: 'Chemin de projet non autorisé.' };
+  const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+  if (!project) return { error: 'Projet introuvable.' };
+  const sync = getFileSyncSnapshot(projectPath);
+  const studio = await getProjectStudioStatus(projectPath, force);
+  return projectHealth(project, sync, studio);
+});
+
+ipcMain.handle('retry-project-sync', async (event, projectPath) => {
+  if (!isPathAllowed(projectPath)) return { error: 'Chemin de projet non autorisé.' };
+  const active = readActiveProject();
+  if (!active || canonicalProjectPath(active.path) !== canonicalProjectPath(projectPath)) return { error: 'Ouvre ce projet avant de réessayer.' };
+  const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+  if (!project?.linkedStudio) return { error: 'Lie une place dans les réglages du projet.' };
+  studioStatusCache.delete(canonicalProjectPath(projectPath));
+  if (project.syncPaused !== false) {
+    const association = await ensureProjectPlaceAssociation(projectPath);
+    if (association.error) return association;
+    setProjectSyncPaused(projectPath, false);
+    startFileSync(projectPath);
+  } else if (currentSyncProjectPath === projectPath) {
+    fileSyncStatus = { ...fileSyncStatus, phase: 'scanning', error: null, errorFile: null };
+    if (currentSyncLanguage === 'typescript') scheduleTypeScriptBuild(projectPath, 0);
+    else schedulePendingScriptFlush();
+  } else startFileSync(projectPath);
+  return { success: true };
 });
 
 // ============================================
@@ -5498,17 +6122,30 @@ autoUpdater.on('error', (err) => {
 // ============================================
 app.on('before-quit', () => {
   if (privateControl) privateControl.close().catch(() => {});
+  if (syncCapabilityBroker) syncCapabilityBroker.close().catch(() => {});
   if (robloxAuthBroker?.server) robloxAuthBroker.server.close();
 });
 
 app.whenReady().then(async () => {
   refreshPathEnv();
   try {
+    syncCapabilityBroker = createSyncCapabilityBroker(internalSyncCapability);
+    await syncCapabilityBroker.start();
+    console.log('[SyncMCP] Vérificateur de capacité local prêt');
+  } catch (error) {
+    syncCapabilityBroker = null;
+    console.error('[SyncMCP] Vérificateur de capacité indisponible :', error.message);
+  }
+  try {
     const updateSnapshot = prepareUpdateSnapshot({ userDataDir: app.getPath('userData'), currentVersion: app.getVersion() });
     if (updateSnapshot.changed) console.log(`[Update] Données ${updateSnapshot.previousVersion} sauvegardées avant ouverture de ${updateSnapshot.currentVersion}.`);
   } catch (error) { console.warn('[Update] Sauvegarde pré-mise à jour impossible :', error.message); }
   try { await startRobloxAuthBroker(); }
   catch (error) { console.error('[Roblox] Auth broker indisponible:', error.message); }
+  try {
+    const pluginsFolder = robloxLocations({ platform: process.platform, home: HOME, localAppData: process.env.LOCALAPPDATA }).pluginsDir;
+    if (pluginsFolder) installForgePlugin(pluginsFolder);
+  } catch (error) { console.warn('[Studio] Mise à jour du plugin impossible :', error.message); }
   try {
     createAgentStateStore(userDataFile('agents-state.json')).migrateLegacy(userDataFile('active-project.json'));
   } catch (err) { console.warn('[Agents] Migration différée :', err.message); }
@@ -5520,6 +6157,14 @@ app.whenReady().then(async () => {
     catch (err) { console.warn('[Media] Reprise différée :', err.message); }
   }
   createWindow();
+  // Reprendre la synchronisation du projet ouvert après un redémarrage.
+  // La page Workspace restaure l'interface, mais ne relance pas elle-même le watcher.
+  try {
+    const active = readActiveProject();
+    const registered = Array.isArray(recoverableProjects) && active
+      ? recoverableProjects.find(project => canonicalProjectPath(project.path) === canonicalProjectPath(active.path)) : null;
+    if (registered?.linkedStudio && registered.syncPaused === false) startFileSync(registered.path);
+  } catch (error) { console.error('[FileSync] Reprise du projet impossible :', error.message); }
   startPrivateControlIfPaired();
   // Verifier les MAJ apres 5s pour laisser le temps au window de se charger
   setTimeout(() => {

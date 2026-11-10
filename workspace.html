@@ -12,7 +12,13 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{height:100%;overflow:hidden;}
-  body{background:var(--char);color:var(--bone);font-family:'Inter',sans-serif;display:flex;flex-direction:column;opacity:0;animation:pageIn .35s cubic-bezier(.4,0,.2,1) forwards;}
+  body{background:var(--char);color:var(--bone);font-family:'Inter',sans-serif;display:flex;flex-direction:column;}
+  body.project-loading > :not(#projectLoadGate){visibility:hidden}
+  #projectLoadGate{position:fixed;inset:0;z-index:10000;background:var(--char);display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}
+  #projectLoadGate[hidden]{display:none}
+  #projectLoadGate h1{font-size:22px;margin-bottom:12px}
+  #projectLoadGate p{max-width:580px;line-height:1.5;margin-bottom:16px}
+  #projectLoadGate a{color:var(--ember-light)}
   body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:radial-gradient(ellipse 80% 50% at 20% 40%,rgba(59,130,246,.03),transparent),
                radial-gradient(ellipse 60% 40% at 80% 60%,rgba(96,165,250,.015),transparent);
@@ -24,19 +30,31 @@
 
   /* ── TOP BAR ── */
   .top-bar{height:48px;background:var(--input-bg);backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);border-bottom:1px solid rgba(59,130,246,.06);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;position:relative;z-index:100;}
+  .workspace-nav{display:flex;gap:5px;align-items:center;padding:6px 12px;background:var(--char2);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;position:relative;z-index:90}
+  .workspace-nav button{white-space:nowrap;background:transparent;border:1px solid transparent;border-radius:7px;color:var(--smoke);padding:8px 12px;font:600 12px 'Inter',sans-serif;cursor:pointer}
+  .workspace-nav button:hover,.workspace-nav button:focus-visible,.workspace-nav button.active{color:var(--bone);background:var(--char3);border-color:var(--border-light)}
+  .workspace-nav button:focus-visible,.top-bar button:focus-visible,.project-health summary:focus-visible{outline:2px solid var(--ember-light);outline-offset:2px}
+  .workspace-nav [hidden]{display:none}
+  .project-next-step{display:flex;align-items:center;gap:14px;padding:8px 16px;background:rgba(59,130,246,.08);border-bottom:1px solid var(--border-light);font:12px/1.4 'Inter',sans-serif;flex-shrink:0;position:relative;z-index:80}
+  .project-next-step[hidden]{display:none}.project-next-step span{flex:1}.project-next-step button{border:1px solid var(--ember);background:var(--char3);color:var(--bone);border-radius:6px;padding:6px 10px;cursor:pointer;font:600 12px 'Inter',sans-serif}
+  body.places-single #placesPanel:not([open]){display:none}
+  .project-health summary{max-width:min(360px,35vw)!important;font:600 12px 'Inter',sans-serif!important}
+  @media(max-width:900px){.top-bar{gap:5px}.project-pill{max-width:120px}.project-tools-menu summary{padding:7px}.workspace-nav{padding:5px 8px}.workspace-nav button{padding:7px 9px}}
   .logo-pill{display:flex;align-items:center;gap:6px;padding:4px 10px;background:var(--char3);border-radius:6px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;color:var(--ember-light);margin-right:4px;flex-shrink:0;cursor:pointer;transition:background .15s;}
   .logo-pill img{width:18px;height:18px;border-radius:4px;object-fit:contain;}
   .logo-pill:hover{background:var(--char4);}
   .project-pill{display:flex;align-items:center;gap:6px;padding:4px 10px;background:var(--char3);border-radius:6px;font-size:11.5px;color:var(--smoke);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;}
-  .studio-target-pill{display:flex;align-items:center;gap:6px;min-width:0;max-width:220px;padding:4px 9px;border:1px solid var(--border-light);background:var(--char3);border-radius:6px;color:var(--smoke);font:500 10px 'JetBrains Mono',monospace;white-space:nowrap;cursor:pointer;transition:border-color .15s,color .15s;}
-  .studio-target-pill:hover{border-color:var(--ember);color:var(--bone)}
-  .studio-target-pill .studio-target-text{overflow:hidden;text-overflow:ellipsis}
-  .studio-target-pill.ready{color:#7FD99A}.studio-target-pill.warning{color:#F2C65A}.studio-target-pill.error{color:#E9776B}.studio-target-pill.local{color:var(--smoke-dim)}
-  .studio-target-dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 0 2px rgba(255,255,255,.03);flex:0 0 auto}
-  .sync-pill{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--border-light);background:var(--char3);border-radius:6px;font:500 10px 'JetBrains Mono',monospace;color:var(--smoke-dim);white-space:nowrap;flex-shrink:0;}
-  .sync-dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 0 2px rgba(255,255,255,.03)}
-  .sync-pill.compiling,.sync-pill.scanning,.sync-pill.syncing{color:#60A5FA}.sync-pill.compiling .sync-dot,.sync-pill.scanning .sync-dot,.sync-pill.syncing .sync-dot{animation:pulse-dot 1s ease-in-out infinite}
-  .sync-pill.synced{color:#7FD99A}.sync-pill.waiting-studio{color:#F2C65A}.sync-pill.compile-error{color:#E9776B}
+  .project-health{position:relative;flex-shrink:0;font:11px 'JetBrains Mono',monospace;color:var(--smoke)}
+  .project-health summary{display:flex;align-items:center;gap:7px;max-width:230px;padding:5px 9px;border:1px solid var(--border-light);border-radius:6px;background:var(--char3);cursor:pointer;list-style:none;white-space:nowrap}
+  .project-health summary::-webkit-details-marker{display:none}.project-health summary:hover{border-color:var(--ember)}
+  .project-health .health-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+  .project-health .health-summary-text{overflow:hidden;text-overflow:ellipsis}.project-health .health-summary-count{color:var(--smoke-dim);flex-shrink:0}
+  .project-health.synced{color:#7FD99A}.project-health.compiling,.project-health.syncing{color:#60A5FA}.project-health.waiting-studio,.project-health.paused{color:#F2C65A}.project-health.wrong-place,.project-health.compile-error,.project-health.error{color:#E9776B}
+  .project-health-panel{position:absolute;top:36px;left:0;width:min(390px,calc(100vw - 24px));padding:15px;background:var(--char2);border:1px solid var(--border-light);border-radius:10px;box-shadow:0 18px 42px rgba(0,0,0,.55);color:var(--bone);white-space:normal;z-index:350}
+  .project-health-panel strong{font:700 14px 'Space Grotesk',sans-serif}.project-health-panel p{font:11px/1.5 'Inter',sans-serif;color:var(--smoke);margin:6px 0 12px}
+  .project-health-panel dl{display:grid;grid-template-columns:125px minmax(0,1fr);gap:7px 9px;margin:0;font:10.5px/1.4 'Inter',sans-serif}.project-health-panel dt{color:var(--smoke-dim)}.project-health-panel dd{margin:0;overflow-wrap:anywhere}
+  .project-health-panel .health-error-detail{color:#E9776B}.project-health-panel .health-action{margin-top:13px;padding:7px 10px;border:1px solid var(--ember);border-radius:6px;background:var(--char3);color:var(--bone);font:600 11px 'Inter',sans-serif;cursor:pointer}
+  .project-health-panel pre{max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:9px;background:var(--char);border-radius:6px;font:10px/1.5 'JetBrains Mono',monospace}
   .assets-btn{display:flex;align-items:center;gap:6px;padding:5px 11px;background:var(--char3);border:1px solid var(--border-light);border-radius:6px;color:var(--smoke);font-size:12px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap;transition:all .15s ease;flex-shrink:0;}
   .assets-btn:hover{border-color:var(--ember);color:var(--ember-light);background:rgba(59,130,246,.06);}
   .assets-btn.active{border-color:var(--ember);color:var(--ember-light);background:rgba(59,130,246,.1);}
@@ -245,6 +263,7 @@
   .checkpoint-info{min-width:0;flex:1}.checkpoint-label{font-size:12px;font-weight:600;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.checkpoint-meta{font-size:10px;color:var(--smoke-dim);margin-top:3px;}
   .checkpoint-actions{display:flex;gap:6px}.checkpoint-actions button{border:1px solid var(--border-light);background:var(--char4);color:var(--smoke);border-radius:6px;padding:5px 8px;font:500 10px 'Inter',sans-serif;cursor:pointer}.checkpoint-actions button:hover{color:var(--bone);border-color:var(--ember)}
   .checkpoint-foot{display:flex;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--border-light);}
+  .versions-page{width:min(1040px,94vw);height:min(780px,90vh)}.versions-layout{display:grid;grid-template-columns:minmax(240px,34%) 1fr;min-height:0;flex:1}.versions-layout .checkpoint-list{border-right:1px solid var(--border-light)}.versions-detail{padding:18px;overflow:auto;color:var(--smoke);font-size:12px;white-space:pre-wrap}.versions-detail h3{color:var(--bone);margin:0 0 12px}.versions-detail pre{overflow:auto;background:var(--char3);padding:12px;border-radius:8px;max-height:220px}.versions-detail label{display:block;margin:6px 0}.versions-tabs{display:flex;gap:8px;padding:10px 18px;border-bottom:1px solid var(--border-light)}.versions-tabs button{cursor:pointer}
   .quality-lab-modal{width:min(900px,94vw);max-height:88vh;background:var(--char2);border:1px solid var(--border-light);border-radius:14px;box-shadow:0 28px 70px rgba(0,0,0,.7);display:flex;flex-direction:column;overflow:hidden;}
   .quality-lab-body{padding:16px;overflow:auto;display:flex;flex-direction:column;gap:14px;}
   .quality-lab-intro{font-size:12px;line-height:1.55;color:var(--smoke);}
@@ -397,7 +416,8 @@
 </style>
 <base target="_self">
 </head>
-<body>
+<body class="places-single project-loading">
+<div id="projectLoadGate" role="status"><div><h1>Chargement du projet</h1><p>Forge prépare l’espace de travail.</p></div></div>
 
 <!-- ══════════════ TOP BAR ══════════════ -->
 <div class="top-bar">
@@ -405,36 +425,44 @@
     <img src="assets/logos/forge-logo.jpg" alt="Forge">
     FORGE
   </div>
-  <button class="media-btn" onclick="window.location.href='thumbnail.html'" title="Médias & Miniatures">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-    <span data-i18n="media_title">Médias</span>
-  </button>
-
   <div class="project-pill" id="projectPill" title="Aucun projet actif">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
     <span id="projectPillText">—</span>
   </div>
-  <button class="studio-target-pill local" id="studioTargetPill" type="button" onclick="window.location.href='project-settings.html'" title="">
-    <span class="studio-target-dot"></span><span class="studio-target-text" id="studioTargetText" data-i18n="studio_target_unlinked">Aucune place liée</span>
-  </button>
-  <div class="sync-pill stopped" id="syncPill" title="">
-    <span class="sync-dot"></span><span id="syncPillText">Sync arrêtée</span>
-  </div>
-  <button class="assets-btn" id="assetsBtn" onclick="toggleSidebar()">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
-    <span data-i18n="toolbox">Toolbox</span>
-  </button>
-        <span class="agent-count" id="agentCount" data-i18n="agent_count_zero">0 agent</span>
-  <div class="add-btns">
-      <button class="add-agent-btn" type="button" onclick="createAgent('codex')" aria-label="Ajouter un agent Codex">Codex +</button>
-      <button class="add-agent-btn" type="button" onclick="createAgent('claude')" aria-label="Ajouter un agent Claude Code">Claude Code +</button>
-  </div>
+  <details id="placesPanel" style="position:relative;z-index:50"><summary style="cursor:pointer;padding:8px;color:var(--bone)" aria-label="Détails des places">Places</summary><div style="position:absolute;top:100%;left:0;width:430px;max-height:70vh;overflow:auto;background:var(--char3);border:1px solid var(--border-light);border-radius:10px;padding:14px;box-shadow:0 12px 30px #0008"><strong>Places de l’expérience</strong><p id="placesStudio" style="font-size:12px"></p><div id="placesList"></div><button type="button" onclick="addCurrentPlace()">Lier la place ouverte</button></div></details>
+  <details class="project-health preparing" id="projectHealth">
+    <summary id="projectHealthSummary" aria-live="polite"><span class="health-dot"></span><span class="health-summary-text" id="healthSummaryText">Préparation</span><span class="health-summary-count" id="healthSummaryCount"></span></summary>
+    <div class="project-health-panel">
+      <strong id="healthTitle">État du projet</strong><p id="healthExplanation">Forge prépare le projet.</p>
+      <dl>
+        <dt>Langage</dt><dd id="healthLanguage">—</dd>
+        <dt>Dossier source</dt><dd id="healthSource">—</dd>
+        <dt>Place liée</dt><dd id="healthPlace">—</dd>
+        <dt>Expérience Roblox</dt><dd id="healthExperience">—</dd>
+        <dt>PlaceId attendu</dt><dd id="healthPlaceId">—</dd>
+        <dt>Studio</dt><dd id="healthStudio">—</dd>
+        <dt>Compilation / validation</dt><dd id="healthCompile">—</dd>
+        <dt>Fichiers en attente</dt><dd id="healthPending">0</dd>
+        <dt>Dernière synchronisation</dt><dd id="healthLastSync">—</dd>
+        <dt>Version candidate / valide</dt><dd id="healthBuilds">—</dd>
+        <dt>Dernière erreur</dt><dd class="health-error-detail" id="healthError">Aucune</dd>
+      </dl>
+      <button type="button" class="health-action" id="healthAction" onclick="runProjectHealthAction()" hidden></button>
+      <button type="button" class="health-action" onclick="document.getElementById('placesPanel').open=true">Gérer les places</button>
+      <pre id="healthReport" hidden></pre>
+    </div>
+  </details>
+  <span class="agent-count" id="agentCount" data-i18n="agent_count_zero">0 agent</span>
   <div class="top-actions">
     <details class="project-tools-menu">
       <summary>Outils du projet</summary>
       <div class="project-tools-popover">
         <button class="btn-top" id="qualityMemoryBtn" onclick="openQualityMemory()" data-i18n="quality_memory">Mémoire du projet</button>
         <button class="btn-top" id="qualityLabBtn" onclick="requestAgentGameTest()" data-i18n="polish_test_game">Tester avec l’IA</button>
+        <button class="btn-top" id="assetsBtn" onclick="toggleSidebar()">Fichiers et toolbox</button>
+        <button class="btn-top" onclick="window.location.href='thumbnail.html'">Atelier médias</button>
+        <button class="btn-top" type="button" onclick="createAgent('codex')">Ajouter un agent Codex</button>
+        <button class="btn-top" type="button" onclick="createAgent('claude')">Ajouter un agent Claude Code</button>
       </div>
     </details>
     <button class="btn-top primary" id="startAgentsBtn" onclick="startPendingAgents()" disabled data-i18n="start_agents">Start</button>
@@ -468,6 +496,17 @@
     </button>
   </div>
 </div>
+
+<nav class="workspace-nav" aria-label="Navigation du projet">
+  <button type="button" onclick="document.getElementById('projectHealth').open=true">Projet</button>
+  <button type="button" class="active" onclick="focusMainAgent()">Agent</button>
+  <button type="button" onclick="window.location.href='assets-page.html'">Assets</button>
+  <button type="button" onclick="openQualityLab()">Tests</button>
+  <button type="button" onclick="openCheckpoints()">Versions</button>
+  <button type="button" id="placesNav" hidden onclick="document.getElementById('placesPanel').open=true">Places</button>
+  <button type="button" onclick="window.location.href='settings.html?from=workspace.html'">Paramètres</button>
+</nav>
+<div class="project-next-step" id="projectNextStep" role="status" hidden><span id="projectNextStepText"></span><button id="projectNextStepAction" type="button" onclick="runProjectHealthAction()"></button></div>
 
 <div class="preview-overlay hidden" id="qualityMemoryOverlay" onclick="closeQualityMemory(event)">
   <div class="checkpoint-modal" onclick="event.stopPropagation()">
@@ -513,13 +552,13 @@
 </div>
 
 <div class="preview-overlay hidden" id="checkpointOverlay" onclick="closeCheckpoints(event)">
-  <div class="checkpoint-modal" onclick="event.stopPropagation()">
+  <div class="checkpoint-modal versions-page" onclick="event.stopPropagation()">
     <div class="checkpoint-head">
-      <strong data-i18n="checkpoints">Points de retour</strong>
+      <strong>Points de restauration</strong>
       <button class="tb-close" onclick="closeCheckpoints()" title="Fermer">×</button>
     </div>
-    <p style="color:var(--smoke);font-size:12px;line-height:1.6;margin:12px 0" data-i18n="checkpoint_scope"></p>
-    <div class="checkpoint-list" id="checkpointList"></div>
+    <div class="versions-tabs"><button class="btn-top" onclick="setVersionKind('code')">Fichiers du jeu</button><button class="btn-top" onclick="setVersionKind('archive')">Jeu et médias</button></div>
+    <div class="versions-layout"><div class="checkpoint-list" id="checkpointList"></div><div class="versions-detail" id="versionDetail">Choisis un point pour voir ce qui sera restauré.</div></div>
     <div class="checkpoint-foot">
       <button class="btn-top primary" id="createCheckpointBtn" onclick="createManualCheckpoint()" data-i18n="checkpoint_create">Créer un point de retour</button>
     </div>
@@ -616,8 +655,9 @@
   <div class="agent-grid" id="agentGrid">
     <div class="empty-grid" id="emptyGrid">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.4"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="9" cy="16" r="1"/><circle cx="15" cy="16" r="1"/></svg>
-      <h2>Aucun agent actif</h2>
-      <p data-i18n="workspace_empty_help">Choisis un fournisseur puis « Ajouter un agent », ou configure tes agents de démarrage dans les paramètres.</p>
+      <h2 id="emptyGridTitle">Décris ton jeu à Forge</h2>
+      <p id="emptyGridDescription">Forge t’aidera à créer une première version simple et jouable.</p>
+      <button class="btn-top primary" id="emptyGridAction" type="button" onclick="focusMainAgent()">Commencer avec l’agent</button>
     </div>
   </div>
 
@@ -695,6 +735,8 @@
 <script src="./lib/agent-message-budget.js"></script>
 <script src="./lib/agent-composer.js"></script>
 <script src="./lib/agent-startup.js"></script>
+<script src="./lib/new-project-connection.js"></script>
+<script src="./lib/quality-lab-state.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // GARDE DE SESSION (aucun compte → login)
@@ -719,7 +761,55 @@ const AGENT_META={claude:{label:'Claude Code',color:'#CC785C'},codex:{label:'Ope
 const AGENT_ICONS={claude:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none"><path d="M50 10 L50 90" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M50 10 L20 75" stroke="currentColor" stroke-width="7" stroke-linecap="round"/><path d="M50 10 L80 75" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>',codex:'<svg width="14" height="14" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M50 15 C50 15 58 38 50 50 C42 62 15 50 15 50 C15 50 42 38 50 15 Z"/><path d="M50 15 C50 15 42 38 50 50 C58 62 85 50 85 50 C85 50 58 38 50 15 Z"/><path d="M50 85 C50 85 42 62 50 50 C58 38 50 15 50 15 C50 15 58 62 50 85 Z"/><path d="M50 85 C50 85 58 62 50 50 C42 38 50 15 50 15 C50 15 42 62 50 85 Z"/></svg>'};
 
 let agents=[],agentCounter={claude:1,codex:1},activeProject=null;
+let placesSnapshot=null;
+async function refreshPlaces(){
+  if(!activeProject||!window.forgeAPI?.listPlaces)return;
+  const result=await window.forgeAPI.listPlaces(activeProject.path);
+  if(result?.error){document.getElementById('placesStudio').textContent=result.error;return;}
+  placesSnapshot=result;
+  const multiPlace=(result.manifest?.places||[]).length>1;
+  document.body.classList.toggle('places-single',!multiPlace);
+  document.getElementById('placesNav').hidden=!multiPlace;
+  if(result.selectedPlaceId&&activeProject&&!activeProject.linkedStudio)activeProject.linkedStudio={placeId:result.selectedPlaceId};
+  document.getElementById('placesStudio').textContent=result.currentPlaceId?'Place ouverte dans Studio : '+(result.manifest?.places||[]).find(p=>p.placeId===result.currentPlaceId)?.name||'Place ouverte dans Studio': 'Ouvre Roblox Studio pour voir la place active.';
+  const list=document.getElementById('placesList');list.replaceChildren();
+  for(const place of result.manifest?.places||[]){
+    const row=document.createElement('div');row.style.cssText='border-top:1px solid var(--border-light);padding:10px 0;font-size:12px';
+    const title=document.createElement('strong');title.textContent=place.name+' · '+place.role+' · '+place.placeId;row.append(title);
+    const owner=result.reservations[place.placeId];
+    const status=document.createElement('div');status.textContent=(result.currentPlaceId===place.placeId?'Ouverte dans Studio':'Fermée dans Studio')+' · '+(owner?'Réservée par '+owner.agentName:'Libre')+' · Sync : '+(result.syncByPlace?.[place.placeId]?.phase||'en attente');row.append(status);
+    const open=document.createElement('button');open.textContent='Ouvrir';open.onclick=async()=>{const r=await window.forgeAPI.openPlace(activeProject.path,place.placeId);if(r.error)showToast(r.error,'error');else refreshPlaces();};row.append(open);
+    const remove=document.createElement('button');remove.textContent='Retirer';remove.style.marginLeft='6px';remove.onclick=async()=>{const r=await window.forgeAPI.removePlace(activeProject.path,place.placeId);if(r.error)showToast(r.error,'error');else refreshPlaces();};row.append(remove);
+    for(const agent of agents.filter(a=>!a._closed)){
+      const label=document.createElement('label');label.style.cssText='display:block;margin-top:5px';
+      const radio=document.createElement('input');radio.type='radio';radio.name='place-'+agent.id;radio.checked=agent.placeId===place.placeId;radio.disabled=!!agent.sessionId||!!agent.starting;
+      radio.onchange=()=>{agent.placeId=place.placeId;saveAgentState();refreshPlaces();};
+      label.append(radio,document.createTextNode(' '+agent.name+' → '+place.name));row.append(label);
+    }
+    list.append(row);
+  }
+  if(!result.manifest?.places?.length){const empty=document.createElement('p');empty.textContent='Aucune place liée. Ouvre une place publiée dans Studio puis lie-la.';list.append(empty);}
+}
+async function addCurrentPlace(){
+  if(!activeProject)return;
+  const studio=await window.forgeAPI.getStudioPlaceInfo();
+  if(studio.error){showToast(studio.error,'error');return;}
+  if(!confirm('Connecter ce projet à '+String(studio.place.placeName||'Place '+studio.place.placeId)+' ?'))return;
+  const role=prompt('Rôle de la place ouverte (lobby, préhistoire, Égypte, pirates, futur…)','lobby');
+  if(role===null)return;
+  const result=await window.forgeAPI.addPlace(activeProject.path,role,studio.place.placeId);
+  if(result.error)showToast(result.error,'error');else {showToast('Place liée');refreshPlaces();}
+}
+document.getElementById('placesPanel').addEventListener('toggle',event=>{if(event.target.open)refreshPlaces();});
+setInterval(()=>{if(document.getElementById('placesPanel').open)refreshPlaces();},3000);
 let workspaceStarted=false,agentStateReady=false,stateProjectPath=null,stateProjectKey=null;
+async function focusMainAgent(){
+  if(latestProjectHealth?.action==='link'){runProjectHealthAction();return;}
+  let agent=agents.find(item=>!item._closed&&item.sessionId)||agents.find(item=>!item._closed);
+  if(!agent){await createAgent('codex');agent=agents.find(item=>!item._closed&&item.agentType==='codex');}
+  if(agent&&!agent.sessionId)await startPendingAgents([agent.id]);
+  agent?.composer?.input?.focus();
+}
 const earlyPtyData=new Map();
 const earlyPtyExit=new Map();
 const agentGrid=document.getElementById('agentGrid'),emptyGrid=document.getElementById('emptyGrid'),agentCount=document.getElementById('agentCount'),startAgentsBtn=document.getElementById('startAgentsBtn');
@@ -729,7 +819,7 @@ function scheduleDraftSave(){clearTimeout(draftSaveTimer);draftSaveTimer=setTime
 window.addEventListener('pagehide',function(){clearTimeout(draftSaveTimer);saveAgentState(true);});
 function saveAgentState(onClose){
   if(!agentStateReady||!stateProjectPath||!window.forgeAPI||!window.forgeAPI.saveAgentState)return;
-  const state=agents.filter(function(a){return !a._closed&&a.element&&a.element.isConnected;}).map(function(a){return{id:a.id,name:a.name,agentType:a.agentType,sessionId:a.sessionId,draft:a.draft||''};});
+  const state=agents.filter(function(a){return !a._closed&&a.element&&a.element.isConnected;}).map(function(a){return{id:a.id,name:a.name,agentType:a.agentType,sessionId:a.sessionId,draft:a.draft||'',placeId:a.placeId||null};});
   const payload={agents:state,agentCounter:JSON.parse(JSON.stringify(agentCounter))};
   try{
     const result=onClose===true&&window.forgeAPI.saveAgentStateOnClose
@@ -740,19 +830,39 @@ function saveAgentState(onClose){
 }
 
 async function loadProject(){
-  if(!window.forgeAPI||!window.forgeAPI.getActiveProject) return;
+  const gate=document.getElementById('projectLoadGate');
+  const fail=message=>{gate.innerHTML='';const box=document.createElement('div');const heading=document.createElement('h1');heading.textContent='Impossible de charger le projet';const detail=document.createElement('p');detail.textContent=message;const back=document.createElement('a');back.href='projects.html';back.textContent='Retour aux projets';box.append(heading,detail,back);gate.append(box);};
+  if(!window.forgeAPI?.getActiveProject){fail('Le service Forge est indisponible. Redémarre l’application.');return false;}
   try{
     const res=await window.forgeAPI.getActiveProject();
+    if(res?.error)throw new Error(res.error);
     if(res.project){
       activeProject=res.project;
+      await refreshPlaces();
       document.getElementById('projectPillText').textContent=res.project.name;
       document.getElementById('projectPill').title=res.project.path;
-      refreshStudioTarget();
-      if(document.getElementById('assetsSidebar').classList.contains('open')) refreshSidebar();
+      await refreshProjectHealth(true);
+      if(document.getElementById('assetsSidebar').classList.contains('open')) await refreshSidebar();
+      gate.hidden=true;document.body.classList.remove('project-loading');
+      return true;
     }else{
       window.location.replace('projects.html?choose=1');
+      return false;
     }
-  }catch(e){console.error('loadProject',e);}
+  }catch(e){console.error('loadProject',e);activeProject=null;fail(e.message||String(e));return false;}
+}
+
+// The main process owns the persisted active-project selection. Renderer state can
+// briefly be empty during startup, so consumers that may be opened independently
+// (notably the Asset Toolbox) must be able to restore it from that source of truth.
+async function resolveWorkspaceActiveProject(){
+  if(activeProject?.path)return activeProject;
+  if(!window.forgeAPI?.getActiveProject)return null;
+  const res=await window.forgeAPI.getActiveProject();
+  if(res?.error)throw new Error(res.error);
+  if(!res?.project?.path)return null;
+  activeProject=res.project;
+  return activeProject;
 }
 
 async function restoreAgents(){
@@ -771,6 +881,7 @@ async function restoreAgents(){
       if(!meta)continue;
       const a={id:saved.id||genId(),name:saved.name||meta.label,agentType:saved.agentType,sessionId:saved.sessionId,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false,_fontSize:12,_fullscreen:false,_firstInput:true};
       a.draft=typeof saved.draft==='string'?saved.draft:'';
+      a.placeId=saved.placeId||activeProject.linkedStudio?.placeId||null;
       agents.push(a);
       try{
         if(!await mountAgentPanel(a))continue;
@@ -797,15 +908,85 @@ async function restoreAgents(){
   }catch(e){console.error('restoreAgents',e);showToast('Impossible de restaurer les agents : '+e.message);}
 }
 
-loadProject().then(async function(){
+loadProject().then(async function(loaded){
+  if(!loaded)return;
   await restoreAgents();
   if(!agentStateReady||!activeProject)return;
+  if(startNewProjectSetup())return;
   await openStartupAgents();
   if(location.hash==='#memory')openQualityMemory();
   if(location.hash==='#handoff')openSessionHandoff();
   if(location.hash==='#history')openCheckpoints();
   if(location.hash==='#files'&&!sidebarOpen)toggleSidebar();
 });
+
+function startNewProjectSetup(){
+  let marker;
+  try{marker=JSON.parse(localStorage.getItem('forge-new-project-setup')||'null');}catch(_){return false;}
+  if(!marker||marker.path.replace(/\\/g,'/').toLowerCase()!==activeProject.path.replace(/\\/g,'/').toLowerCase())return false;
+  if(activeProject.templateSetup?.status==='ready'||activeProject.templateSetup?.firstSync?.status==='confirmed'){localStorage.removeItem('forge-new-project-setup');return false;}
+  runNewProjectSetup().catch(error=>console.error('new project setup',error));
+  return true;
+}
+
+async function runNewProjectSetup(){
+  const layer=document.createElement('div');layer.style.cssText='position:fixed;inset:0;z-index:9000;background:rgba(12,10,8,.78);display:flex;align-items:center;justify-content:center;padding:20px';
+  const card=document.createElement('section');card.style.cssText='width:min(440px,100%);padding:24px;border:1px solid var(--border-light);border-radius:14px;background:var(--char2);color:var(--bone);box-shadow:0 20px 50px #0009';
+  const heading=document.createElement('h2');heading.textContent='Connexion à Roblox Studio';
+  const message=document.createElement('p');message.setAttribute('role','status');
+  const actions=document.createElement('div');actions.style.cssText='display:flex;gap:8px';
+  const details=document.createElement('details');details.hidden=true;const summary=document.createElement('summary');summary.textContent='Voir les détails';const detailText=document.createElement('pre');detailText.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';details.append(summary,detailText);
+  card.append(heading,message,actions,details);layer.append(card);document.body.append(layer);
+  const stage=value=>{heading.textContent=value;message.textContent='';actions.replaceChildren();details.hidden=true;};
+  const error=(value,plain)=>{message.textContent=plain||'Forge a rencontré un problème. Réessaie après avoir vérifié Studio.';details.hidden=false;detailText.textContent=String(value||'Erreur inconnue');};
+  const pause=()=>new Promise(resolve=>setTimeout(resolve,2000));
+  let approvedPlaceId=null,declinedPlaceId=null;
+  const confirmPlace=place=>new Promise(resolve=>{
+    const id=String(place.placeId);
+    if(declinedPlaceId===id){resolve(false);return;}
+    message.textContent='Connecter ce projet à '+String(place.placeName||'Place '+id)+' ?';
+    const yes=document.createElement('button');yes.type='button';yes.textContent='Connecter';
+    const no=document.createElement('button');no.type='button';no.textContent='Pas maintenant';
+    actions.replaceChildren(yes,no);
+    yes.onclick=()=>{approvedPlaceId=id;actions.replaceChildren();resolve(true);};
+    no.onclick=()=>{declinedPlaceId=id;actions.replaceChildren();localStorage.removeItem('forge-new-project-setup');layer.remove();resolve(false);};
+  });
+  while(layer.isConnected){
+    let result;
+    try{result=await ForgeNewProjectConnection.connectNewProject({
+      projectPath:activeProject.path,approvedPlaceId,linkedPlaceId:activeProject.linkedStudio?.placeId||null,
+      getPlace:()=>window.forgeAPI.getStudioPlaceInfo(),confirmPlace,
+      link:async(projectPath,expectedPlaceId)=>{const linked=await window.forgeAPI.linkProjectStudio(projectPath,{expectedPlaceId});if(linked.success)activeProject.linkedStudio=linked.project.linkedStudio;return linked;},
+      sync:projectPath=>window.forgeAPI.startFileSync(projectPath),stage,
+    });}catch(setupError){error(setupError.message||String(setupError));await pause();continue;}
+    if(result.status==='ready'){
+      heading.textContent='Synchronisation';message.textContent='';
+      let agent=agents.find(a=>!a._closed&&a.agentType==='codex')||agents.find(a=>!a._closed);
+      if(!agent){await createAgent('codex');agent=agents.find(a=>!a._closed&&a.agentType==='codex');}
+      if(agent&&!agent.sessionId)await startPendingAgents([agent.id]);
+      const finishAgentSetup=()=>{
+        heading.textContent='Projet prêt';
+        showToast('Projet prêt');
+        const welcome='Ton projet est prêt. Décris-moi le jeu Roblox que tu veux créer. Je vais commencer par préparer une première version simple et jouable.';
+        if(!agent.element.querySelector('.forge-new-project-welcome')){const banner=document.createElement('p');banner.className='forge-new-project-welcome';banner.textContent=welcome;banner.style.cssText='margin:0 0 10px;color:var(--bone);line-height:1.5';agent.element.querySelector('.agent-composer')?.prepend(banner);}
+        agent.composer?.input?.focus();
+        localStorage.removeItem('forge-new-project-setup');layer.remove();
+      };
+      if(agent?.sessionId){
+        finishAgentSetup();
+        return;
+      }
+      error('L’agent n’a pas démarré. Vérifie sa connexion, puis réessaie.');
+      const retry=document.createElement('button');retry.textContent='Réessayer';retry.onclick=async()=>{retry.disabled=true;await startPendingAgents(agent?[agent.id]:undefined);if(agent?.sessionId)finishAgentSetup();else retry.disabled=false;};actions.append(retry);
+      return;
+    }
+    if(result.status==='waiting-studio')message.textContent=result.message;
+    else if(result.status==='wrong-place'){heading.textContent='Ouvre la bonne place';error(result.error,'La place ouverte dans Roblox Studio ne correspond pas à ce projet. Ouvre la bonne place pour continuer.');}
+    else if(result.status==='waiting-sync'){heading.textContent='Synchronisation';message.textContent='Forge prépare ton jeu dans Studio…';if(result.error)error(result.error,'Forge attend la confirmation de Studio.');}
+    else if(result.status==='error'){heading.textContent=result.stage==='validation'?'Vérification du code':'Synchronisation';error(result.error,result.stage==='validation'?'Forge a trouvé une erreur dans le code du jeu.':'Forge n’a pas pu terminer la synchronisation.');}
+    await pause();
+  }
+}
 
 async function openStartupAgents(){
   const key='forge-startup-applied:'+stateProjectKey;
@@ -815,7 +996,7 @@ async function openStartupAgents(){
   const additions=ForgeAgentStartup.plan(forgePreferences(),agents);
   let failedPanels=0;
   for(const type of additions){
-    const a={id:genId(),name:AGENT_META[type].label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};
+    const a={id:genId(),name:AGENT_META[type].label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false,placeId:activeProject?.linkedStudio?.placeId||null};
     agents.push(a);
     try{await mountAgentPanel(a);}catch(error){failedPanels++;console.error('startup agent panel',type,error);}
   }
@@ -883,7 +1064,7 @@ async function createAgentPanel(type){
   const meta=AGENT_META[type];
   if(!meta){showToast('Agent non pris en charge.');return;}
   try{var s=JSON.parse(localStorage.getItem('forge_settings')||'{}');var max=s.maxAgents||3;if(agents.length>=max){showToast('Limite atteinte ('+max+' agents max)','warning');return;}}catch(e){}
-  const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false};
+  const a={id:genId(),name:meta.label+' #'+agentCounter[type]++,agentType:type,sessionId:null,xterm:null,fitAddon:null,element:null,resizeObserver:null,starting:false,_launchToken:null,_closed:false,placeId:activeProject?.linkedStudio?.placeId||null};
   agents.push(a);await yieldToRenderer();
   if(a._closed)return;
   if(!await mountAgentPanel(a))return;
@@ -1037,9 +1218,13 @@ async function openCheckpoints(){
   await refreshCheckpoints();
 }
 
+let versionKind='code';
+function setVersionKind(kind){versionKind=kind;document.getElementById('versionDetail').textContent='Choisis un point pour voir ce qui sera restauré.';refreshCheckpoints();}
+
 function closeCheckpoints(event){if(event&&event.target!==document.getElementById('checkpointOverlay'))return;document.getElementById('checkpointOverlay').classList.add('hidden');}
 
 let qualityLabPollTimer=null;
+const qualityLabRequestGuard=ForgeQualityLabState.createGenerationGuard();
 function openQualityLab(report){
   if(!activeProject){showToast(t('start_requires_project'));return;}
   document.getElementById('qualityLabOverlay').classList.remove('hidden');
@@ -1061,10 +1246,10 @@ function addQualityMetric(parent,label,value){
   const span=document.createElement('span');span.textContent=label;metric.append(strong,span);parent.appendChild(metric);
 }
 
-function addQualityItems(parent,items,formatter){
+function addQualityItems(parent,items,formatter,emptyMessage){
   const list=document.createElement('div');list.className='quality-lab-list';
   (items||[]).forEach(function(item){const row=document.createElement('div');row.className='quality-lab-item'+((item?.messageType==='MessageError'||item?.level==='error')?' error':'');row.textContent=formatter(item);list.appendChild(row);});
-  if(!list.childElementCount){const empty=document.createElement('div');empty.className='quality-lab-empty';empty.textContent=t('quality_lab_no_issue');list.appendChild(empty);}parent.appendChild(list);
+  if(!list.childElementCount){const empty=document.createElement('div');empty.className='quality-lab-empty';empty.textContent=emptyMessage||t('quality_lab_no_issue');list.appendChild(empty);}parent.appendChild(list);
 }
 
 function renderQualityLabReport(title,data,kind){
@@ -1073,10 +1258,17 @@ function renderQualityLabReport(title,data,kind){
   const metrics=document.createElement('div');metrics.className='quality-lab-metrics';report.appendChild(metrics);
   if(kind==='gui'){
     const summary=data.summary||data;addQualityMetric(metrics,t('quality_lab_inspected'),summary.inspected ?? summary.totalDevices);addQualityMetric(metrics,t('quality_lab_issues'),summary.issueCount ?? summary.totalIssues ?? 0);addQualityMetric(metrics,t('quality_lab_incomplete'),summary.incomplete?'Oui':'Non');
-    const issues=data.crossDeviceIssues||data.issues||[];addQualityItems(report,issues,function(item){return [item.severity,item.kind,item.path,item.devices?.join(', '),item.other].filter(Boolean).join(' · ');});
+    const issues=data.crossDeviceIssues||data.issues||[];const outcome=ForgeQualityLabState.guiAuditOutcome(data);addQualityItems(report,issues,function(item){return [item.severity,item.kind,item.path,item.devices?.join(', '),item.other].filter(Boolean).join(' · ');},outcome==='empty'?t('quality_lab_gui_empty'):t('quality_lab_no_issue'));
   }else if(kind==='playtest'){
-    addQualityMetric(metrics,t('quality_lab_running'),data.isRunning?t('quality_lab_yes'):t('quality_lab_no'));addQualityMetric(metrics,t('quality_lab_logs'),data.outputCount ?? data.output?.length ?? 0);addQualityMetric(metrics,t('quality_lab_result'),data.testError?t('error'):(data.testResult||'—'));
-    addQualityItems(report,data.output||[],function(item){return '['+(item.messageType||'Output')+'] '+(item.message||String(item));});
+    const raw=String(data.testResult||'').toUpperCase();
+    const verdict=data.isRunning?'EN COURS':data.testError?'ERREUR DU TEST':raw==='FAIL'?'ASSERTION ÉCHOUÉE':raw==='PASS'?'RÉUSSI':(data.outputCount||data.output?.length)?'TERMINÉ SANS ASSERTION':'TEST NON EXÉCUTÉ';
+    const meaning={'EN COURS':'Studio exécute le test','ERREUR DU TEST':'Studio a signalé une erreur pendant le test','ASSERTION ÉCHOUÉE':'Une assertion du scénario a échoué','RÉUSSI':'Le test a confirmé la réussite','TERMINÉ SANS ASSERTION':'Logs reçus, aucun verdict explicite','TEST NON EXÉCUTÉ':'Aucun résultat ni log reçu'};
+    addQualityMetric(metrics,t('quality_lab_running'),data.isRunning?t('quality_lab_yes'):t('quality_lab_no'));addQualityMetric(metrics,t('quality_lab_result'),verdict+' · '+meaning[verdict]);
+    const output=data.output||[];
+    const evidence=output.filter(item=>item.messageType==='MessageError'||item.level==='error').slice(0,3);
+    if(evidence.length)addQualityItems(report,evidence,item=>item.message||String(item));
+    const logs=document.createElement('details');logs.className='quality-lab-logs';const logsTitle=document.createElement('summary');logsTitle.textContent='Voir tous les logs ('+(data.outputCount??output.length)+')';logs.appendChild(logsTitle);
+    addQualityItems(logs,output,function(item){return '['+(item.messageType||'Output')+'] '+(item.message||String(item));});report.appendChild(logs);
     if(data.testError){const error=document.createElement('div');error.className='quality-lab-item error';error.textContent=data.testError;report.appendChild(error);}
   }else{
     const errors=data.errors||data.issues?.filter(function(item){return item.level==='error';})||[];const warnings=data.warnings||data.issues?.filter(function(item){return item.level!=='error';})||[];
@@ -1088,26 +1280,26 @@ function renderQualityLabReport(title,data,kind){
 
 async function runQualityGuiAudit(multiDevice){
   if(!activeProject||!window.forgeAPI?.qualityLabGui){showToast(t('start_requires_project'));return;}openQualityLab();setQualityLabBusy(true,t('quality_lab_working'));
-  try{const result=await window.forgeAPI.qualityLabGui(activeProject.path,!!multiDevice);if(result?.error)throw new Error(result.error);renderQualityLabReport(multiDevice?t('quality_lab_gui_devices'):t('quality_lab_gui_current'),result.data,'gui');setQualityLabBusy(false,t('quality_lab_done'));}
+  try{const result=await window.forgeAPI.qualityLabGui(activeProject.path,!!multiDevice);if(result?.error)throw new Error(result.error);renderQualityLabReport(multiDevice?t('quality_lab_gui_devices'):t('quality_lab_gui_current'),result.data,'gui');const outcome=ForgeQualityLabState.guiAuditOutcome(result.data);setQualityLabBusy(false,outcome==='clean'?t('quality_lab_gui_clean'):outcome==='empty'?t('quality_lab_gui_empty'):t('quality_lab_done'));}
   catch(error){setQualityLabBusy(false,error.message||String(error),true);}
 }
 
 async function startQualityPlaytest(mode){
-  if(!activeProject||!window.forgeAPI?.qualityLabPlaytestStart){showToast(t('start_requires_project'));return;}const players=document.getElementById('qualityLabPlayers').value;setQualityLabBusy(true,t('quality_lab_starting'));
-  try{const result=await window.forgeAPI.qualityLabPlaytestStart(activeProject.path,mode,players);if(result?.error)throw new Error(result.error);setQualityLabBusy(false,result.data?.message||t('quality_lab_started'));await refreshQualityPlaytest();clearInterval(qualityLabPollTimer);qualityLabPollTimer=setInterval(refreshQualityPlaytest,2000);}
-  catch(error){setQualityLabBusy(false,error.message||String(error),true);}
+  if(!activeProject||!window.forgeAPI?.qualityLabPlaytestStart){showToast(t('start_requires_project'));return;}const players=document.getElementById('qualityLabPlayers').value;const generation=qualityLabRequestGuard.begin();setQualityLabBusy(true,t('quality_lab_starting'));
+  try{const result=await window.forgeAPI.qualityLabPlaytestStart(activeProject.path,mode,players);if(!qualityLabRequestGuard.isCurrent(generation))return;if(result?.error)throw new Error(result.error);setQualityLabBusy(false,result.data?.message||t('quality_lab_started'));await refreshQualityPlaytest(generation);if(!qualityLabRequestGuard.isCurrent(generation))return;clearInterval(qualityLabPollTimer);qualityLabPollTimer=setInterval(function(){refreshQualityPlaytest(generation);},2000);}
+  catch(error){if(!qualityLabRequestGuard.isCurrent(generation))return;setQualityLabBusy(false,error.message||String(error),true);}
 }
 
-async function refreshQualityPlaytest(){
+async function refreshQualityPlaytest(generation=qualityLabRequestGuard.current()){
   if(!activeProject||!window.forgeAPI?.qualityLabPlaytestOutput)return;
-  try{const result=await window.forgeAPI.qualityLabPlaytestOutput(activeProject.path);if(result?.error)throw new Error(result.error);renderQualityLabReport(t('quality_lab_playtest_report'),result.data,'playtest');setQualityLabBusy(false,result.data?.isRunning?t('quality_lab_running_now'):t('quality_lab_finished'));if(!result.data?.isRunning){clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;}}
-  catch(error){setQualityLabBusy(false,error.message||String(error),true);clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;}
+  try{const result=await window.forgeAPI.qualityLabPlaytestOutput(activeProject.path);if(!qualityLabRequestGuard.isCurrent(generation))return;if(result?.error)throw new Error(result.error);renderQualityLabReport(t('quality_lab_playtest_report'),result.data,'playtest');setQualityLabBusy(false,result.data?.isRunning?t('quality_lab_running_now'):t('quality_lab_finished'));if(!result.data?.isRunning){clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;}}
+  catch(error){if(!qualityLabRequestGuard.isCurrent(generation))return;setQualityLabBusy(false,error.message||String(error),true);clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;}
 }
 
 async function stopQualityPlaytest(){
-  if(!activeProject||!window.forgeAPI?.qualityLabPlaytestStop)return;setQualityLabBusy(true,t('quality_lab_stopping'));
-  try{const result=await window.forgeAPI.qualityLabPlaytestStop(activeProject.path);if(result?.error)throw new Error(result.error);clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;renderQualityLabReport(t('quality_lab_playtest_report'),result.data,'playtest');setQualityLabBusy(false,t('quality_lab_finished'));}
-  catch(error){setQualityLabBusy(false,error.message||String(error),true);}
+  if(!activeProject||!window.forgeAPI?.qualityLabPlaytestStop)return;const generation=qualityLabRequestGuard.begin();clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;setQualityLabBusy(true,t('quality_lab_stopping'));
+  try{const result=await window.forgeAPI.qualityLabPlaytestStop(activeProject.path);if(!qualityLabRequestGuard.isCurrent(generation))return;if(result?.error)throw new Error(result.error);renderQualityLabReport(t('quality_lab_playtest_report'),result.data,'playtest');setQualityLabBusy(false,t('quality_lab_finished'));}
+  catch(error){if(!qualityLabRequestGuard.isCurrent(generation))return;setQualityLabBusy(false,error.message||String(error),true);}
 }
 
 async function refreshCheckpoints(){
@@ -1115,31 +1307,48 @@ async function refreshCheckpoints(){
   const result=await window.forgeAPI.listCheckpoints(activeProject.path);
   list.textContent='';
   if(result?.error){list.textContent=result.error;return;}
-  const checkpoints=result?.checkpoints||[];
+  const checkpoints=(result?.checkpoints||[]).filter(item=>(item.kind||'archive')===versionKind).reverse();
   if(!checkpoints.length){list.textContent=t('checkpoint_empty');return;}
   checkpoints.forEach(function(item){
     const row=document.createElement('div');row.className='checkpoint-row';
     const info=document.createElement('div');info.className='checkpoint-info';
     const label=document.createElement('div');label.className='checkpoint-label';label.textContent=item.label;
-    const meta=document.createElement('div');meta.className='checkpoint-meta';meta.textContent=checkpointDate(item.createdAt)+' · '+item.files+' fichiers · '+checkpointSize(item.bytes);
+    const meta=document.createElement('div');meta.className='checkpoint-meta';meta.textContent=checkpointDate(item.createdAt)+' · '+(item.agent||'Utilisateur')+' · '+item.files+' fichiers';
     info.append(label,meta);
     const actions=document.createElement('div');actions.className='checkpoint-actions';
-    const restore=document.createElement('button');restore.textContent=t('checkpoint_restore');restore.onclick=function(){restoreCheckpoint(item);};
+    const restore=document.createElement('button');restore.textContent='Voir';restore.onclick=function(){showVersion(item);};
     const remove=document.createElement('button');remove.textContent=t('checkpoint_delete');remove.onclick=function(){removeCheckpoint(item);};
     actions.append(restore,remove);row.append(info,actions);list.appendChild(row);
   });
 }
 
+async function showVersion(item){
+  const detail=document.getElementById('versionDetail');detail.textContent='Chargement…';
+  const response=await window.forgeAPI.planCheckpointRestore(activeProject.path,item.id);
+  if(response?.error){detail.textContent=response.error;return;}
+  const plan=response.plan;detail.replaceChildren();
+  const title=document.createElement('h3');title.textContent=item.label;
+  const description=document.createElement('p');description.textContent=[checkpointDate(item.createdAt),item.agent||'Utilisateur',item.objective||''].filter(Boolean).join(' · ');
+  const files=document.createElement('p');files.textContent='Fichiers concernés : '+(item.affectedFiles||item.entries.map(entry=>entry.path)).join(', ');
+  const summary=document.createElement('p');summary.textContent=`À restaurer : ${plan.restored.length} · Conservés : ${plan.kept.length} · Supprimés : 0 par défaut`;
+  const assurance=document.createElement('p');assurance.textContent='Forge sauvegardera d’abord l’état actuel. Tu pourras revenir à cet état après la restauration.';detail.append(title,description,files,summary,assurance);
+  const technical=document.createElement('details');const technicalTitle=document.createElement('summary');technicalTitle.textContent='Voir les détails techniques';technical.appendChild(technicalTitle);const technicalText=document.createElement('p');technicalText.textContent=[item.placeId?'PlaceId '+item.placeId:'',item.lastValidBuildId?'Version Studio '+item.lastValidBuildId:''].filter(Boolean).join(' · ')||'Aucun identifiant supplémentaire.';technical.appendChild(technicalText);detail.appendChild(technical);
+  const choices=[];
+  if(plan.deletable.length){const heading=document.createElement('p');heading.textContent='Fichiers plus récents : conservés par défaut. Cochez uniquement ceux à supprimer :';detail.appendChild(heading);for(const rel of plan.deletable){const label=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.value=rel;choices.push(check);label.append(check,document.createTextNode(' Supprimer '+rel));detail.appendChild(label);}}
+  for(const diff of plan.diffs){const heading=document.createElement('p');heading.textContent=diff.path;const pre=document.createElement('pre');pre.textContent='Actuel :\n'+(diff.before===null?'(absent ou non affichable)':diff.before)+'\nVersion :\n'+(diff.after===null?'(non affichable)':diff.after);technical.append(heading,pre);}
+  const button=document.createElement('button');button.className='btn-top primary';button.textContent='Restaurer cette version';button.onclick=async()=>{const removed=choices.filter(check=>check.checked).map(check=>check.value);const message=`Restaurer ${plan.restored.length} fichier(s), conserver ${plan.kept.length-removed.length} fichier(s) récent(s), supprimer ${removed.length} fichier(s) ?\nUne sauvegarde complète de l’état actuel sera créée pour annuler.`;if(!confirm(message))return;await restoreCheckpoint(item,removed,true);};detail.appendChild(button);
+}
+
 async function createManualCheckpoint(){
   const label=prompt(t('checkpoint_create'),t('checkpoint_before_agents'));if(label===null)return;
   const button=document.getElementById('createCheckpointBtn');button.disabled=true;
-  try{const result=await window.forgeAPI.createCheckpoint(activeProject.path,label,'manual');if(result?.error)throw new Error(result.error);showToast(t('checkpoint_created'));await refreshCheckpoints();}
+  try{const result=await window.forgeAPI.createCheckpoint(activeProject.path,label,'manual',versionKind);if(result?.error)throw new Error(result.error);showToast(t('checkpoint_created'));await refreshCheckpoints();}
   catch(error){showToast(error.message||String(error));}finally{button.disabled=false;}
 }
 
-async function restoreCheckpoint(item){
-  if(!confirm('Restaurer « '+item.label+' » ? Forge créera d’abord une sauvegarde de l’état actuel.'))return;
-  const result=await window.forgeAPI.restoreCheckpoint(activeProject.path,item.id);
+async function restoreCheckpoint(item,deletePaths=[],confirmed=false){
+  if(!confirmed){await showVersion(item);return;}
+  const result=await window.forgeAPI.restoreCheckpoint(activeProject.path,item.id,deletePaths);
   if(result?.error){showToast(result.error);return;}
   showToast(t('checkpoint_restored'));await refreshCheckpoints();if(document.getElementById('assetsSidebar').classList.contains('open'))refreshSidebar();
 }
@@ -1278,7 +1487,7 @@ async function initPty(agent){
     agent.element.classList.add('starting');
     if(agent.xterm){agent.xterm.clear();agent.xterm.reset();}
     let requestExpired=false;
-    const createRequest=Promise.resolve(window.forgeAPI.ptyCreate(agent.agentType,activeProject.path,agent.xterm.cols,agent.xterm.rows,agent.id,agent.name,{claudePromptSuggestions:forgePreferences().claudePromptSuggestions===true})).then(function(result){
+    const createRequest=Promise.resolve(window.forgeAPI.ptyCreate(agent.agentType,activeProject.path,agent.xterm.cols,agent.xterm.rows,agent.id,agent.name,{claudePromptSuggestions:forgePreferences().claudePromptSuggestions===true,placeId:agent.placeId})).then(function(result){
       if(requestExpired&&result&&result.sessionId&&window.forgeAPI.ptyKill)window.forgeAPI.ptyKill(result.sessionId);
       return result;
     });
@@ -1453,53 +1662,67 @@ async function validateAgentResult(agent,item){
 agentActivityTimer=setInterval(refreshAgentActivity,1800);
 window.addEventListener('pagehide',function(){if(agentActivityTimer)clearInterval(agentActivityTimer);});
 
-let fileSyncStatusTimer=null;
-let lastFileSyncStatus=null,studioTargetState=null,studioTargetBusy=false,studioTargetTimer=null;
-function linkedPlaceLabel(link){
-  if(!link)return '';
-  if(typeof link==='string')return 'Place '+link;
-  return link.placeName||('Place '+(link.placeId||''));
+let projectHealthTimer=null,projectHealthBusy=false,latestProjectHealth=null;
+function healthText(id,value){document.getElementById(id).textContent=value??'—';}
+function renderProjectHealth(state){
+  if(!state)return;
+  latestProjectHealth=state;
+  const panel=document.getElementById('projectHealth');panel.className='project-health '+state.state;
+  const summaries={preparing:'Préparation du projet',compiling:'Vérification du code','compile-error':'Une erreur doit être corrigée','waiting-studio':'Connexion à Studio nécessaire','wrong-place':'Ouvre la bonne place dans Studio',syncing:'Synchronisation en cours',synced:'Projet prêt',paused:state.expectedPlaceId?'Synchronisation en pause':'Connexion à Studio nécessaire',error:'Une erreur doit être corrigée'};
+  const summary=summaries[state.state]||state.label;
+  healthText('healthSummaryText',summary);
+  healthText('healthSummaryCount',state.pendingCount?'· '+state.pendingCount+' en attente':'');
+  healthText('healthTitle',summary);
+  healthText('healthExplanation',state.explanation);
+  healthText('healthLanguage',state.language);
+  healthText('healthSource',state.sourceDirectory);
+  healthText('healthPlace',state.placeName||'Aucune place liée');
+  healthText('healthExperience',state.experienceId?'ID '+state.experienceId:'Non renseignée');
+  healthText('healthPlaceId',state.expectedPlaceId);
+  healthText('healthStudio',state.studioLabel);
+  healthText('healthCompile',state.validationLabel);
+  healthText('healthPending',String(state.pendingCount));
+  document.getElementById('healthPending').title=(state.pendingFiles||[]).join('\n');
+  healthText('healthLastSync',state.lastSyncedAt?new Date(state.lastSyncedAt).toLocaleString('fr-FR'):'Jamais');
+  healthText('healthBuilds',(state.candidateBuildId?.slice(0,8)||'—')+' / '+(state.lastValidBuildId?.slice(0,8)||'—'));
+  healthText('healthError',(state.errorFile?state.errorFile+' — ':'')+(state.error||'Aucune'));
+  const action=document.getElementById('healthAction');
+  const names={retry:'Réessayer',report:'Voir l’erreur',reconnect:'Vérifier Studio',link:'Connecter à Studio'};
+  action.hidden=!state.action;action.textContent=names[state.action]||'';
+  const report=document.getElementById('healthReport');report.textContent=state.error||state.explanation;if(state.action!=='report')report.hidden=true;
+  const step=document.getElementById('projectNextStep');
+  step.hidden=!state.action;
+  document.getElementById('projectNextStepText').textContent=summary+'. '+(state.state==='compile-error'?'Forge a trouvé un problème dans le code du jeu. Ouvre l’erreur pour savoir quoi corriger.':state.state==='wrong-place'?'Ouvre la place liée à ce projet avant de continuer.':state.state==='waiting-studio'?'Ouvre Roblox Studio et la place de ton jeu. Forge les détectera automatiquement.':state.explanation||'');
+  document.getElementById('projectNextStepAction').textContent=names[state.action]||'Voir le projet';
+  const needsLink=state.action==='link';
+  document.getElementById('projectNextStepAction').hidden=needsLink&&(typeof agents==='undefined'||agents.every(item=>item._closed||!item.element?.isConnected));
+  healthText('emptyGridTitle',needsLink?'Connecte ton jeu à Roblox Studio':'Décris ton jeu à Forge');
+  healthText('emptyGridDescription',needsLink?'Ouvre la place de ton jeu dans Studio. Forge la détectera et te demandera de confirmer la liaison.':'Forge t’aidera à créer une première version simple et jouable.');
+  healthText('emptyGridAction',needsLink?'Connecter à Studio':'Commencer avec l’agent');
 }
-function renderStudioTarget(){
-  const pill=document.getElementById('studioTargetPill'),label=document.getElementById('studioTargetText');
-  if(!pill||!label||!activeProject)return;
-  const state=studioTargetState||{},project=state.project||activeProject,link=project.linkedStudio;
-  const syncPhase=lastFileSyncStatus?.phase||'stopped';
-  if(!link){
-    pill.className='studio-target-pill local';label.textContent=t('studio_target_unlinked');
-    pill.title=t('studio_target_project').replace('{project}',project.name)+'\n'+t('studio_target_unlinked')+'\n'+t('studio_target_sync').replace('{sync}',t('sync_local'));return;
-  }
-  const place=linkedPlaceLabel(link),placeId=typeof link==='object'?link.placeId:link;
-  if(state.ready){pill.className='studio-target-pill ready';label.textContent=place+' · '+t('studio_target_connected');}
-  else if(state.code==='studio-unavailable'){pill.className='studio-target-pill warning';label.textContent=place+' · '+t('studio_target_offline');}
-  else{pill.className='studio-target-pill error';label.textContent=place+' · '+t('studio_target_check');}
-  const syncKey={local:'sync_local',paused:'sync_paused',stopped:'sync_stopped',scanning:'sync_scanning',compiling:'sync_compiling',syncing:'sync_syncing','waiting-studio':'sync_waiting_studio','compile-error':'sync_compile_error',synced:'sync_synced'}[syncPhase]||'sync_stopped';
-  pill.title=t('studio_target_project').replace('{project}',project.name)+'\n'+t('studio_target_linked').replace('{place}',place).replace('{id}',placeId||'—')+'\n'+(state.ready?t('studio_target_plugin_ready'):(state.error||state.message||t('studio_target_check')))+'\n'+t('studio_target_sync').replace('{sync}',t(syncKey));
-  pill.setAttribute('aria-label',pill.title.replace(/\n/g,'. '));
-}
-async function refreshStudioTarget(){
-  if(studioTargetBusy||!activeProject||!window.forgeAPI?.projectStudioStatus)return;
-  studioTargetBusy=true;
-  try{studioTargetState=await window.forgeAPI.projectStudioStatus(activeProject.path);renderStudioTarget();}
-  catch(error){studioTargetState={project:activeProject,ready:false,code:'studio-unavailable',error:error.message||String(error)};renderStudioTarget();}
-  finally{studioTargetBusy=false;}
-}
-async function refreshFileSyncStatus(){
-  const pill=document.getElementById('syncPill'),label=document.getElementById('syncPillText');
-  if(!pill||!label||!activeProject||!window.forgeAPI?.getFileSyncStatus)return;
+async function refreshProjectHealth(force=false){
+  if(projectHealthBusy||!activeProject||!window.forgeAPI?.getProjectHealth)return;
+  projectHealthBusy=true;
   try{
-    const status=await window.forgeAPI.getFileSyncStatus(activeProject.path);if(status?.error)return;lastFileSyncStatus=status;
-    const phase=status?.phase||'stopped';
-    const labels={local:'sync_local',paused:'sync_paused',stopped:'sync_stopped',scanning:'sync_scanning',compiling:'sync_compiling',syncing:'sync_syncing','waiting-studio':'sync_waiting_studio','compile-error':'sync_compile_error',synced:'sync_synced'};
-    pill.className='sync-pill '+phase;
-    label.textContent=t(labels[phase]||'sync_stopped')+(status.pending?' ('+status.pending+')':'');
-    pill.title=status.error||label.textContent;
-    renderStudioTarget();
-  }catch(error){pill.className='sync-pill waiting-studio';label.textContent=t('sync_waiting_studio');pill.title=error.message||String(error);}
+    const state=await window.forgeAPI.getProjectHealth(activeProject.path,force);
+    if(state?.error&&!state.state)throw new Error(state.error);
+    renderProjectHealth(state);
+  }catch(error){renderProjectHealth({state:'error',label:'Erreur',explanation:'Impossible de lire l’état du projet.',pendingCount:0,error:error.message||String(error),action:'retry'});}
+  finally{projectHealthBusy=false;}
 }
-fileSyncStatusTimer=setInterval(refreshFileSyncStatus,1200);refreshFileSyncStatus();
-studioTargetTimer=setInterval(refreshStudioTarget,6000);
-window.addEventListener('pagehide',function(){if(fileSyncStatusTimer)clearInterval(fileSyncStatusTimer);if(studioTargetTimer)clearInterval(studioTargetTimer);});
+async function runProjectHealthAction(){
+  const action=latestProjectHealth?.action;
+  if(action==='report'){document.getElementById('healthReport').hidden=false;return;}
+  if(action==='link'){window.location.href='project-settings.html';return;}
+  if(action==='reconnect'){window.location.href='roblox-studio.html';return;}
+  if(action==='retry'&&activeProject){
+    const result=await window.forgeAPI.retryProjectSync(activeProject.path);
+    if(result?.error)showToast(result.error,'error');
+    await refreshProjectHealth(true);
+  }
+}
+projectHealthTimer=setInterval(refreshProjectHealth,3000);
+window.addEventListener('pagehide',function(){if(projectHealthTimer)clearInterval(projectHealthTimer);});
 
 let mcpActivityTimer=null;
 function hideMcpBadge(agentId){var b=document.getElementById('mcp-badge-'+agentId);if(b){b.style.opacity='0';setTimeout(function(){b.style.display='none';},200);}}
@@ -1528,8 +1751,12 @@ if(window.forgeAPI&&window.forgeAPI.onMcpStudioActivity){
 // ══════════════════════════════════════════════
 let sidebarOpen=false, tbMainTab='mine', tbFilter='all', tbSearch='', collapsedDirs={};
 // Cache des fichiers chargés : { images:[], audios:[], models:[], src:tree }
-let tbCache = null;
+let tbCache = null, tbCacheProjectKey = null, toolboxLoadGeneration = 0;
 let toolboxRenderGeneration=0,toolboxPreviewObserver=null,toolboxPreviewQueue=[],toolboxPreviewActive=0;
+
+function workspaceProjectCacheKey(project){
+  return String(project?.path||'').replace(/\\/g,'/').replace(/\/+$/,'').toLowerCase();
+}
 
 function scheduleWhenIdle(task){
   if(typeof requestIdleCallback==='function')requestIdleCallback(task,{timeout:120});
@@ -1575,7 +1802,9 @@ function toggleSidebar(){
   if(sidebarOpen){
     requestAnimationFrame(function(){
       if(!sidebarOpen)return;
-      if(tbCache)renderToolbox();else refreshToolbox();
+      const projectKey=workspaceProjectCacheKey(activeProject);
+      if(tbCache&&tbCacheProjectKey===projectKey)renderToolbox();
+      else{tbCache=null;tbCacheProjectKey=null;refreshToolbox();}
     });
   }else{
     toolboxRenderGeneration++;
@@ -1591,6 +1820,7 @@ function switchMainTab(tab){
   document.getElementById('tbf-src').style.display = tab==='library' ? 'none' : '';
   if(tab==='library' && tbFilter==='src') { tbFilter='all'; syncFilterUI(); }
   tbCache=null; // force reload
+  tbCacheProjectKey=null;
   refreshToolbox();
 }
 
@@ -1610,26 +1840,36 @@ function syncFilterUI(){
 function onTbSearch(){ tbSearch=document.getElementById('tbSearch').value.toLowerCase(); renderToolbox(); }
 
 async function refreshToolbox(){
-  if(!activeProject){
+  const loadGeneration=++toolboxLoadGeneration;
+  let project;
+  try{project=await resolveWorkspaceActiveProject();}
+  catch(error){
+    tbGrid.innerHTML='<div class="tb-empty">'+t('toolbox_error')+(error.message||String(error))+'</div>';
+    return;
+  }
+  if(!project){
       tbGrid.innerHTML='<div class="tb-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.3"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg><span>'+t('no_active_project')+'</span></div>';
     return;
   }
+  const projectKey=workspaceProjectCacheKey(project);
+  if(tbCacheProjectKey&&tbCacheProjectKey!==projectKey){tbCache=null;tbCacheProjectKey=null;}
   if(!window.forgeAPI||!window.forgeAPI.listProjectFiles) return;
 
   document.getElementById('tbGrid').innerHTML='<div class="tb-empty" style="opacity:.5">'+t('toolbox_loading')+'</div>';
 
   try {
+    let nextCache;
     if(tbMainTab==='mine'){
       // Load all local folders in parallel (including thumbnails, icons & gui-icons for generated media)
       const [imgRes, audRes, modRes, srcRes, thumbRes, iconRes, guiIconRes, conversionRes] = await Promise.all([
-        window.forgeAPI.listProjectFiles(activeProject.path,'assets'),
-        window.forgeAPI.listProjectFiles(activeProject.path,'sounds'),
-        window.forgeAPI.listProjectFiles(activeProject.path,'models'),
-        window.forgeAPI.listProjectFiles(activeProject.path,'src'),
-        window.forgeAPI.listProjectFiles(activeProject.path,'thumbnails'),
-        window.forgeAPI.listProjectFiles(activeProject.path,'icons'),
-        window.forgeAPI.listProjectFiles(activeProject.path,'gui-icons'),
-        window.forgeAPI.listProjectFiles(activeProject.path,'conversions'),
+        window.forgeAPI.listProjectFiles(project.path,'assets'),
+        window.forgeAPI.listProjectFiles(project.path,'sounds'),
+        window.forgeAPI.listProjectFiles(project.path,'models'),
+        window.forgeAPI.listProjectFiles(project.path,'src'),
+        window.forgeAPI.listProjectFiles(project.path,'thumbnails'),
+        window.forgeAPI.listProjectFiles(project.path,'icons'),
+        window.forgeAPI.listProjectFiles(project.path,'gui-icons'),
+        window.forgeAPI.listProjectFiles(project.path,'conversions'),
       ]);
       const assetImages = (imgRes.files||[]).concat(flattenTree(imgRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
       const thumbImages = (thumbRes.files||[]).concat(flattenTree(thumbRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
@@ -1637,34 +1877,37 @@ async function refreshToolbox(){
       const guiIconImages = (guiIconRes.files||[]).concat(flattenTree(guiIconRes.tree||[])).filter(function(f){ return /\.(png|jpg|jpeg|gif|webp|bmp|ico|svg)$/i.test(f); });
       const converted = [...new Set((conversionRes.files || []).concat(flattenTree(conversionRes.tree || [])))];
       // Store images as objects with full path and source folder for correct path resolution
-      tbCache = {
-        images: assetImages.map(f => ({ name: f, fullPath: activeProject.path + '/assets/' + f, folder: 'assets' }))
-          .concat(thumbImages.map(f => ({ name: f, fullPath: activeProject.path + '/thumbnails/' + f, folder: 'thumbnails' })))
-          .concat(iconImages.map(f => ({ name: f, fullPath: activeProject.path + '/icons/' + f, folder: 'icons' })))
-          .concat(guiIconImages.map(f => ({ name: f, fullPath: activeProject.path + '/gui-icons/' + f, folder: 'gui-icons' })))
-          .concat(converted.filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f)).map(f => ({ name: f, fullPath: activeProject.path + '/conversions/' + f, folder: 'conversions' }))),
-        audios: (audRes.files||[]).filter(function(f){ return /\.(mp3|ogg|wav|flac|aac)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/sounds/' + f })),
-        models: (modRes.files||[]).filter(function(f){ return /\.(obj|fbx|gltf|glb|rbxm|rbxmx)$/i.test(f); }).map(f => ({ name: f, fullPath: activeProject.path + '/models/' + f }))
-          .concat(converted.filter(f => /\.(obj|fbx|gltf|glb)$/i.test(f)).map(f => ({ name: f, fullPath: activeProject.path + '/conversions/' + f }))),
+      nextCache = {
+        images: assetImages.map(f => ({ name: f, fullPath: project.path + '/assets/' + f, folder: 'assets' }))
+          .concat(thumbImages.map(f => ({ name: f, fullPath: project.path + '/thumbnails/' + f, folder: 'thumbnails' })))
+          .concat(iconImages.map(f => ({ name: f, fullPath: project.path + '/icons/' + f, folder: 'icons' })))
+          .concat(guiIconImages.map(f => ({ name: f, fullPath: project.path + '/gui-icons/' + f, folder: 'gui-icons' })))
+          .concat(converted.filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f)).map(f => ({ name: f, fullPath: project.path + '/conversions/' + f, folder: 'conversions' }))),
+        audios: (audRes.files||[]).filter(function(f){ return /\.(mp3|ogg|wav|flac|aac)$/i.test(f); }).map(f => ({ name: f, fullPath: project.path + '/sounds/' + f })),
+        models: (modRes.files||[]).filter(function(f){ return /\.(obj|fbx|gltf|glb|rbxm|rbxmx)$/i.test(f); }).map(f => ({ name: f, fullPath: project.path + '/models/' + f }))
+          .concat(converted.filter(f => /\.(obj|fbx|gltf|glb)$/i.test(f)).map(f => ({ name: f, fullPath: project.path + '/conversions/' + f }))),
         src: srcRes.tree||[],
         basePaths: {
-          image: activeProject.path+'/assets/',
-          audio: activeProject.path+'/sounds/',
-          model: activeProject.path+'/models/',
-          thumbnail: activeProject.path+'/thumbnails/',
-          icon: activeProject.path+'/icons/',
-          'gui-icon': activeProject.path+'/gui-icons/',
+          image: project.path+'/assets/',
+          audio: project.path+'/sounds/',
+          model: project.path+'/models/',
+          thumbnail: project.path+'/thumbnails/',
+          icon: project.path+'/icons/',
+          'gui-icon': project.path+'/gui-icons/',
         }
       };
     } else {
       // Library communautaire — chargée depuis Supabase
       const libRes = await window.forgeAPI.libraryList();
       if (libRes.error) {
-        tbCache = { images:[], audios:[], models:[], src:[], basePaths:{}, libraryItems:null, libraryError: libRes.error, librarySetupRequired: !!libRes.setupRequired };
+        nextCache = { images:[], audios:[], models:[], src:[], basePaths:{}, libraryItems:null, libraryError: libRes.error, librarySetupRequired: !!libRes.setupRequired };
       } else {
-        tbCache = { images:[], audios:[], models:[], src:[], basePaths:{}, libraryItems: libRes.items||[], libraryError:null, librarySetupRequired:false };
+        nextCache = { images:[], audios:[], models:[], src:[], basePaths:{}, libraryItems: libRes.items||[], libraryError:null, librarySetupRequired:false };
       }
     }
+    if(loadGeneration!==toolboxLoadGeneration||workspaceProjectCacheKey(activeProject)!==projectKey)return;
+    tbCache=nextCache;
+    tbCacheProjectKey=projectKey;
     renderToolbox();
   } catch(e){
     document.getElementById('tbGrid').innerHTML='<div class="tb-empty">'+t('toolbox_error')+e.message+'</div>';
@@ -2591,13 +2834,15 @@ async function acceptAsset(){
 async function rejectAsset(){
   if(!reviewNotif)return;
   if(reviewActionPending)return;
-  if(!confirm('Rejeter cet asset ? Le fichier sera supprimé définitivement.'))return;
+  if(!confirm('Refuser cet asset ? Le fichier local et ses révisions seront conservés.'))return;
   const n=reviewNotif;
   reviewActionPending = true;
   try {
-    if(!window.forgeAPI?.deleteFile) throw new Error('Suppression indisponible.');
-    const result = await window.forgeAPI.deleteFile(n.filePath);
-    if(!result?.success) throw new Error(result?.error || 'Impossible de supprimer cet asset.');
+    if(activeProject&&window.forgeAPI?.assetCatalogList){
+      const listed=await window.forgeAPI.assetCatalogList(activeProject.path);
+      const found=(listed.assets||[]).find(item=>activeProject.path.replace(/\\/g,'/').replace(/\/+$/,'')+'/'+item.localFile===n.filePath.replace(/\\/g,'/'));
+      if(found){const result=await window.forgeAPI.assetCatalogAction(activeProject.path,found.id,'reject');if(result?.error)throw new Error(result.error);}
+    }
     if(window.forgeAPI.deleteNotification) await window.forgeAPI.deleteNotification(n.id);
     notifications=notifications.filter(function(x){return x.id!==n.id;});
     renderNotifList();updateBadge();

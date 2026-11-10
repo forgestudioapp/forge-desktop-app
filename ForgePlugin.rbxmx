@@ -27,7 +27,9 @@ button.Click:Connect(function()
 	elements.screenGui.Enabled = not elements.screenGui.Enabled
 end)
 plugin.Unloading:Connect(function()
-	Communication.deactivateAll()
+	-- Studio reloads plugins around Edit/Play transitions. The replacement
+	-- instance reconnects automatically; keep in-flight test requests alive.
+	Communication.deactivateAll(false)
 end)
 UI.updateUIState()
 Communication.checkForUpdates()
@@ -405,7 +407,10 @@ local function activatePlugin(connIndex)
 		end
 	end)
 end
-local function deactivatePlugin(connIndex)
+local function deactivatePlugin(connIndex, notifyServer)
+	if notifyServer == nil then
+		notifyServer = true
+	end
 	local _condition = connIndex
 	if _condition == nil then
 		_condition = State.getActiveTabIndex()
@@ -420,18 +425,20 @@ local function deactivatePlugin(connIndex)
 		UI.updateUIState()
 	end
 	UI.updateTabDot(idx)
-	pcall(function()
-		HttpService:RequestAsync({
-			Url = `{conn.serverUrl}/disconnect`,
-			Method = "POST",
-			Headers = {
-				["Content-Type"] = "application/json",
-			},
-			Body = HttpService:JSONEncode({
-				timestamp = tick(),
-			}),
-		})
-	end)
+	if notifyServer then
+		pcall(function()
+			HttpService:RequestAsync({
+				Url = `{conn.serverUrl}/disconnect`,
+				Method = "POST",
+				Headers = {
+					["Content-Type"] = "application/json",
+				},
+				Body = HttpService:JSONEncode({
+					timestamp = tick(),
+				}),
+			})
+		end)
+	end
 	if conn.heartbeatConnection then
 		conn.heartbeatConnection:Disconnect()
 		conn.heartbeatConnection = nil
@@ -439,10 +446,13 @@ local function deactivatePlugin(connIndex)
 	conn.consecutiveFailures = 0
 	conn.currentRetryDelay = 0.5
 end
-local function deactivateAll()
+local function deactivateAll(notifyServer)
+	if notifyServer == nil then
+		notifyServer = true
+	end
 	for i = 0, #State.getConnections() - 1 do
 		if State.getConnections()[i + 1].isActive then
-			deactivatePlugin(i)
+			deactivatePlugin(i, notifyServer)
 		end
 	end
 end
@@ -1707,41 +1717,156 @@ local function executeLuau(requestData)
 			error = "Code is required",
 		}
 	end
-	local output = {}
-	local oldPrint = print
-	local oldWarn = warn
-	local env = getfenv(0)
-	env.print = function(...)
-		local args = { ... }
-		local parts = {}
-		for _, a in args do
-			local _arg0 = tostring(a)
-			table.insert(parts, _arg0)
-		end
-		local _arg0 = table.concat(parts, "\t")
-		table.insert(output, _arg0)
-		oldPrint(unpack(args))
+	local origin = requestData.origin
+	if origin ~= "local-sync" and origin ~= "temporary-test" and origin ~= "studio-operation" then
+		return {
+			success = false,
+			error = "Invalid execute_luau origin",
+		}
 	end
-	env.warn = function(...)
-		local args = { ... }
-		local parts = {}
-		for _, a in args do
-			local _arg0 = tostring(a)
-			table.insert(parts, _arg0)
-		end
-		local _arg0 = `[warn] {table.concat(parts, "\t")}`
-		table.insert(output, _arg0)
-		oldWarn(unpack(args))
+	-- Only the MCP bridge may assign local-sync, after checking its private capability.
+	local isLocalSync = origin == "local-sync"
+	local dotSourceWrite = string.find(code, "%.%s*Source%s*=")
+	local bracketSourceWrite = string.find(code, [[%[%s*['\"]Source['\"]%s*%]%s*=]])
+	if not isLocalSync and (dotSourceWrite ~= nil or bracketSourceWrite ~= nil) then
+		return {
+			success = false,
+			error = "Refused: execute_luau cannot change Source of project scripts. Edit the local file and synchronize it.",
+		}
 	end
-	local success, result = pcall(function()
-		local fn, compileError = loadstring(code)
-		if not fn then
-			error(`Compile error: {compileError}`)
-		end
-		return fn()
+	-- Studio plugins cannot rely on loadstring. Requiring a temporary module
+	-- compiles the function body; only the explicit call below executes it.
+	local temporary = Instance.new("ModuleScript")
+	temporary.Name = "__ForgeTemporaryExecution"
+	temporary.Parent = game:GetService("ServerStorage")
+	local written, writeError = pcall(function()
+		return game:GetService("ScriptEditorService"):UpdateSourceAsync(temporary, function()
+			return `return function()\n{code}\nend`
+		end)
 	end)
-	env.print = oldPrint
-	env.warn = oldWarn
+	if not written then
+		temporary:Destroy()
+		return {
+			success = false,
+			error = `Studio could not prepare temporary Luau: {writeError}`,
+			errorKind = "transport",
+		}
+	end
+	local compiled, compiledFunction = pcall(function()
+		return require(temporary)
+	end)
+	if not compiled then
+		temporary:Destroy()
+		return {
+			success = false,
+			error = `Compile error: {compiledFunction}`,
+			errorKind = "code",
+		}
+	end
+	local managed = {}
+	local sourceConnections = {}
+	local observedChanges = {}
+	if not isLocalSync then
+		for _, descendant in game:GetDescendants() do
+			if descendant ~= temporary and descendant:IsA("LuaSourceContainer") then
+				local readOk, source = pcall(function()
+					return Utils.readScriptSource(descendant)
+				end)
+				local propertyOk, propertySource = pcall(function()
+					return descendant.Source
+				end)
+				if not readOk or not propertyOk then
+					for _1, connection in sourceConnections do
+						connection:Disconnect()
+					end
+					return {
+						success = false,
+						error = `Cannot protect script {Utils.getInstancePath(descendant)}: source unavailable.`,
+					}
+				end
+				local _arg0 = {
+					script = descendant,
+					source = source,
+					propertySource = propertySource,
+				}
+				table.insert(managed, _arg0)
+				local _arg0_1 = descendant:GetPropertyChangedSignal("Source"):Connect(function()
+					observedChanges[descendant] = true
+					return observedChanges
+				end)
+				table.insert(sourceConnections, _arg0_1)
+			end
+		end
+	end
+	local output = {}
+	local outputConnection = game:GetService("LogService").MessageOut:Connect(function(message, messageType)
+		local _arg0 = if messageType == Enum.MessageType.MessageWarning then `[warn] {message}` else message
+		table.insert(output, _arg0)
+	end)
+	local success, result = pcall(function()
+		return compiledFunction()
+	end)
+	temporary:Destroy()
+	outputConnection:Disconnect()
+	for _, connection in sourceConnections do
+		connection:Disconnect()
+	end
+	if not isLocalSync then
+		local changed = {}
+		local restoreFailed = {}
+		for _, item in managed do
+			local readOk, current = pcall(function()
+				return Utils.readScriptSource(item.script)
+			end)
+			local propertyOk, property = pcall(function()
+				return (item.script).Source
+			end)
+			local _script = item.script
+			local _condition = observedChanges[_script] ~= nil
+			if not _condition then
+				_condition = not readOk or not propertyOk or current ~= item.source or property ~= item.propertySource
+			end
+			if _condition then
+				local _arg0 = Utils.getInstancePath(item.script)
+				table.insert(changed, _arg0)
+				local restored = pcall(function()
+					game:GetService("ScriptEditorService"):UpdateSourceAsync(item.script, function()
+						return item.source
+					end);
+					(item.script).Source = item.propertySource
+				end)
+				if not restored then
+					pcall(function()
+						(item.script).Source = item.propertySource
+					end)
+				end
+				local verified, restoredSource = pcall(function()
+					return Utils.readScriptSource(item.script)
+				end)
+				local propertyVerified, restoredProperty = pcall(function()
+					return (item.script).Source
+				end)
+				if not verified or not propertyVerified or restoredSource ~= item.source or restoredProperty ~= item.propertySource then
+					local _arg0_1 = Utils.getInstancePath(item.script)
+					table.insert(restoreFailed, _arg0_1)
+				end
+			end
+		end
+		if #restoreFailed > 0 then
+			return {
+				success = false,
+				error = `Source restoration failed: {table.concat(restoreFailed, ", ")}. Stop syncing and restore from local files.`,
+				output = output,
+			}
+		end
+		if #changed > 0 then
+			return {
+				success = false,
+				error = `Refused and restored script Source: {table.concat(changed, ", ")}. Edit managed scripts in the local project files and use local-sync.`,
+				output = output,
+			}
+		end
+	end
 	if success then
 		return {
 			success = true,
@@ -1755,6 +1880,7 @@ local function executeLuau(requestData)
 			error = tostring(result),
 			output = output,
 			message = "Code execution failed",
+			errorKind = "code",
 		}
 	end
 end
@@ -2298,6 +2424,7 @@ local function getPlaceInfo(_requestData)
 		placeName = game.Name,
 		placeId = game.PlaceId,
 		snapshotProtocol = 1,
+		sourceProtectionProtocol = 1,
 		gameId = game.GameId,
 		jobId = game.JobId,
 		workspace = {
@@ -3827,14 +3954,131 @@ local LogService = TS.import(script, script.Parent.Parent.Parent, "node_modules"
 local StudioTestService = game:GetService("StudioTestService")
 local ServerScriptService = game:GetService("ServerScriptService")
 local ScriptEditorService = game:GetService("ScriptEditorService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterPlayer = game:GetService("StarterPlayer")
 local STOP_SIGNAL = "__MCP_STOP__"
 local testRunning = false
 local runId = game:GetService("HttpService"):GenerateGUID(false)
 local outputBuffer = {}
+local testStartedAt = 0
+local testPlaceId = 0
 local logConnection
 local testResult
 local testError
 local stopListenerScript
+local consoleProbeServer
+local consoleProbeClient
+local consoleProbeRemote
+local SERVER_READY = "__FORGE_TEST_SERVER_READY__"
+local CLIENT_READY = "__FORGE_TEST_CLIENT_READY__"
+local SERVER_LOG = "__FORGE_TEST_SERVER_LOG__"
+local CLIENT_LOG = "__FORGE_TEST_CLIENT_LOG__"
+local function collectedOutput()
+	if testStartedAt == 0 then
+		return {}
+	end
+	local _array = {}
+	local _length = #_array
+	table.move(outputBuffer, 1, #outputBuffer, _length + 1, _array)
+	local combined = _array
+	local _set = {}
+	-- ▼ ReadonlyArray.map ▼
+	local _newValue = table.create(#combined)
+	local _callback = function(item)
+		return `{item.timestamp}:{item.messageType}:{item.message}`
+	end
+	for _k, _v in combined do
+		_newValue[_k] = _callback(_v, _k - 1, combined)
+	end
+	-- ▲ ReadonlyArray.map ▲
+	for _, _v in _newValue do
+		_set[_v] = true
+	end
+	local seen = _set
+	local ok, history = pcall(function()
+		return LogService:GetLogHistory()
+	end)
+	if ok then
+		for _, entry in history do
+			if entry.timestamp < testStartedAt or entry.message == STOP_SIGNAL then
+				continue
+			end
+			local item = {
+				message = entry.message,
+				messageType = entry.messageType.Name,
+				timestamp = entry.timestamp,
+			}
+			local key = `{item.timestamp}:{item.messageType}:{item.message}`
+			if not (seen[key] ~= nil) then
+				seen[key] = true
+				table.insert(combined, item)
+			end
+		end
+	end
+	return combined
+end
+local function setTestSource(target, source)
+	local ok, failure = pcall(function()
+		return ScriptEditorService:UpdateSourceAsync(target, function()
+			return source
+		end)
+	end)
+	if not ok then
+		error(`[MCP] Test probe source failed: {failure}`)
+	end
+end
+local function cleanupConsoleProbes()
+	if consoleProbeClient then
+		pcall(function()
+			return consoleProbeClient:Destroy()
+		end)
+		consoleProbeClient = nil
+	end
+	if consoleProbeServer then
+		pcall(function()
+			return consoleProbeServer:Destroy()
+		end)
+		consoleProbeServer = nil
+	end
+	if consoleProbeRemote then
+		pcall(function()
+			return consoleProbeRemote:Destroy()
+		end)
+		consoleProbeRemote = nil
+	end
+end
+local function injectConsoleProbes()
+	local remoteName = `__ForgeTestConsole_{runId}`
+	local remote = Instance.new("RemoteEvent")
+	remote.Name = remoteName
+	remote.Parent = ReplicatedStorage
+	consoleProbeRemote = remote
+	local server = Instance.new("Script")
+	server.Name = "__ForgeTestServerConsole"
+	server.Parent = ServerScriptService
+	consoleProbeServer = server
+	setTestSource(server, `local LogService = game:GetService("LogService")\
+local remote = game:GetService("ReplicatedStorage"):WaitForChild("{remoteName}")\
+remote.OnServerEvent:Connect(function(_, message)\
+ if message == "__READY__" then print("{CLIENT_READY}") else print("{CLIENT_LOG}" .. tostring(message)) end\
+end)\
+print("{SERVER_READY}")\
+LogService.MessageOut:Connect(function(message)\
+ if not string.find(message, "^__FORGE_TEST_") then print("{SERVER_LOG}" .. tostring(message)) end\
+end)`)
+	local client = Instance.new("LocalScript")
+	client.Name = "__ForgeTestClientConsole"
+	client.Parent = StarterPlayer:WaitForChild("StarterPlayerScripts")
+	consoleProbeClient = client
+	setTestSource(client, `local LogService = game:GetService("LogService")\
+local remote = game:GetService("ReplicatedStorage"):WaitForChild("{remoteName}")\
+LogService.MessageOut:Connect(function(message)\
+ if not string.find(message, "^__FORGE_TEST_") then remote:FireServer(tostring(message)) end\
+end)\
+task.spawn(function()\
+ for _ = 1, 8 do remote:FireServer("__READY__") task.wait(0.25) end\
+end)`)
+end
 local function buildStopListenerSource()
 	return `local LogService = game:GetService("LogService")\
 local StudioTestService = game:GetService("StudioTestService")\
@@ -3889,9 +4133,19 @@ local function startPlaytest(requestData)
 	testRunning = true
 	runId = game:GetService("HttpService"):GenerateGUID(false)
 	outputBuffer = {}
+	testStartedAt = tick()
+	testPlaceId = game.PlaceId
 	testResult = nil
 	testError = nil
 	cleanupStopListener()
+	cleanupConsoleProbes()
+	local probesReady, probeError = pcall(function()
+		return injectConsoleProbes()
+	end)
+	if not probesReady then
+		warn(`[MCP] Console probes unavailable: {probeError}`)
+		cleanupConsoleProbes()
+	end
 	logConnection = LogService.MessageOut:Connect(function(message, messageType)
 		if message == STOP_SIGNAL then
 			return nil
@@ -3932,49 +4186,45 @@ local function startPlaytest(requestData)
 		end
 		testRunning = false
 		cleanupStopListener()
+		cleanupConsoleProbes()
 	end)
 	return {
 		success = true,
 		mode = mode,
+		placeId = testPlaceId,
 		players = if mode == "multiplayer" then players else nil,
 		message = `Playtest started in {mode} mode`,
 	}
 end
 local function stopPlaytest(_requestData)
-	warn(STOP_SIGNAL)
-	if logConnection then
-		logConnection:Disconnect()
-		logConnection = nil
+	if not testRunning then
+		return {
+			error = "No playtest is running",
+		}
 	end
-	testRunning = false
-	cleanupStopListener()
-	local _object = {
+	warn(STOP_SIGNAL)
+	local output = collectedOutput()
+	return {
 		success = true,
 		runId = runId,
+		placeId = testPlaceId,
+		output = output,
+		outputCount = #output,
+		message = "Playtest stop signal sent; poll get_playtest_output until isRunning is false.",
 	}
-	local _left = "output"
-	local _array = {}
-	local _length = #_array
-	table.move(outputBuffer, 1, #outputBuffer, _length + 1, _array)
-	_object[_left] = _array
-	_object.outputCount = #outputBuffer
-	_object.message = "Playtest stop signal sent."
-	return _object
 end
 local function getPlaytestOutput(_requestData)
-	local _object = {
+	local output = collectedOutput()
+	return {
 		isRunning = testRunning,
+		testStarted = testStartedAt > 0,
 		runId = runId,
+		placeId = testPlaceId,
+		output = output,
+		outputCount = #output,
+		testResult = if testResult ~= nil then tostring(testResult) else nil,
+		testError = testError,
 	}
-	local _left = "output"
-	local _array = {}
-	local _length = #_array
-	table.move(outputBuffer, 1, #outputBuffer, _length + 1, _array)
-	_object[_left] = _array
-	_object.outputCount = #outputBuffer
-	_object.testResult = if testResult ~= nil then tostring(testResult) else nil
-	_object.testError = testError
-	return _object
 end
 return {
 	startPlaytest = startPlaytest,
@@ -4784,26 +5034,88 @@ local function getInstancePath(instance)
 	return `game.{table.concat(pathParts, ".")}`
 end
 local function getInstanceByPath(path)
-	if path == "game" or path == "" then
+	local _condition = path == "game" or path == ""
+	if not _condition then
+		local _path = path
+		local _condition_1 = type(_path) == "table"
+		if _condition_1 then
+			_condition_1 = #path == 0
+		end
+		_condition = _condition_1
+	end
+	if _condition then
 		return game
 	end
-	local cleaned = (string.gsub(path, "^game%.", ""))
 	local parts = {}
-	for part in string.gmatch(cleaned, "[^%.]+") do
-		table.insert(parts, part)
-	end
-	local current = game
-	for _, part in parts do
-		local _result = current
-		if _result ~= nil then
-			_result = _result:FindFirstChild(part)
+	local _path = path
+	if type(_path) == "table" then
+		for _, part in path do
+			table.insert(parts, part)
 		end
-		current = _result
-		if not current then
-			return nil
+		if parts[1] == "game" then
+			table.remove(parts, 1)
+		end
+		local current = game
+		for _, part in parts do
+			local _result = current
+			if _result ~= nil then
+				_result = _result:FindFirstChild(part)
+			end
+			current = _result
+		end
+		return current
+	else
+		local cleaned = (string.gsub(path, "^game%.", ""))
+		for part in string.gmatch(cleaned, "[^%.]+") do
+			table.insert(parts, part)
 		end
 	end
-	return current
+	local function resolve(current, offset)
+		if offset == #parts then
+			return current
+		end
+		-- Try the longest child name first: "LocalFirstTest.server" is one instance.
+		do
+			local last = #parts
+			local _shouldIncrement = false
+			while true do
+				if _shouldIncrement then
+					last -= 1
+				else
+					_shouldIncrement = true
+				end
+				if not (last > offset) then
+					break
+				end
+				local names = {}
+				do
+					local i = offset
+					local _shouldIncrement_1 = false
+					while true do
+						if _shouldIncrement_1 then
+							i += 1
+						else
+							_shouldIncrement_1 = true
+						end
+						if not (i < last) then
+							break
+						end
+						local _arg0 = parts[i + 1]
+						table.insert(names, _arg0)
+					end
+				end
+				local child = current:FindFirstChild(table.concat(names, "."))
+				if child then
+					local resolved = resolve(child, last)
+					if resolved then
+						return resolved
+					end
+				end
+			end
+		end
+		return nil
+	end
+	return resolve(game, 0)
 end
 local function splitLines(source)
 	local _condition = source

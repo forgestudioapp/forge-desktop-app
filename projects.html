@@ -9,7 +9,7 @@
 <script src="lib/theme.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{background:var(--char); color:var(--bone); font-family:'Inter',sans-serif; min-height:100vh; padding:32px 40px 40px; opacity:0; animation:pageIn 0.35s cubic-bezier(.4,0,.2,1) forwards;}
+  body{background:var(--char); color:var(--bone); font-family:'Inter',sans-serif; min-height:100vh; padding:32px 40px 40px;}
   body::before {
     content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
     background:
@@ -71,19 +71,22 @@
   .btn-mini.primary:hover{transform:translateY(-1px); box-shadow:0 6px 16px rgba(59,130,246,0.3);}
   .btn-mini:hover{border-color:var(--ember); color:var(--ember-light);}
 
-  .section-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; position:relative; z-index:2; animation:fadeInUp 0.5s 0.08s ease forwards; opacity:0;}
+  .section-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; position:relative; z-index:2;}
   .section-head h1{font-family:'Space Grotesk',sans-serif; font-size:20px;}
   .head-actions{display:flex; gap:8px;}
 
-  .proj-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; position:relative; z-index:2;}
-  @media(max-width:760px){.proj-grid{grid-template-columns:repeat(2,1fr);}}
+  .proj-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; position:relative; z-index:2;}
+  @media(max-width:760px){.proj-grid{grid-template-columns:1fr;}}
+  .home-actions{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 30px}.home-actions button{font:600 14px 'Inter',sans-serif;padding:13px 18px;border-radius:9px}.home-actions .primary{font-size:15px}
+  .proj-status{font-size:12px;color:var(--smoke);margin-top:8px}.proj-status.needs-action{color:#F2C65A}.proj-path{display:none}
+  .proj-card:focus-visible,.home-actions button:focus-visible,.settings-link:focus-visible{outline:2px solid var(--ember-light);outline-offset:3px}
 
   .proj-card{
     background:var(--card-bg); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
     border:1px solid rgba(59,130,246,0.05); border-radius:12px; padding:16px;
     cursor:pointer; transition:all 0.3s cubic-bezier(.4,0,.2,1); position:relative; overflow:hidden;
     box-shadow:0 4px 16px rgba(0,0,0,0.06);
-    animation:fadeInUp 0.5s ease forwards; opacity:0;
+    opacity:1;
   }
   .proj-card:nth-child(1){animation-delay:0.12s;}
   .proj-card:nth-child(2){animation-delay:0.18s;}
@@ -171,13 +174,13 @@
 <body>
 
   <div class="wrap">
-    <header class="projects-header"><div><p class="eyebrow">FORGE</p><h1 data-i18n="my_projects">Mes projets</h1><p>Choisis un projet pour ouvrir son espace de travail.</p></div><a class="settings-link" href="settings.html?from=projects.html" aria-label="Paramètres" title="Paramètres"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0015 19.4a1.7 1.7 0 00-1 .6 1.7 1.7 0 00-.4 1.1V21H9.6v-.1A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-.6-1 1.7 1.7 0 00-1.1-.4H3V9.6h.1A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-.6 1.7 1.7 0 00.4-1.1V3h4v.1A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0019.4 9c.1.39.31.74.6 1 .3.26.68.4 1.1.4h.1v4h-.1a1.7 1.7 0 00-1.7.6z"/></svg></a></header>
+    <header class="projects-header"><div><p class="eyebrow">FORGE</p><h1>Crée ton jeu Roblox</h1><p>Commence un nouveau jeu ou reprends un projet récent.</p></div><a class="settings-link" href="settings.html?from=projects.html" aria-label="Paramètres" title="Paramètres"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0015 19.4a1.7 1.7 0 00-1 .6 1.7 1.7 0 00-.4 1.1V21H9.6v-.1A1.7 1.7 0 004.6 15a1.7 1.7 0 00-.6-1 1.7 1.7 0 00-1.1-.4H3V9.6h.1A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.88l-.06-.06-2.83-2.83.06-.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-.6 1.7 1.7 0 00.4-1.1V3h4v.1A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0019.4 9c.1.39.31.74.6 1 .3.26.68.4 1.1.4h.1v4h-.1a1.7 1.7 0 00-1.7.6z"/></svg></a></header>
+    <div class="home-actions"><button class="btn-mini primary" id="newProjectBtn">Créer un jeu</button><button class="btn-mini" id="continueProjectBtn">Continuer un jeu existant</button></div>
 
     <div class="section-head">
       <h1>Projets récents</h1>
       <div class="head-actions">
         <button class="btn-mini" id="refreshBtn" data-i18n="refresh">Actualiser</button>
-        <button class="btn-mini primary" id="newProjectBtn" data-i18n="new_project">+ New Project</button>
       </div>
     </div>
 
@@ -200,8 +203,6 @@
       </div>
     </div>
   </div>
-
-  <div class="step-footer mono" data-i18n="forge_projects">Forge Projects</div>
 
 <script src="./lib/i18n.js"></script>
 <script src="./lib/ux.js"></script>
@@ -229,6 +230,7 @@
   }
 
   document.getElementById('newProjectBtn').addEventListener('click', () => fadeNavigate('project-create.html'));
+  document.getElementById('continueProjectBtn').addEventListener('click', () => {document.getElementById('projectSearch').focus();document.getElementById('projectSearch').scrollIntoView({block:'center'});});
   document.getElementById('refreshBtn').addEventListener('click', async () => {
     await loadActiveProject();
     await loadProjects();
@@ -330,10 +332,10 @@
     projGrid.innerHTML = '';
     const query=document.getElementById('projectSearch').value.trim().toLocaleLowerCase();
     list=list.filter(proj=>String(proj.name).toLocaleLowerCase().includes(query));
-    list.sort((a,b)=>Number(b.path===activeProject?.path)-Number(a.path===activeProject?.path));
+    list.sort((a,b)=>Number(b.path===activeProject?.path)-Number(a.path===activeProject?.path)||Date.parse(b.createdAt||0)-Date.parse(a.createdAt||0));
     const empty=document.getElementById('noProjectsFound');
     empty.hidden=list.length>0;
-    empty.textContent=query?'Aucun projet trouvé.':'Aucun projet pour le moment. Utilise « Nouveau projet » pour commencer.';
+    empty.textContent=query?'Aucun projet trouvé.':'Aucun projet pour le moment. Utilise « Créer un jeu » pour commencer.';
 
     list.forEach((proj, index) => {
       const card = document.createElement('div');
@@ -346,9 +348,7 @@
       const isActive = activeProject && activeProject.path === proj.path;
       const badgeHtml = isActive ? '<span class="proj-badge">Projet actif</span>' : '';
       const place = proj.linkedStudio && typeof proj.linkedStudio === 'object' ? proj.linkedStudio : null;
-      const placeLabel = place
-        ? 'Place Roblox · ' + place.placeName + ' · ' + place.placeId
-        : 'À lier à la place ouverte';
+      const placeLabel = place ? 'Place liée : ' + (place.placeName || 'jeu Roblox') : 'Connexion à Studio nécessaire';
       const safePlaceLabel = escapeHtml(placeLabel);
 
       const deleteBtnHtml = '<button class="proj-delete" data-tooltip="' + (t('delete_project') || 'Supprimer') + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>';
@@ -362,11 +362,11 @@
           </div>
           ${badgeHtml}
         </div>
-        <div class="proj-path">${escapeHtml(proj.path)}</div>
         <div class="proj-repo local">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
           ${safePlaceLabel}
         </div>
+        <div class="proj-status${!place || proj.syncPaused ? ' needs-action' : ''}">${!place ? 'Ouvre ce projet pour le connecter à Roblox Studio.' : proj.syncPaused ? 'Synchronisation en pause · ouvre le projet pour continuer.' : 'Ouvrir le projet →'}</div>
       `;
 
       card.querySelector('.proj-delete').addEventListener('click', (e) => {
