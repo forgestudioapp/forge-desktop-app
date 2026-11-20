@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   removeAgentActivity: (projectPath, agentId) => ipcRenderer.invoke('agent-activity-remove', projectPath, agentId),
   readProjectQuality: (projectPath) => ipcRenderer.invoke('project-quality-read', projectPath),
   writeProjectQuality: (projectPath, content) => ipcRenderer.invoke('project-quality-write', projectPath, content),
+  readProjectNotes: (projectPath) => ipcRenderer.invoke('project-notes-read', projectPath),
+  writeProjectNotes: (projectPath, content, expectedRevision) => ipcRenderer.invoke('project-notes-write', projectPath, content, expectedRevision),
   listSessionHandoffs: (projectPath) => ipcRenderer.invoke('session-handoff-list', projectPath),
   saveSessionHandoff: (projectPath, draft) => ipcRenderer.invoke('session-handoff-save', projectPath, draft),
 
@@ -103,7 +105,7 @@ contextBridge.exposeInMainWorld('forgeAPI', {
   stopFileSync: (projectPath) => ipcRenderer.invoke('stop-file-sync', projectPath),
   linkProjectStudio: (projectPath, options) => ipcRenderer.invoke('link-project-studio', projectPath, options),
   listPlaces: (projectPath) => ipcRenderer.invoke('places-list', projectPath),
-  addPlace: (projectPath, role, expectedPlaceId) => ipcRenderer.invoke('places-add', projectPath, role, expectedPlaceId),
+  addPlace: (projectPath, role, expectedPlaceId, options) => ipcRenderer.invoke('places-add', projectPath, role, expectedPlaceId, options),
   removePlace: (projectPath, placeId) => ipcRenderer.invoke('places-remove', projectPath, placeId),
   openPlace: (projectPath, placeId) => ipcRenderer.invoke('places-open', projectPath, placeId),
   projectStudioStatus: (projectPath) => ipcRenderer.invoke('project-studio-status', projectPath),

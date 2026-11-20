@@ -37,7 +37,9 @@
   .workspace-nav [hidden]{display:none}
   .project-next-step{display:flex;align-items:center;gap:14px;padding:8px 16px;background:rgba(59,130,246,.08);border-bottom:1px solid var(--border-light);font:12px/1.4 'Inter',sans-serif;flex-shrink:0;position:relative;z-index:80}
   .project-next-step[hidden]{display:none}.project-next-step span{flex:1}.project-next-step button{border:1px solid var(--ember);background:var(--char3);color:var(--bone);border-radius:6px;padding:6px 10px;cursor:pointer;font:600 12px 'Inter',sans-serif}
-  body.places-single #placesPanel:not([open]){display:none}
+  #placesPanel{position:relative;z-index:50;flex-shrink:0}
+  #placesPanel>summary{cursor:pointer;padding:6px 10px;color:var(--bone);background:var(--char3);border:1px solid var(--border-light);border-radius:6px;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #placesPanel>summary:hover,#placesPanel[open]>summary{border-color:var(--ember)}
   .project-health summary{max-width:min(360px,35vw)!important;font:600 12px 'Inter',sans-serif!important}
   @media(max-width:900px){.top-bar{gap:5px}.project-pill{max-width:120px}.project-tools-menu summary{padding:7px}.workspace-nav{padding:5px 8px}.workspace-nav button{padding:7px 9px}}
   .logo-pill{display:flex;align-items:center;gap:6px;padding:4px 10px;background:var(--char3);border-radius:6px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;color:var(--ember-light);margin-right:4px;flex-shrink:0;cursor:pointer;transition:background .15s;}
@@ -246,6 +248,10 @@
   .quality-memory-desc{font-size:12px;line-height:1.55;color:var(--smoke);}
   .quality-memory-input{width:100%;min-height:260px;max-height:52vh;resize:vertical;background:var(--char);color:var(--bone);border:1px solid var(--border-light);border-radius:10px;padding:13px;font:12px/1.55 'Inter',sans-serif;}
   .quality-memory-input:focus{outline:none;border-color:var(--ember);box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+  .project-notes-status{color:var(--smoke);font-size:11px;line-height:1.4}
+  .project-notes-conflict{border:1px solid var(--ember);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .project-notes-conflict[hidden]{display:none}
+  .project-notes-conflict textarea{min-height:110px;max-height:22vh}
   .handoff-modal{width:min(780px,94vw);max-height:88vh;}
   .handoff-body{padding:16px 18px;overflow:auto;display:flex;flex-direction:column;gap:14px;}
   .handoff-history{display:flex;align-items:end;gap:10px;padding-bottom:14px;border-bottom:1px solid var(--border-light);}
@@ -429,7 +435,7 @@
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
     <span id="projectPillText">—</span>
   </div>
-  <details id="placesPanel" style="position:relative;z-index:50"><summary style="cursor:pointer;padding:8px;color:var(--bone)" aria-label="Détails des places">Places</summary><div style="position:absolute;top:100%;left:0;width:430px;max-height:70vh;overflow:auto;background:var(--char3);border:1px solid var(--border-light);border-radius:10px;padding:14px;box-shadow:0 12px 30px #0008"><strong>Places de l’expérience</strong><p id="placesStudio" style="font-size:12px"></p><div id="placesList"></div><button type="button" onclick="addCurrentPlace()">Lier la place ouverte</button></div></details>
+  <details id="placesPanel"><summary id="placesSummary" aria-label="Choisir une place">Lier une place ▾</summary><div style="position:absolute;top:100%;left:0;width:430px;max-width:calc(100vw - 24px);max-height:70vh;overflow:auto;background:var(--char3);border:1px solid var(--border-light);border-radius:10px;padding:14px;box-shadow:0 12px 30px #0008"><strong>Places du jeu</strong><p id="placesStudio" style="font-size:12px"></p><div id="placesList"></div><button type="button" onclick="addCurrentPlace()">Lier la place ouverte dans Studio</button></div></details>
   <details class="project-health preparing" id="projectHealth">
     <summary id="projectHealthSummary" aria-live="polite"><span class="health-dot"></span><span class="health-summary-text" id="healthSummaryText">Préparation</span><span class="health-summary-count" id="healthSummaryCount"></span></summary>
     <div class="project-health-panel">
@@ -458,7 +464,9 @@
       <summary>Outils du projet</summary>
       <div class="project-tools-popover">
         <button class="btn-top" id="qualityMemoryBtn" onclick="openQualityMemory()" data-i18n="quality_memory">Mémoire du projet</button>
+        <button class="btn-top" id="projectNotesBtn" onclick="openProjectNotes()" data-i18n="project_notes">Notes du projet</button>
         <button class="btn-top" id="qualityLabBtn" onclick="requestAgentGameTest()" data-i18n="polish_test_game">Tester avec l’IA</button>
+        <button class="btn-top" type="button" onclick="openReleasePreflight()" data-i18n="release_preflight_button">Préparer la publication</button>
         <button class="btn-top" id="assetsBtn" onclick="toggleSidebar()">Fichiers et toolbox</button>
         <button class="btn-top" onclick="window.location.href='thumbnail.html'">Atelier médias</button>
         <button class="btn-top" type="button" onclick="createAgent('codex')">Ajouter un agent Codex</button>
@@ -520,6 +528,29 @@
     </div>
     <div class="checkpoint-foot">
       <button class="btn-top primary" id="saveQualityMemoryBtn" onclick="saveQualityMemory()" data-i18n="save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div class="preview-overlay hidden" id="projectNotesOverlay" onclick="closeProjectNotes(event)">
+  <div class="checkpoint-modal" onclick="event.stopPropagation()">
+    <div class="checkpoint-head">
+      <strong data-i18n="project_notes">Notes du projet</strong>
+      <button class="tb-close" onclick="closeProjectNotes()" title="Fermer">×</button>
+    </div>
+    <div class="quality-memory-body">
+      <div class="quality-memory-desc" data-i18n="project_notes_desc">Un carnet partagé pour toi et les agents de ce projet.</div>
+      <textarea id="projectNotesInput" class="quality-memory-input" maxlength="100000" data-i18n-placeholder="project_notes_placeholder"></textarea>
+      <div class="project-notes-status" id="projectNotesStatus" role="status"></div>
+      <div class="project-notes-conflict" id="projectNotesConflict" hidden>
+        <strong data-i18n="project_notes_conflict">Un agent a modifié les notes pendant ton édition. Compare sa version avec ton brouillon avant d’enregistrer.</strong>
+        <textarea id="projectNotesLatest" class="quality-memory-input" readonly aria-label="Version récente des notes"></textarea>
+        <button class="btn-top" type="button" onclick="acceptProjectNotesConflict()" data-i18n="project_notes_merged">J’ai intégré les changements</button>
+      </div>
+    </div>
+    <div class="checkpoint-foot">
+      <button class="btn-top" type="button" onclick="reloadProjectNotes()" data-i18n="project_notes_reload">Actualiser</button>
+      <button class="btn-top primary" id="saveProjectNotesBtn" onclick="saveProjectNotes()" data-i18n="save">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -590,6 +621,10 @@
           <button data-lab-action onclick="refreshQualityPlaytest()" data-i18n="quality_lab_refresh">Actualiser les logs</button>
           <button data-lab-action onclick="stopQualityPlaytest()" data-i18n="quality_lab_stop">Arrêter</button>
         </div>
+      </div>
+      <div class="quality-lab-section">
+        <div class="quality-lab-section-title" data-i18n="release_preflight_title">Avant de publier</div>
+        <div class="quality-lab-actions"><button data-lab-action type="button" onclick="openReleasePreflight()" data-i18n="release_preflight_button">Préparer la publication</button></div>
       </div>
       <div class="quality-lab-status" id="qualityLabStatus"></div>
       <div class="quality-lab-report" id="qualityLabReport"><div class="quality-lab-empty" data-i18n="quality_lab_empty">Lance un test pour afficher ses résultats ici.</div></div>
@@ -737,6 +772,7 @@
 <script src="./lib/agent-startup.js"></script>
 <script src="./lib/new-project-connection.js"></script>
 <script src="./lib/quality-lab-state.js"></script>
+<script src="./lib/release-preflight.js"></script>
 <script>
 // ══════════════════════════════════════════════
 // GARDE DE SESSION (aucun compte → login)
@@ -762,24 +798,35 @@ const AGENT_ICONS={claude:'<svg width="14" height="14" viewBox="0 0 100 100" fil
 
 let agents=[],agentCounter={claude:1,codex:1},activeProject=null;
 let placesSnapshot=null;
+let placeReconnectTarget=null;
 async function refreshPlaces(){
   if(!activeProject||!window.forgeAPI?.listPlaces)return;
   const result=await window.forgeAPI.listPlaces(activeProject.path);
   if(result?.error){document.getElementById('placesStudio').textContent=result.error;return;}
   placesSnapshot=result;
-  const multiPlace=(result.manifest?.places||[]).length>1;
+  if(placeReconnectTarget&&result.currentPlaceId===placeReconnectTarget){
+    const target=placeReconnectTarget;placeReconnectTarget=null;
+    const resumed=await window.forgeAPI.retryProjectSync(activeProject.path);
+    if(resumed?.error)showToast(resumed.error,'error');
+    else refreshProjectHealth(true);
+  }
+  const linkedPlaces=result.manifest?.places||[];
+  const multiPlace=linkedPlaces.length>1;
   document.body.classList.toggle('places-single',!multiPlace);
   document.getElementById('placesNav').hidden=!multiPlace;
+  const selected=linkedPlaces.find(p=>p.placeId===result.selectedPlaceId);
+  document.getElementById('placesSummary').textContent=(selected?.name||activeProject?.linkedStudio?.placeName||'Lier une place')+' ▾';
   if(result.selectedPlaceId&&activeProject&&!activeProject.linkedStudio)activeProject.linkedStudio={placeId:result.selectedPlaceId};
-  document.getElementById('placesStudio').textContent=result.currentPlaceId?'Place ouverte dans Studio : '+(result.manifest?.places||[]).find(p=>p.placeId===result.currentPlaceId)?.name||'Place ouverte dans Studio': 'Ouvre Roblox Studio pour voir la place active.';
+  const openPlace=linkedPlaces.find(p=>p.placeId===result.currentPlaceId);
+  document.getElementById('placesStudio').textContent=result.currentPlaceId?'Ouverte dans Studio : '+(openPlace?.name||'Place '+result.currentPlaceId):'Ouvre Roblox Studio pour lier une place.';
   const list=document.getElementById('placesList');list.replaceChildren();
-  for(const place of result.manifest?.places||[]){
+  for(const place of linkedPlaces){
     const row=document.createElement('div');row.style.cssText='border-top:1px solid var(--border-light);padding:10px 0;font-size:12px';
     const title=document.createElement('strong');title.textContent=place.name+' · '+place.role+' · '+place.placeId;row.append(title);
     const owner=result.reservations[place.placeId];
     const status=document.createElement('div');status.textContent=(result.currentPlaceId===place.placeId?'Ouverte dans Studio':'Fermée dans Studio')+' · '+(owner?'Réservée par '+owner.agentName:'Libre')+' · Sync : '+(result.syncByPlace?.[place.placeId]?.phase||'en attente');row.append(status);
-    const open=document.createElement('button');open.textContent='Ouvrir';open.onclick=async()=>{const r=await window.forgeAPI.openPlace(activeProject.path,place.placeId);if(r.error)showToast(r.error,'error');else refreshPlaces();};row.append(open);
-    const remove=document.createElement('button');remove.textContent='Retirer';remove.style.marginLeft='6px';remove.onclick=async()=>{const r=await window.forgeAPI.removePlace(activeProject.path,place.placeId);if(r.error)showToast(r.error,'error');else refreshPlaces();};row.append(remove);
+    const open=document.createElement('button');open.textContent=place.placeId===result.selectedPlaceId?'Ouvrir dans Studio':'Choisir et ouvrir';open.onclick=async()=>{const r=await window.forgeAPI.openPlace(activeProject.path,place.placeId);if(r.error)showToast(r.error,'error');else {activeProject.linkedStudio={placeId:place.placeId,placeName:place.name};placeReconnectTarget=place.placeId;showToast('Ouverture de '+place.name+' dans Studio');refreshPlaces();refreshProjectHealth(true);}};row.append(open);
+    const remove=document.createElement('button');remove.textContent='Retirer';remove.style.marginLeft='6px';remove.onclick=async()=>{const r=await window.forgeAPI.removePlace(activeProject.path,place.placeId);if(r.error)showToast(r.error,'error');else {activeProject.linkedStudio=null;refreshPlaces();refreshProjectHealth(true);}};row.append(remove);
     for(const agent of agents.filter(a=>!a._closed)){
       const label=document.createElement('label');label.style.cssText='display:block;margin-top:5px';
       const radio=document.createElement('input');radio.type='radio';radio.name='place-'+agent.id;radio.checked=agent.placeId===place.placeId;radio.disabled=!!agent.sessionId||!!agent.starting;
@@ -788,20 +835,23 @@ async function refreshPlaces(){
     }
     list.append(row);
   }
-  if(!result.manifest?.places?.length){const empty=document.createElement('p');empty.textContent='Aucune place liée. Ouvre une place publiée dans Studio puis lie-la.';list.append(empty);}
+  if(!linkedPlaces.length){const empty=document.createElement('p');empty.textContent='Aucune place liée. Ouvre une place publiée dans Studio, puis clique sur le bouton ci-dessous.';list.append(empty);}
 }
 async function addCurrentPlace(){
   if(!activeProject)return;
   const studio=await window.forgeAPI.getStudioPlaceInfo();
   if(studio.error){showToast(studio.error,'error');return;}
-  if(!confirm('Connecter ce projet à '+String(studio.place.placeName||'Place '+studio.place.placeId)+' ?'))return;
-  const role=prompt('Rôle de la place ouverte (lobby, préhistoire, Égypte, pirates, futur…)','lobby');
-  if(role===null)return;
-  const result=await window.forgeAPI.addPlace(activeProject.path,role,studio.place.placeId);
-  if(result.error)showToast(result.error,'error');else {showToast('Place liée');refreshPlaces();}
+  const name=String(studio.place.placeName||'Place '+studio.place.placeId);
+  let result=await window.forgeAPI.addPlace(activeProject.path,name,studio.place.placeId);
+  if(result.code==='place-linked-elsewhere'){
+    const accepted=confirm('Cette place est liée à « '+result.conflictProjectName+' ». Déplacer sa liaison vers ce projet Forge ? Les fichiers de l’ancien projet resteront sur le disque.');
+    if(!accepted)return;
+    result=await window.forgeAPI.addPlace(activeProject.path,name,studio.place.placeId,{transferFromProjectPath:result.conflictProjectPath});
+  }
+  if(result.error)showToast(result.error,'error');else {activeProject.linkedStudio={placeId:String(studio.place.placeId),placeName:name};placeReconnectTarget=String(studio.place.placeId);showToast(name+' liée au projet');await refreshPlaces();await refreshProjectHealth(true);}
 }
 document.getElementById('placesPanel').addEventListener('toggle',event=>{if(event.target.open)refreshPlaces();});
-setInterval(()=>{if(document.getElementById('placesPanel').open)refreshPlaces();},3000);
+setInterval(()=>{if(document.getElementById('placesPanel').open||placeReconnectTarget)refreshPlaces();},3000);
 let workspaceStarted=false,agentStateReady=false,stateProjectPath=null,stateProjectKey=null;
 async function focusMainAgent(){
   if(latestProjectHealth?.action==='link'){runProjectHealthAction();return;}
@@ -915,6 +965,7 @@ loadProject().then(async function(loaded){
   if(startNewProjectSetup())return;
   await openStartupAgents();
   if(location.hash==='#memory')openQualityMemory();
+  if(location.hash==='#notes')openProjectNotes();
   if(location.hash==='#handoff')openSessionHandoff();
   if(location.hash==='#history')openCheckpoints();
   if(location.hash==='#files'&&!sidebarOpen)toggleSidebar();
@@ -1177,6 +1228,72 @@ async function saveQualityMemory(){
   catch(error){showToast(error.message||String(error));}finally{button.disabled=false;}
 }
 
+let projectNotesRevision=null;
+let projectNotesLoadedContent='';
+let projectNotesConflictRevision=null;
+async function openProjectNotes(){
+  if(!activeProject||!window.forgeAPI?.readProjectNotes){showToast(t('start_requires_project'));return;}
+  projectNotesRevision=null;
+  projectNotesConflictRevision=null;
+  document.getElementById('projectNotesOverlay').classList.remove('hidden');
+  document.getElementById('projectNotesInput').value='';
+  document.getElementById('projectNotesConflict').hidden=true;
+  await reloadProjectNotes(true);
+}
+function closeProjectNotes(event){
+  const overlay=document.getElementById('projectNotesOverlay');
+  if(event&&event.target!==overlay)return;
+  if(projectNotesRevision&&document.getElementById('projectNotesInput').value!==projectNotesLoadedContent&&!window.confirm(t('project_notes_close_confirm')))return;
+  overlay.classList.add('hidden');
+}
+async function reloadProjectNotes(force=false){
+  const input=document.getElementById('projectNotesInput');
+  if(!force&&input.value!==projectNotesLoadedContent&&!window.confirm(t('project_notes_refresh_confirm')))return;
+  input.disabled=true;
+  try{
+    const result=await window.forgeAPI.readProjectNotes(activeProject.path);
+    if(result?.error)throw new Error(result.error);
+    input.value=result.content||'';
+    projectNotesLoadedContent=input.value;
+    projectNotesRevision=result.revision;
+    projectNotesConflictRevision=null;
+    document.getElementById('projectNotesConflict').hidden=true;
+    document.getElementById('projectNotesStatus').textContent=result.updatedAt?t('project_notes_updated')+' '+checkpointDate(result.updatedAt):t('project_notes_empty');
+    input.focus();
+  }catch(error){showToast(error.message||String(error));if(force)closeProjectNotes();}
+  finally{input.disabled=false;}
+}
+function acceptProjectNotesConflict(){
+  if(!projectNotesConflictRevision)return;
+  projectNotesRevision=projectNotesConflictRevision;
+  projectNotesConflictRevision=null;
+  document.getElementById('projectNotesConflict').hidden=true;
+  document.getElementById('projectNotesStatus').textContent=t('project_notes_reviewed');
+  document.getElementById('projectNotesInput').focus();
+}
+async function saveProjectNotes(){
+  if(!activeProject||!window.forgeAPI?.writeProjectNotes||!projectNotesRevision)return;
+  const button=document.getElementById('saveProjectNotesBtn');
+  const input=document.getElementById('projectNotesInput');
+  button.disabled=true;
+  try{
+    const result=await window.forgeAPI.writeProjectNotes(activeProject.path,input.value,projectNotesRevision);
+    if(result?.error)throw new Error(result.error);
+    if(result?.conflict){
+      projectNotesConflictRevision=result.revision;
+      document.getElementById('projectNotesLatest').value=result.content;
+      document.getElementById('projectNotesConflict').hidden=false;
+      document.getElementById('projectNotesStatus').textContent=t('project_notes_conflict_status');
+      return;
+    }
+    projectNotesRevision=result.revision;
+    projectNotesLoadedContent=result.content;
+    document.getElementById('projectNotesStatus').textContent=t('project_notes_saved');
+    showToast(t('project_notes_saved'));
+  }catch(error){showToast(error.message||String(error));}
+  finally{button.disabled=false;}
+}
+
 let sessionHandoffRevisions=[];
 function handoffDate(value){try{return new Intl.DateTimeFormat(undefined,{dateStyle:'short',timeStyle:'short'}).format(new Date(value));}catch(_){return value||'';}}
 function handoffLines(value){return Array.isArray(value)?value.join('\n'):'';}
@@ -1225,6 +1342,33 @@ function closeCheckpoints(event){if(event&&event.target!==document.getElementByI
 
 let qualityLabPollTimer=null;
 const qualityLabRequestGuard=ForgeQualityLabState.createGenerationGuard();
+const releaseEvidence={gui:null,playtest:null};
+let qualityLabRunBuild=null;
+let qualityLabRunProject=null;
+
+async function openReleasePreflight(){
+  if(!activeProject||!window.forgeAPI?.getProjectHealth){showToast(t('start_requires_project'));return;}
+  openQualityLab();setQualityLabBusy(true,t('quality_lab_working'));
+  try{
+    const health=await window.forgeAPI.getProjectHealth(activeProject.path,true);
+    if(health?.error)throw new Error(health.error);
+    const result=ForgeReleasePreflight.evaluateReleasePreflight(health,activeProject.path,releaseEvidence);
+    const report=document.getElementById('qualityLabReport');report.textContent='';
+    const title=document.createElement('div');title.className='quality-lab-report-title';title.textContent=t('release_preflight_title');report.appendChild(title);
+    const intro=document.createElement('div');intro.className='quality-lab-empty';intro.textContent=t('release_preflight_desc');report.appendChild(intro);
+    const metrics=document.createElement('div');metrics.className='quality-lab-metrics';report.appendChild(metrics);
+    addQualityMetric(metrics,t('quality_lab_result'),t('release_status_'+result.status));
+    addQualityMetric(metrics,t('release_place'),result.placeId||'—');
+    for(const check of result.checks){
+      const row=document.createElement('div');row.className='quality-lab-item'+(check.status==='blocked'?' error':check.status==='passed'?' success':'');
+      row.textContent=t('release_check_'+check.id)+' · '+t('release_check_status_'+check.status);
+      report.appendChild(row);
+    }
+    const note=document.createElement('div');note.className='quality-lab-empty';note.textContent=result.status==='ready'?t('release_publish_manual'):t('release_next_steps');report.appendChild(note);
+    setQualityLabBusy(false,'');
+  }catch(error){setQualityLabBusy(false,error.message||String(error),true);}
+}
+
 function openQualityLab(report){
   if(!activeProject){showToast(t('start_requires_project'));return;}
   document.getElementById('qualityLabOverlay').classList.remove('hidden');
@@ -1280,19 +1424,32 @@ function renderQualityLabReport(title,data,kind){
 
 async function runQualityGuiAudit(multiDevice){
   if(!activeProject||!window.forgeAPI?.qualityLabGui){showToast(t('start_requires_project'));return;}openQualityLab();setQualityLabBusy(true,t('quality_lab_working'));
-  try{const result=await window.forgeAPI.qualityLabGui(activeProject.path,!!multiDevice);if(result?.error)throw new Error(result.error);renderQualityLabReport(multiDevice?t('quality_lab_gui_devices'):t('quality_lab_gui_current'),result.data,'gui');const outcome=ForgeQualityLabState.guiAuditOutcome(result.data);setQualityLabBusy(false,outcome==='clean'?t('quality_lab_gui_clean'):outcome==='empty'?t('quality_lab_gui_empty'):t('quality_lab_done'));}
+  const projectPath=activeProject.path;
+  try{
+    const before=await window.forgeAPI.getProjectHealth(projectPath,true);
+    const result=await window.forgeAPI.qualityLabGui(projectPath,!!multiDevice);
+    if(result?.error)throw new Error(result.error);
+    const after=await window.forgeAPI.getProjectHealth(projectPath,true);
+    const outcome=ForgeQualityLabState.guiAuditOutcome(result.data);
+    releaseEvidence.gui={projectPath,buildId:before?.lastValidBuildId||null,
+      validBuild:before?.state==='synced'&&after?.state==='synced'&&before.lastValidBuildId===after.lastValidBuildId,
+      multiDevice:!!multiDevice,outcome};
+    renderQualityLabReport(multiDevice?t('quality_lab_gui_devices'):t('quality_lab_gui_current'),result.data,'gui');
+    setQualityLabBusy(false,outcome==='clean'?t('quality_lab_gui_clean'):outcome==='empty'?t('quality_lab_gui_empty'):t('quality_lab_done'));
+  }
   catch(error){setQualityLabBusy(false,error.message||String(error),true);}
 }
 
 async function startQualityPlaytest(mode){
   if(!activeProject||!window.forgeAPI?.qualityLabPlaytestStart){showToast(t('start_requires_project'));return;}const players=document.getElementById('qualityLabPlayers').value;const generation=qualityLabRequestGuard.begin();setQualityLabBusy(true,t('quality_lab_starting'));
-  try{const result=await window.forgeAPI.qualityLabPlaytestStart(activeProject.path,mode,players);if(!qualityLabRequestGuard.isCurrent(generation))return;if(result?.error)throw new Error(result.error);setQualityLabBusy(false,result.data?.message||t('quality_lab_started'));await refreshQualityPlaytest(generation);if(!qualityLabRequestGuard.isCurrent(generation))return;clearInterval(qualityLabPollTimer);qualityLabPollTimer=setInterval(function(){refreshQualityPlaytest(generation);},2000);}
+  try{const before=await window.forgeAPI.getProjectHealth(activeProject.path,true);qualityLabRunProject=activeProject.path;qualityLabRunBuild=before?.state==='synced'?before.lastValidBuildId:null;releaseEvidence.playtest=null;const result=await window.forgeAPI.qualityLabPlaytestStart(activeProject.path,mode,players);if(!qualityLabRequestGuard.isCurrent(generation))return;if(result?.error)throw new Error(result.error);setQualityLabBusy(false,result.data?.message||t('quality_lab_started'));const running=await refreshQualityPlaytest(generation);if(!qualityLabRequestGuard.isCurrent(generation)||!running)return;clearInterval(qualityLabPollTimer);qualityLabPollTimer=setInterval(function(){refreshQualityPlaytest(generation);},2000);}
   catch(error){if(!qualityLabRequestGuard.isCurrent(generation))return;setQualityLabBusy(false,error.message||String(error),true);}
 }
 
 async function refreshQualityPlaytest(generation=qualityLabRequestGuard.current()){
   if(!activeProject||!window.forgeAPI?.qualityLabPlaytestOutput)return;
-  try{const result=await window.forgeAPI.qualityLabPlaytestOutput(activeProject.path);if(!qualityLabRequestGuard.isCurrent(generation))return;if(result?.error)throw new Error(result.error);renderQualityLabReport(t('quality_lab_playtest_report'),result.data,'playtest');setQualityLabBusy(false,result.data?.isRunning?t('quality_lab_running_now'):t('quality_lab_finished'));if(!result.data?.isRunning){clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;}}
+  if(qualityLabRunProject&&activeProject.path!==qualityLabRunProject)return false;
+  try{const result=await window.forgeAPI.qualityLabPlaytestOutput(activeProject.path);if(!qualityLabRequestGuard.isCurrent(generation))return false;if(result?.error)throw new Error(result.error);renderQualityLabReport(t('quality_lab_playtest_report'),result.data,'playtest');setQualityLabBusy(false,result.data?.isRunning?t('quality_lab_running_now'):t('quality_lab_finished'));if(!result.data?.isRunning){clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;const after=await window.forgeAPI.getProjectHealth(activeProject.path,true);if(!qualityLabRequestGuard.isCurrent(generation))return false;releaseEvidence.playtest={projectPath:qualityLabRunProject,buildId:qualityLabRunBuild,validBuild:Boolean(qualityLabRunBuild&&after?.state==='synced'&&after.lastValidBuildId===qualityLabRunBuild),verdict:String(result.data?.testResult||'').toUpperCase(),completed:result.data?.isRunning===false,hasError:Boolean(result.data?.testError||(result.data?.output||[]).some(item=>item.messageType==='MessageError'||item.level==='error'))};}return Boolean(result.data?.isRunning);}
   catch(error){if(!qualityLabRequestGuard.isCurrent(generation))return;setQualityLabBusy(false,error.message||String(error),true);clearInterval(qualityLabPollTimer);qualityLabPollTimer=null;}
 }
 
@@ -1713,7 +1870,7 @@ async function refreshProjectHealth(force=false){
 async function runProjectHealthAction(){
   const action=latestProjectHealth?.action;
   if(action==='report'){document.getElementById('healthReport').hidden=false;return;}
-  if(action==='link'){window.location.href='project-settings.html';return;}
+  if(action==='link'){document.getElementById('placesPanel').open=true;await refreshPlaces();return;}
   if(action==='reconnect'){window.location.href='roblox-studio.html';return;}
   if(action==='retry'&&activeProject){
     const result=await window.forgeAPI.retryProjectSync(activeProject.path);

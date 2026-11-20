@@ -50,6 +50,7 @@ const {
   claudeServerEntry,
 } = require('./lib/figma-mcp');
 const { readProjectQualityMemory, writeProjectQualityMemory } = require('./lib/project-quality-memory');
+const { readProjectNotes, writeProjectNotes } = require('./lib/project-notes');
 const { listSessionHandoffs, saveSessionHandoff } = require('./lib/session-handoff');
 const {
   listProjectCheckpoints,
@@ -2846,6 +2847,20 @@ ipcMain.handle('project-quality-write', async (event, projectPath, content) => {
   } catch (error) { return { error: error.message }; }
 });
 
+ipcMain.handle('project-notes-read', async (event, projectPath) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    return { success: true, ...readProjectNotes(projectPath) };
+  } catch (error) { return { error: error.message }; }
+});
+
+ipcMain.handle('project-notes-write', async (event, projectPath, content, expectedRevision) => {
+  try {
+    if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
+    return writeProjectNotes(projectPath, content, expectedRevision);
+  } catch (error) { return { error: error.message }; }
+});
+
 ipcMain.handle('session-handoff-list', async (event, projectPath) => {
   try {
     if (!isPathAllowed(projectPath)) return { error: 'Projet invalide.' };
@@ -3009,9 +3024,9 @@ function parseMcpJsonResult(result) {
   return null;
 }
 
-async function getCurrentStudioPlaceInfo() {
+async function getCurrentStudioPlaceInfo(targetPlaceId = null) {
   try {
-    const result = await syncMcpCallTool('get_place_info', {}, 5000);
+    const result = await syncMcpCallTool('get_place_info', targetPlaceId ? { targetPlaceId: String(targetPlaceId) } : {}, 5000);
     const toolError = mcpToolResultError(result);
     if (toolError) throw new Error(toolError);
     const place = parseMcpJsonResult(result);
@@ -3030,7 +3045,7 @@ async function ensureProjectPlaceAssociation(projectPath, options = {}) {
   const project = registry.find(item => canonicalProjectPath(item.path) === canonicalProjectPath(projectPath));
   if (!project) return { error: 'Ce dossier n’est pas enregistré comme projet Forge.', code: 'project-unknown' };
   if (!project.linkedStudio && !options.allowLink) return { error: 'Projet local : lie une place dans les réglages du projet avant une action dans Studio.', code: 'project-unlinked' };
-  const studio = await getCurrentStudioPlaceInfo();
+  const studio = await getCurrentStudioPlaceInfo(project.linkedStudio?.placeId || project.linkedStudio || null);
   if (studio.error) return studio;
   const decision = evaluateProjectPlaceLink(registry, projectPath, studio.place);
   if (decision.error) return decision;
@@ -3921,7 +3936,7 @@ ipcMain.handle('places-list', async (_event, projectPath) => {
     const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
     if (!project) throw new Error('Projet introuvable.');
     const manifest = placesManifest.read(projectPath);
-    const studio = await getCurrentStudioPlaceInfo();
+    const studio = await getCurrentStudioPlaceInfo(project.linkedStudio?.placeId || project.linkedStudio || null);
     const syncByPlace = {};
     for (const place of manifest?.places || []) {
       let saved = null;
@@ -3938,7 +3953,7 @@ ipcMain.handle('places-list', async (_event, projectPath) => {
       reservations: placeReservations.list(), sync: getFileSyncSnapshot(projectPath), syncByPlace };
   } catch (error) { return { error: error.message }; }
 });
-ipcMain.handle('places-add', async (_event, projectPath, role, expectedPlaceId) => {
+ipcMain.handle('places-add', async (_event, projectPath, role, expectedPlaceId, options = {}) => {
   try {
     if (!expectedPlaceId || !/^[1-9]\d*$/.test(String(expectedPlaceId))) throw new Error('Confirme la place détectée avant de la lier.');
     if (!isPathAllowed(projectPath)) throw new Error('Projet introuvable.');
@@ -3948,14 +3963,29 @@ ipcMain.handle('places-add', async (_event, projectPath, role, expectedPlaceId) 
     const registry = loadProjectsRegistry();
     const project = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
     if (!project) throw new Error('Projet introuvable.');
-    if (project.language === 'typescript') throw new Error('La synchronisation multi-place TypeScript n’est pas encore disponible. Utilise un projet Luau.');
     if (!placesManifest.read(projectPath) && project.linkedStudio?.placeId && String(project.linkedStudio.placeId) !== String(studio.place.placeId)) {
       placesManifest.add(projectPath, project.linkedStudio);
     }
     const conflict = registry.find(p => p !== project && (p.linkedStudio?.placeId === String(studio.place.placeId) || placesManifest.read(p.path)?.places.some(x => x.placeId === String(studio.place.placeId))));
-    if (conflict) throw new Error(`Cette place appartient déjà au projet ${conflict.name}.`);
+    if (conflict && canonicalProjectPath(options.transferFromProjectPath || '') !== canonicalProjectPath(conflict.path)) {
+      return { error: `Cette place est déjà liée au projet ${conflict.name}.`, code: 'place-linked-elsewhere', conflictProjectPath: conflict.path, conflictProjectName: conflict.name };
+    }
+    if (conflict && projectHasRunningAgents(conflict.path)) throw new Error(`Arrête les agents du projet ${conflict.name} avant de déplacer cette place.`);
     const manifest = placesManifest.add(projectPath, studio.place, role);
-    if (!project.linkedStudio) { project.linkedStudio = { placeId: String(studio.place.placeId), gameId: manifest.universeId, placeName: studio.place.placeName }; project.syncPaused = true; saveProjectsRegistry(registry); }
+    if (conflict) {
+      const oldManifest = placesManifest.read(conflict.path);
+      if (oldManifest?.places.some(place => place.placeId === String(studio.place.placeId))) placesManifest.remove(conflict.path, studio.place.placeId);
+      if (String(conflict.linkedStudio?.placeId || conflict.linkedStudio) === String(studio.place.placeId)) {
+        conflict.linkedStudio = null; conflict.syncPaused = true;
+      }
+      saveProjectsRegistry(registry);
+    }
+    if (String(project.linkedStudio?.placeId || project.linkedStudio || '') !== String(studio.place.placeId)) {
+      stopFileSync();
+      project.linkedStudio = { placeId: String(studio.place.placeId), gameId: manifest.universeId, placeName: studio.place.placeName };
+      project.syncPaused = true;
+      saveProjectsRegistry(registry);
+    }
     return { success: true, manifest };
   } catch (error) { return { error: error.message }; }
 });
@@ -3968,7 +3998,10 @@ ipcMain.handle('places-remove', async (_event, projectPath, placeId) => {
     if (!project) throw new Error('Projet introuvable.');
     const manifest = placesManifest.remove(projectPath, placeId);
     if (String(project.linkedStudio?.placeId || project.linkedStudio) === String(placeId)) {
-      stopFileSync(); project.linkedStudio = null; project.syncPaused = true; saveProjectsRegistry(registry);
+      stopFileSync();
+      const next = manifest.places[0];
+      project.linkedStudio = next ? { placeId: next.placeId, gameId: manifest.universeId, placeName: next.name } : null;
+      project.syncPaused = true; saveProjectsRegistry(registry);
     }
     return { success: true, manifest };
   } catch (error) { return { error: error.message }; }
@@ -5089,7 +5122,20 @@ function localCandidateBuildId(projectPath, language) {
     const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
     const placeId = project?.linkedStudio?.placeId;
     if (!placeId) return null;
-    return candidateBuildId([...placesManifest.compose(projectPath, manifest, placeId)], language);
+    const files = [...placesManifest.compose(projectPath, manifest, placeId)];
+    if (language === 'typescript') {
+      const sourceRoot = path.join(projectPath, 'src');
+      for (const filename of collectSourceFiles(sourceRoot)) {
+        if (!/\.tsx?$/i.test(filename)) continue;
+        const target = placesManifest.sourcePath(manifest, placeId, filename.replace(/\\/g, '/'));
+        if (target) files.push([target, fs.readFileSync(path.join(sourceRoot, filename), 'utf8')]);
+      }
+      for (const name of ['tsconfig.json', 'package.json']) {
+        const target = path.join(projectPath, name);
+        files.push([name, fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '<missing>']);
+      }
+    }
+    return candidateBuildId(files, language);
   }
   const root = path.join(projectPath, 'src');
   const files = collectSourceScripts(root).map(filename => [filename.replace(/\\/g, '/'), fs.readFileSync(path.join(root, filename), 'utf8')]);
@@ -5471,12 +5517,7 @@ function watchProjectRoot(projectPath) {
   console.log('[AssetWatcher] Surveillance racine :', projectPath);
 }
 
-function collectSourceScripts(srcPath) {
-  const manifest = placesManifest.read(path.dirname(srcPath));
-  if (manifest) {
-    const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(path.dirname(srcPath)));
-    return [...placesManifest.compose(path.dirname(srcPath), manifest, project?.linkedStudio?.placeId).keys()];
-  }
+function collectSourceFiles(srcPath) {
   const files = [];
   const visit = (dir) => {
     let entries = [];
@@ -5492,6 +5533,15 @@ function collectSourceScripts(srcPath) {
   };
   visit(srcPath);
   return files;
+}
+
+function collectSourceScripts(srcPath) {
+  const manifest = placesManifest.read(path.dirname(srcPath));
+  if (manifest) {
+    const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(path.dirname(srcPath)));
+    return [...placesManifest.compose(path.dirname(srcPath), manifest, project?.linkedStudio?.placeId).keys()];
+  }
+  return collectSourceFiles(srcPath);
 }
 
 function scheduleSourceFileSync(srcPath, filename, delayMs = 250) {
@@ -5538,7 +5588,9 @@ async function runTypeScriptBuild(projectPath) {
       console.error('[FileSync] Echec compilation TypeScript:', result.error);
       return;
     }
-    const compiled = collectCompiledScripts(projectPath);
+    const manifest = placesManifest.read(projectPath);
+    const selectedId = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath))?.linkedStudio?.placeId;
+    const compiled = manifest ? placesManifest.selectCompiled(manifest, selectedId, collectCompiledScripts(projectPath)) : collectCompiledScripts(projectPath);
     lastCompiledCandidateBuildId = sourceBuildId;
     for (const [name, job] of pendingScriptSyncs) if (job.origin === 'typescript') pendingScriptSyncs.delete(name);
     for (const [filename, entry] of changedCompiledScripts(forceFullResync ? new Map() : knownCompiledSignatures, compiled)) {
@@ -5568,6 +5620,7 @@ async function runTypeScriptBuild(projectPath) {
 
 async function processSourceFile(srcPath, filename) {
   if (path.dirname(srcPath) !== currentSyncProjectPath) return;
+  if (placesManifest.read(currentSyncProjectPath)) { reconcileSourceScripts(srcPath); return; }
   const filePath = path.join(srcPath, filename);
   if (!fs.existsSync(filePath)) return;
   const ext = path.extname(filename).toLowerCase();
@@ -5597,13 +5650,15 @@ function reconcileSourceScripts(srcPath, force = false) {
   if (manifest) {
     const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(currentSyncProjectPath));
     const scripts = placesManifest.compose(currentSyncProjectPath, manifest, project.linkedStudio.placeId);
+    const previousCandidate = candidateBuild;
     let changed = force;
     for (const [name, source] of scripts) {
       const signature = require('node:crypto').createHash('sha256').update(source).digest('hex');
       if (force || knownScriptSignatures.get(name) !== signature) { knownScriptSignatures.set(name, signature); enqueueScriptSync(name, source); changed = true; }
     }
     for (const name of [...knownScriptSignatures.keys()]) if (!scripts.has(name)) { knownScriptSignatures.delete(name); enqueueScriptDelete(name); changed = true; }
-    if (changed) candidateBuild = localCandidateBuildId(currentSyncProjectPath, project.language || 'lua');
+    candidateBuild = localCandidateBuildId(currentSyncProjectPath, project.language || 'lua');
+    if (currentSyncLanguage === 'typescript' && (force || candidateBuild !== previousCandidate)) scheduleTypeScriptBuild(currentSyncProjectPath);
     return;
   }
   const present = new Set();
@@ -5704,14 +5759,15 @@ async function flushPendingScriptSyncs() {
     const scriptHashes = {};
     const compiledHashes = {};
     const srcPath = path.join(projectPath, 'src');
+    const manifest = placesManifest.read(projectPath);
     if (currentSyncLanguage === 'typescript') {
-      for (const [name, entry] of collectCompiledScripts(projectPath)) {
+      const compiled = manifest ? placesManifest.selectCompiled(manifest, loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath))?.linkedStudio?.placeId, collectCompiledScripts(projectPath)) : collectCompiledScripts(projectPath);
+      for (const [name, entry] of compiled) {
         sourcesToValidate.set(name, entry.source);
         scriptHashes[name] = entry.hash;
         compiledHashes[name] = entry.hash;
       }
     }
-    const manifest = placesManifest.read(projectPath);
     const composed = manifest ? placesManifest.compose(projectPath, manifest, loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath))?.linkedStudio?.placeId) : null;
     for (const filename of (composed ? composed.keys() : collectSourceScripts(srcPath))) {
       if (!/\.luau?$/i.test(filename)) continue;
@@ -5851,7 +5907,10 @@ function startFileSync(projectPath) {
   if (currentSyncLanguage === 'typescript') {
     scheduleTypeScriptBuild(projectPath, 100);
   } else {
-    const currentNames = new Set(collectSourceScripts(srcPath).map(name => name.replace(/\\/g, '/')));
+    const manifest = placesManifest.read(projectPath);
+    const currentNames = new Set(manifest
+      ? placesManifest.compose(projectPath, manifest, registered.linkedStudio?.placeId).keys()
+      : collectSourceScripts(srcPath).map(name => name.replace(/\\/g, '/')));
     for (const name of Object.keys(lastValidScripts)) if (!currentNames.has(name)) enqueueScriptDelete(name);
     if (pendingScriptSyncs.size === 0) fileSyncStatus = { ...fileSyncStatus, phase: 'synced' };
   }
@@ -6004,7 +6063,9 @@ function getFileSyncSnapshot(projectPath) {
   }
   const pendingFiles = new Set(pendingScriptSyncs.keys());
   if (fileSyncStatus.phase === 'compile-error' && project.language === 'typescript') {
-    for (const name of collectSourceScripts(path.join(projectPath, 'src')).filter(name => /\.tsx?$/i.test(name))) {
+    const sourceRoot = path.join(projectPath, 'src');
+    const sourceFiles = typeof collectSourceFiles === 'function' ? collectSourceFiles(sourceRoot) : collectSourceScripts(sourceRoot);
+    for (const name of sourceFiles.filter(name => /\.tsx?$/i.test(name))) {
       if (!pendingFiles.has(name.replace(/\.tsx?$/i, '.luau'))) pendingFiles.add(name);
     }
   }
@@ -6027,6 +6088,13 @@ ipcMain.handle('retry-project-sync', async (event, projectPath) => {
   if (!active || canonicalProjectPath(active.path) !== canonicalProjectPath(projectPath)) return { error: 'Ouvre ce projet avant de réessayer.' };
   const project = loadProjectsRegistry().find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
   if (!project?.linkedStudio) return { error: 'Lie une place dans les réglages du projet.' };
+  if (project.language === 'typescript' && project.templateSetup?.stage === 'dependencies' && project.templateSetup?.status === 'error') {
+    const setup = await prepareNewTypeScriptProject(projectPath);
+    const registry = loadProjectsRegistry();
+    const current = registry.find(p => canonicalProjectPath(p.path) === canonicalProjectPath(projectPath));
+    if (current) { current.templateSetup = setup; saveProjectsRegistry(registry); }
+    if (setup.status === 'error') return { error: setup.error, code: 'template-dependencies' };
+  }
   studioStatusCache.delete(canonicalProjectPath(projectPath));
   if (project.syncPaused !== false) {
     const association = await ensureProjectPlaceAssociation(projectPath);

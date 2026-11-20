@@ -1,6 +1,6 @@
 {
   "name": "forge-desktop-app",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "description": "Forge - Génère ton jeu Roblox avec l'IA",
   "main": "main.js",
   "scripts": {
@@ -42,6 +42,7 @@
   "build": {
     "appId": "com.forge.app",
     "productName": "Forge",
+    "afterPack": "scripts/after-pack-node-runtime.cjs",
     "npmRebuild": true,
     "publish": {
       "provider": "github",
@@ -63,7 +64,10 @@
         },
         {
           "from": "runtimes/node-win-x64",
-          "to": "runtimes/node-win-x64"
+          "to": "runtimes/node-win-x64",
+          "filter": [
+            "**/*"
+          ]
         }
       ]
     },

@@ -549,6 +549,8 @@ La profondeur des tests dépend du risque, mais toute fonctionnalité visible ou
 
 ## 17. Communication avec l'utilisateur
 
+Chaque projet possède un carnet partagé dans `.forge-context/project-notes.md`, visible dans « Notes du projet » de Forge. Lis-le au début de la session s'il existe. Tu peux y ajouter ou corriger des notes utiles au projet, notamment à la demande de l'utilisateur. Relis le fichier juste avant de l'écrire, préserve les notes de l'utilisateur et des autres agents, et évite d'y inscrire des suppositions comme des faits. Ces notes appartiennent uniquement au projet courant. La mémoire de qualité et la fiche de reprise conservent leurs règles propres ci-dessous.
+
 - Réponds dans la langue de l'utilisateur sauf demande contraire.
 - Commence par le résultat ou l'état concret, puis donne les détails utiles.
 - Sois clair et concis. Utilise des listes seulement lorsqu'elles rendent l'information plus lisible.

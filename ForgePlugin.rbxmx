@@ -170,7 +170,7 @@ local function pollForRequests(connIndex)
 	conn.isPolling = true
 	local success, result = pcall(function()
 		return HttpService:RequestAsync({
-			Url = `{conn.serverUrl}/poll`,
+			Url = `{conn.serverUrl}/poll?placeId={tostring(game.PlaceId)}`,
 			Method = "GET",
 			Headers = {
 				["Content-Type"] = "application/json",
@@ -388,7 +388,7 @@ local function activatePlugin(connIndex)
 		for attempt = 1, 10 do
 			local success, result = pcall(function()
 				return HttpService:RequestAsync({
-					Url = `{conn.serverUrl}/ready`,
+					Url = `{conn.serverUrl}/ready?placeId={tostring(game.PlaceId)}`,
 					Method = "POST",
 					Headers = {
 						["Content-Type"] = "application/json",
@@ -428,7 +428,7 @@ local function deactivatePlugin(connIndex, notifyServer)
 	if notifyServer then
 		pcall(function()
 			HttpService:RequestAsync({
-				Url = `{conn.serverUrl}/disconnect`,
+				Url = `{conn.serverUrl}/disconnect?placeId={tostring(game.PlaceId)}`,
 				Method = "POST",
 				Headers = {
 					["Content-Type"] = "application/json",

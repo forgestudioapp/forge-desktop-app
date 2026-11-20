@@ -11,6 +11,8 @@ function inspectPackage(packageRoot, version) {
   const required = [
     ['Forge.exe', 1024], ['resources/app.asar', 1024], ['resources/ForgePlugin.rbxmx', 1024],
     ['resources/runtimes/node-win-x64/node.exe', 1024], ['resources/runtimes/node-win-x64/integrity.json', 16],
+    ['resources/runtimes/node-win-x64/node_modules/npm/bin/npm-cli.js', 16],
+    ['resources/runtimes/node-win-x64/node_modules/npm/bin/npm-prefix.js', 16],
     ['resources/runtimes/python-win-x64-u2net/python.exe', 1024], ['resources/runtimes/python-win-x64-u2net/integrity.json', 16],
     ['resources/robloxstudio-mcp/dist/index.js', 1024], ['resources/robloxstudio-mcp/package.json', 16],
   ];
@@ -40,8 +42,8 @@ async function launchPackagedApp(packageRoot) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-packaged-smoke-'));
   const executable = path.join(packageRoot, 'Forge.exe');
   try {
-    const command = "$ErrorActionPreference='Stop'; $env:FORGE_TEST_PROFILE=$env:FORGE_VALIDATION_PROFILE; $env:FORGE_DISABLE_AUTO_UPDATE='1'; $p=Start-Process -FilePath $env:FORGE_VALIDATION_EXE -WindowStyle Hidden -PassThru; Start-Sleep -Seconds 7; if($p.HasExited){Write-Output ('EXITED:'+ $p.ExitCode); exit 1}; Write-Output ('RUNNING:'+ $p.Id); Stop-Process -Id $p.Id -Force; exit 0";
-    const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', command], { encoding: 'utf8', windowsHide: true, timeout: 15000, env: { ...process.env, FORGE_VALIDATION_EXE: executable, FORGE_VALIDATION_PROFILE: profile } });
+    const command = "$ErrorActionPreference='Stop'; $env:FORGE_TEST_PROFILE=$env:FORGE_VALIDATION_PROFILE; $env:FORGE_DISABLE_AUTO_UPDATE='1'; $p=Start-Process -FilePath $env:FORGE_VALIDATION_EXE -WindowStyle Hidden -PassThru -RedirectStandardOutput $env:FORGE_VALIDATION_OUT -RedirectStandardError $env:FORGE_VALIDATION_ERR; Start-Sleep -Seconds 7; if($p.HasExited){Write-Output ('EXITED:'+ $p.ExitCode); exit 1}; Write-Output ('RUNNING:'+ $p.Id); Stop-Process -Id $p.Id -Force; exit 0";
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', command], { encoding: 'utf8', windowsHide: true, timeout: 20000, env: { ...process.env, FORGE_VALIDATION_EXE: executable, FORGE_VALIDATION_PROFILE: profile, FORGE_VALIDATION_OUT: path.join(profile, 'stdout.log'), FORGE_VALIDATION_ERR: path.join(profile, 'stderr.log') } });
     return { running: result.status === 0 && /RUNNING:\d+/.test(result.stdout || ''), exitCode: result.status, detail: String(result.stdout || result.stderr || '').trim() };
   } finally {
     fs.rmSync(profile, { recursive: true, force: true });
